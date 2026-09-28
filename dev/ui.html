@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VELOCITY — UI-Preview</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #05030c;
+        overflow: hidden;
+      }
+      #stage {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1440px;
+        height: 810px;
+      }
+      #stage canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        image-rendering: pixelated;
+      }
+      #menu-root {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        pointer-events: none;
+      }
+      #menu-root > * {
+        pointer-events: auto;
+      }
+      #bar {
+        position: fixed;
+        right: 8px;
+        bottom: 8px;
+        z-index: 100;
+        display: flex;
+        gap: 4px;
+        font: 12px monospace;
+      }
+      #bar button {
+        font: inherit;
+        color: #f1edff;
+        background: #1a0f3a;
+        border: 1px solid #33f0ff55;
+        padding: 3px 6px;
+        cursor: pointer;
+      }
+      #bar button.on {
+        background: #33f0ff;
+        color: #07040f;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage"><canvas id="scene"></canvas></div>
+    <div id="menu-root"></div>
+    <div id="bar"></div>
+    <script type="module" src="/src/ui/dev/preview.ts"></script>
+  </body>
+</html>

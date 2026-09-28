@@ -1,0 +1,28 @@
+[
+  {
+    "id": "level1",
+    "name": "01 GRUNDKURS",
+    "subtitle": "Lauf. Spring. Strafe.",
+    "file": "level1.json",
+    "medals": {
+      "bronze": 36.2,
+      "silver": 30.4,
+      "gold": 24.5,
+      "velocity": 23.4,
+      "author": 22.25
+    }
+  },
+  {
+    "id": "level2",
+    "name": "02 SCHLEIFE",
+    "subtitle": "Speed ist eine Entscheidung.",
+    "file": "level2.json",
+    "medals": {
+      "bronze": 21.4,
+      "silver": 18.7,
+      "gold": 17.5,
+      "velocity": 16.7,
+      "author": 15.86
+    }
+  }
+]

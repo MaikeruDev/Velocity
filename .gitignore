@@ -1,0 +1,8 @@
+node_modules
+dist
+shots
+*.log
+.vite
+tools/out
+.tmp-ui
+.claude/settings.local.json

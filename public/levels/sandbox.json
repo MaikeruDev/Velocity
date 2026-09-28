@@ -1,0 +1,444 @@
+{
+ "version": 1,
+ "id": "sandbox",
+ "name": "SANDBOX",
+ "subtitle": "Testgelände für Entwickler",
+ "spawn": {
+  "pos": [
+   0,
+   0,
+   128
+  ],
+  "yaw": 0
+ },
+ "killY": -1500,
+ "parTime": 30,
+ "music": {
+  "root": "A",
+  "bpm": 132
+ },
+ "environment": {
+  "skyTop": "#0e0826",
+  "skyHorizon": "#ff5e7a",
+  "skyBottom": "#1a0b2e",
+  "fogColor": "#5a2250",
+  "fogNear": 900,
+  "fogFar": 4200,
+  "sunDir": [
+   0.45,
+   0.55,
+   -0.7
+  ],
+  "sunColor": "#ffd6a0",
+  "ambientSky": "#6a5aa8",
+  "ambientGround": "#2a1430",
+  "trimColor": "#33f0ff",
+  "trimColorAlt": "#ff3fd0",
+  "voidY": -2400
+ },
+ "brushes": [
+  {
+   "type": "box",
+   "min": [
+    -256,
+    -64,
+    -256
+   ],
+   "max": [
+    256,
+    0,
+    256
+   ],
+   "mat": "start",
+   "tag": "start"
+  },
+  {
+   "type": "box",
+   "min": [
+    -128,
+    -64,
+    -640
+   ],
+   "max": [
+    128,
+    0,
+    -384
+   ],
+   "mat": "floor",
+   "tag": "hop0"
+  },
+  {
+   "type": "box",
+   "min": [
+    -128,
+    -64,
+    -1088
+   ],
+   "max": [
+    128,
+    0,
+    -832
+   ],
+   "mat": "floor",
+   "tag": "hop1"
+  },
+  {
+   "type": "box",
+   "min": [
+    -128,
+    -64,
+    -1600
+   ],
+   "max": [
+    128,
+    0,
+    -1344
+   ],
+   "mat": "floor",
+   "tag": "hop2"
+  },
+  {
+   "type": "box",
+   "min": [
+    -128,
+    -64,
+    -2176
+   ],
+   "max": [
+    128,
+    0,
+    -1920
+   ],
+   "mat": "floor",
+   "tag": "hop3"
+  },
+  {
+   "type": "box",
+   "min": [
+    -128,
+    -64,
+    -2816
+   ],
+   "max": [
+    128,
+    0,
+    -2560
+   ],
+   "mat": "floor",
+   "tag": "hop4"
+  },
+  {
+   "type": "box",
+   "min": [
+    256,
+    -64,
+    -256
+   ],
+   "max": [
+    768,
+    0,
+    256
+   ],
+   "mat": "floor",
+   "tag": "yard"
+  },
+  {
+   "type": "wedge",
+   "min": [
+    768,
+    -64,
+    -128
+   ],
+   "max": [
+    1024,
+    64,
+    128
+   ],
+   "rise": "+x",
+   "lowY": 0,
+   "mat": "floor",
+   "tag": "rampUp"
+  },
+  {
+   "type": "box",
+   "min": [
+    1024,
+    -64,
+    -256
+   ],
+   "max": [
+    1536,
+    64,
+    256
+   ],
+   "mat": "floor",
+   "tag": "upper"
+  },
+  {
+   "type": "box",
+   "min": [
+    256,
+    0,
+    300
+   ],
+   "max": [
+    288,
+    16,
+    420
+   ],
+   "mat": "metal",
+   "tag": "stair0"
+  },
+  {
+   "type": "box",
+   "min": [
+    288,
+    0,
+    300
+   ],
+   "max": [
+    320,
+    32,
+    420
+   ],
+   "mat": "metal",
+   "tag": "stair1"
+  },
+  {
+   "type": "box",
+   "min": [
+    320,
+    0,
+    300
+   ],
+   "max": [
+    352,
+    48,
+    420
+   ],
+   "mat": "metal",
+   "tag": "stair2"
+  },
+  {
+   "type": "box",
+   "min": [
+    352,
+    0,
+    300
+   ],
+   "max": [
+    384,
+    64,
+    420
+   ],
+   "mat": "metal",
+   "tag": "stair3"
+  },
+  {
+   "type": "box",
+   "min": [
+    384,
+    0,
+    300
+   ],
+   "max": [
+    416,
+    80,
+    420
+   ],
+   "mat": "metal",
+   "tag": "stair4"
+  },
+  {
+   "type": "box",
+   "min": [
+    416,
+    0,
+    300
+   ],
+   "max": [
+    448,
+    96,
+    420
+   ],
+   "mat": "metal",
+   "tag": "stair5"
+  },
+  {
+   "type": "box",
+   "min": [
+    500,
+    0,
+    -200
+   ],
+   "max": [
+    560,
+    48,
+    -140
+   ],
+   "mat": "wall",
+   "tag": "box48"
+  },
+  {
+   "type": "box",
+   "min": [
+    600,
+    0,
+    -200
+   ],
+   "max": [
+    660,
+    64,
+    -140
+   ],
+   "mat": "wall",
+   "tag": "box64"
+  },
+  {
+   "type": "box",
+   "min": [
+    700,
+    0,
+    -200
+   ],
+   "max": [
+    760,
+    76,
+    -140
+   ],
+   "mat": "wall",
+   "tag": "box76"
+  },
+  {
+   "type": "box",
+   "min": [
+    300,
+    60,
+    -240
+   ],
+   "max": [
+    460,
+    90,
+    -160
+   ],
+   "mat": "metal",
+   "tag": "duckCeiling"
+  },
+  {
+   "type": "prism",
+   "axis": "z",
+   "from": 400,
+   "to": 2400,
+   "profile": [
+    [
+     -900,
+     -400
+    ],
+    [
+     -388,
+     -400
+    ],
+    [
+     -644,
+     0
+    ]
+   ],
+   "mat": "surf",
+   "tag": "surf"
+  },
+  {
+   "type": "box",
+   "min": [
+    1200,
+    64,
+    -800
+   ],
+   "max": [
+    1456,
+    128,
+    -544
+   ],
+   "mat": "accent",
+   "rotY": 30,
+   "tag": "rotated"
+  },
+  {
+   "type": "box",
+   "min": [
+    -3000,
+    -640,
+    -3000
+   ],
+   "max": [
+    3000,
+    -576,
+    3000
+   ],
+   "mat": "dark",
+   "tag": "catch"
+  }
+ ],
+ "triggers": [
+  {
+   "kind": "start",
+   "min": [
+    -256,
+    0,
+    -256
+   ],
+   "max": [
+    256,
+    128,
+    256
+   ]
+  },
+  {
+   "kind": "checkpoint",
+   "order": 1,
+   "min": [
+    -128,
+    0,
+    -2304
+   ],
+   "max": [
+    128,
+    128,
+    -2048
+   ],
+   "spawn": {
+    "pos": [
+     0,
+     0,
+     -2080
+    ],
+    "yaw": 0
+   }
+  },
+  {
+   "kind": "finish",
+   "min": [
+    1024,
+    64,
+    -256
+   ],
+   "max": [
+    1536,
+    192,
+    256
+   ]
+  },
+  {
+   "kind": "kill",
+   "min": [
+    -3000,
+    -700,
+    -3000
+   ],
+   "max": [
+    3000,
+    -560,
+    3000
+   ]
+  }
+ ]
+}

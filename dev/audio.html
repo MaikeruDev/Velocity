@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VELOCITY Audio-Werkbank</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0b12;
+        --panel: #141421;
+        --ink: #e8e8f4;
+        --dim: #8a8aa6;
+        --accent: #ff4fd8;
+        --cyan: #5ee0ff;
+      }
+      body {
+        margin: 0;
+        padding: 16px;
+        background: var(--bg);
+        color: var(--ink);
+        font: 13px/1.4 ui-monospace, Consolas, monospace;
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0 0 12px;
+        color: var(--accent);
+        letter-spacing: 0.08em;
+      }
+      h2 {
+        font-size: 12px;
+        margin: 0 0 8px;
+        color: var(--dim);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+      section {
+        background: var(--panel);
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        border-radius: 4px;
+      }
+      button {
+        background: #22223a;
+        color: var(--ink);
+        border: 1px solid #34345a;
+        padding: 5px 9px;
+        margin: 0 6px 6px 0;
+        font: inherit;
+        cursor: pointer;
+        border-radius: 3px;
+      }
+      button:hover {
+        border-color: var(--accent);
+      }
+      .grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 18px;
+        margin: 6px 0;
+      }
+      .slider,
+      .check {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .slider span {
+        min-width: 70px;
+        color: var(--dim);
+      }
+      .slider input {
+        width: 180px;
+      }
+      .slider output {
+        min-width: 40px;
+      }
+      .meters {
+        display: grid;
+        gap: 4px;
+        margin-top: 8px;
+        max-width: 640px;
+      }
+      .meter {
+        display: grid;
+        grid-template-columns: 60px 1fr 200px;
+        align-items: center;
+        gap: 8px;
+      }
+      .meter .bar {
+        height: 10px;
+        background: #22223a;
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .meter .fill {
+        height: 100%;
+        width: 0;
+        background: linear-gradient(90deg, var(--cyan), var(--accent));
+      }
+      canvas {
+        display: block;
+        max-width: 100%;
+        background: #07070c;
+        margin-bottom: 8px;
+      }
+      pre {
+        white-space: pre-wrap;
+        margin: 0;
+        color: var(--cyan);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>VELOCITY — Audio-Werkbank</h1>
+    <div id="app"></div>
+    <section>
+      <h2>Letzter Offline-Render</h2>
+      <canvas id="spec" width="1200" height="440"></canvas>
+      <pre id="metrics">—</pre>
+    </section>
+    <script type="module" src="/src/audio/dev/preview.ts"></script>
+  </body>
+</html>
