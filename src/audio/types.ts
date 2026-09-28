@@ -23,6 +23,8 @@ export interface MusicDrive {
    */
   readonly nearL?: number;
   readonly nearR?: number;
+  /** Rutscht gerade (Plan 007, PlayerSnapshot.sliding). Fehlt = false. */
+  readonly sliding?: boolean;
 }
 
 export interface BeatInfo {

@@ -7,10 +7,12 @@
  *   npm run sim -- --preset cs2
  *   npm run sim -- --sweep airSpeedCap=14,16.5,20,30
  *   npm run sim -- --level public/levels/sandbox.json
+ *   npm run sim -- --section arcade      (nur der Arcade-Pass, Plan 007)
  */
 import { MOVEMENT_PRESETS, withMovement, type MovementConfig, type MovementPresetId, type NumericMovementKey } from '../src/player/MovementConfig';
 import { runRoute } from '../src/player/bots';
 import { compileLevel } from '../src/world/level/compileLevel';
+import { arcadeSection } from './sim/arcade';
 import { readLevelFile } from './sim/levels';
 import { BOT_LABELS, groundStats, hopRun, jumpDistance, standingHop, surfRun, type BotKind } from './sim/scenarios';
 
@@ -18,6 +20,8 @@ interface Args {
   preset: MovementPresetId;
   sweep: { key: NumericMovementKey; values: number[] } | null;
   level: string | null;
+  /** Nur diesen Abschnitt (derzeit 'arcade'). */
+  section: 'arcade' | null;
 }
 
 function isPreset(v: string): v is MovementPresetId {
@@ -29,7 +33,7 @@ function isNumericKey(base: MovementConfig, k: string): k is NumericMovementKey 
 }
 
 function parseArgs(argv: readonly string[]): Args {
-  const args: Args = { preset: 'velocity', sweep: null, level: null };
+  const args: Args = { preset: 'velocity', sweep: null, level: null, section: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const val = (): string => {
@@ -54,6 +58,10 @@ function parseArgs(argv: readonly string[]): Args {
       args.sweep = { key, values };
     } else if (a === '--level') {
       args.level = val();
+    } else if (a === '--section') {
+      const v = val();
+      if (v !== 'arcade') throw new Error(`--section: nur "arcade" (war "${v}")`);
+      args.section = v;
     } else {
       throw new Error(`Unbekanntes Argument ${a}`);
     }
@@ -90,7 +98,13 @@ function configSection(cfg: MovementConfig, name: string): string {
     'maxVelocity', 'stepSize', 'nonJumpVelocity', 'coyoteTime', 'jumpBufferTime', 'autoHop', 'autoHopSpeedShare',
     'autoHopGroundTime', 'autoHopLandShare', 'autoHopLandAirTime', 'duckTime',
   ];
-  return `## Konfiguration: ${name}\n\n` + table(['Wert', ...keys.map(String)], [['', ...keys.map((k) => String(cfg[k]))]]);
+  // Arcade-Pass (Plan 007): Hauptschalter und Rutsch-/Lenk-Werte als eigene Zeile.
+  const arcade: Array<keyof MovementConfig> = [
+    'landGraceTime', 'slopeLandGain', 'surfSeamFix', 'ledgeStep', 'ledgeMemory', 'slideMinSpeed', 'slideExitSpeed',
+    'slideFriction', 'slideDecel', 'slideBoost', 'slideBoostCap', 'slideSteerRate', 'airControl', 'airControlHigh', 'airControlSurfGrace',
+  ];
+  return `## Konfiguration: ${name}\n\n` + table(['Wert', ...keys.map(String)], [['', ...keys.map((k) => String(cfg[k]))]]) +
+    '\n\n' + table(['Arcade', ...arcade.map(String)], [['', ...arcade.map((k) => String(cfg[k]))]]);
 }
 
 function hopSection(cfg: MovementConfig): string {
@@ -235,7 +249,9 @@ function main(): void {
   const args = parseArgs(process.argv.slice(2));
   const base = MOVEMENT_PRESETS[args.preset];
   const parts: string[] = [`# VELOCITY Movement-Sim (Preset: ${args.preset})\n`];
-  if (args.sweep) {
+  if (args.section === 'arcade') {
+    parts.push(arcadeSection(base));
+  } else if (args.sweep) {
     parts.push(sweepSection(base, args.sweep.key, args.sweep.values));
   } else {
     parts.push(configSection(base, args.preset));
@@ -245,6 +261,8 @@ function main(): void {
     parts.push(groundSection(base));
     parts.push(surfSection(base));
     parts.push(jumpSection(base));
+    // Arcade-Pass nur, wo er an ist (CS2 hat alle Schalter aus — die Tabelle wäre leer).
+    if (base.landGraceTime > 0 || base.slideMinSpeed > 0 || base.ledgeStep > 0 || base.airControl > 0) parts.push(arcadeSection(base));
   }
   if (args.level) parts.push(levelSection(base, args.level));
   process.stdout.write(parts.join('\n\n') + '\n');

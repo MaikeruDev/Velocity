@@ -1,0 +1,26 @@
+
+T8 SURF-SPEED (10°-Rampe: 800 u/s surfend, dann 1000 u/s surfend)
+  Grundtechnik (Blick ±3°, 0.3 s Reaktion) bestanden 20/20 · v800 6.1 s (100 %, max 7.4) · v1000 8.2 s (100 %, max 9.3)
+  Grundtechnik (Blick ±6°, 0.6 s Reaktion) bestanden 6/20 · v800 7.7 s (85 %, max 10.4) · v1000 9.2 s (30 %, max 11.7) · Urteile: noMouse 100%
+  Fehler: nur W                      bestanden 0/20 · v800 – s (0 %, max –) · v1000 – s (0 %, max –)
+  Fehler: nichts drücken             bestanden 0/20 · v800 – s (0 %, max –) · v1000 – s (0 %, max –)
+
+T7 SURF (Stufen: 3 s halten, 6 s halten) — Rampe 60°, 768 breit, Achsgefälle 3° bzw. 0°/10°
+  3°: Grundtechnik (Blick ±3°, 0.3 s Reaktion) bestanden 20/20 · halten3 5.4 s (100 %, max 5.4) · halten6 11.4 s (100 %, max 11.4)
+  3°: Grundtechnik (Blick ±6°, 0.6 s Reaktion) bestanden 20/20 · halten3 5.4 s (100 %, max 5.4) · halten6 11.4 s (100 %, max 11.4)
+  3°: W + D (Strafe-Assist)          bestanden 20/20 · halten3 5.4 s (100 %, max 5.4) · halten6 11.4 s (100 %, max 11.4)
+  3°: Fehler: nur W                  bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  3°: Fehler: nichts drücken         bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  3°: Fehler: Taste von der Rampe weg bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  0°: Grundtechnik (Blick ±3°, 0.3 s Reaktion) bestanden 20/20 · halten3 5.4 s (100 %, max 5.4) · halten6 11.4 s (100 %, max 11.4)
+  0°: Grundtechnik (Blick ±6°, 0.6 s Reaktion) bestanden 20/20 · halten3 5.4 s (100 %, max 5.4) · halten6 11.4 s (100 %, max 11.4)
+  0°: W + D (Strafe-Assist)          bestanden 20/20 · halten3 5.4 s (100 %, max 5.4) · halten6 11.4 s (100 %, max 11.4)
+  0°: Fehler: nur W                  bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  0°: Fehler: nichts drücken         bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  0°: Fehler: Taste von der Rampe weg bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  10°: Grundtechnik (Blick ±3°, 0.3 s Reaktion) bestanden 0/20 · halten3 5.5 s (100 %, max 5.5) · halten6 – s (0 %, max –)
+  10°: Grundtechnik (Blick ±6°, 0.6 s Reaktion) bestanden 8/20 · halten3 5.5 s (100 %, max 5.5) · halten6 11.5 s (40 %, max 11.5) · Urteile: noMouse 100%
+  10°: W + D (Strafe-Assist)         bestanden 0/20 · halten3 5.5 s (100 %, max 5.5) · halten6 – s (0 %, max –)
+  10°: Fehler: nur W                 bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  10°: Fehler: nichts drücken        bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  10°: Fehler: Taste von der Rampe weg bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)

@@ -1,0 +1,33 @@
+
+## A) Prestrafe am Boden (W+D, Blick nachgeführt), Tempo nach 0.25 / 0.5 / 1 / 2 / 4 s
+
+| Start | Sprint | Hand | 0.25 s | 0.5 s | 1 s | 2 s | 4 s |
+|---|---|---|---|---|---|---|---|
+| 0 | ja | optimal | 348 | 384 | 387 | 387 | 387 |
+| 0 | ja | konst. 45°/s | 321 | 323 | 323 | 323 | 323 |
+| 0 | ja | konst. 90°/s | 324 | 330 | 333 | 333 | 333 |
+| 0 | ja | konst. 135°/s | 329 | 343 | 348 | 349 | 349 |
+| 0 | ja | konst. 180°/s | 336 | 359 | 368 | 369 | 369 |
+| 0 | nein | optimal | 272 | 300 | 302 | 302 | 302 |
+| 0 | nein | konst. 45°/s | 251 | 252 | 253 | 253 | 253 |
+| 0 | nein | konst. 90°/s | 253 | 258 | 260 | 260 | 260 |
+| 0 | nein | konst. 135°/s | 257 | 268 | 272 | 272 | 272 |
+| 0 | nein | konst. 180°/s | 262 | 280 | 288 | 288 | 288 |
+| 320 | ja | optimal | 382 | 387 | 387 | 387 | 387 |
+| 320 | ja | konst. 45°/s | 333 | 325 | 323 | 323 | 323 |
+| 320 | ja | konst. 90°/s | 344 | 336 | 333 | 333 | 333 |
+| 320 | ja | konst. 135°/s | 356 | 351 | 349 | 349 | 349 |
+| 320 | ja | konst. 180°/s | 370 | 369 | 369 | 369 | 369 |
+| 320 | nein | optimal | 303 | 302 | 302 | 302 | 302 |
+| 320 | nein | konst. 45°/s | 265 | 255 | 253 | 253 | 253 |
+| 320 | nein | konst. 90°/s | 274 | 263 | 260 | 260 | 260 |
+| 320 | nein | konst. 135°/s | 286 | 276 | 273 | 272 | 272 |
+| 320 | nein | konst. 180°/s | 299 | 291 | 289 | 288 | 288 |
+
+## B) Carving am Boden: 90°-Kurve mit W+Sprint und Mausdrehung (Geschwindigkeits-Richtung bis 85°)
+
+| Tempo | Maus 90°/s | 180°/s | 360°/s | Sprung-Kurve Luft (Referenz) |
+|---|---|---|---|---|
+| 320 | 1.23 s, Ende 321 | 0.84 s, Ende 321 | 0.67 s, Ende 321 | Luft max. ≈ 550°/s |
+| 500 | 1.23 s, Ende 321 | 0.84 s, Ende 321 | 0.67 s, Ende 321 | Luft max. ≈ 352°/s |
+| 800 | 1.23 s, Ende 321 | 0.86 s, Ende 321 | 0.70 s, Ende 321 | Luft max. ≈ 220°/s |

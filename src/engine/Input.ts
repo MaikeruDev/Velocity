@@ -15,6 +15,7 @@ export type { InputAction, InputNotice, InputOverride } from './InputState';
  *   tickInput(i, n, u) × n  — in onTick (Yaw nach Tick-Zeit u interpoliert)
  *   yaw / pitch             — in onFrame für die Kamera (roh, sofort)
  *   consumeActions()        — jeden Frame, auch im Menü (sonst stauen sich Aktionen)
+ *   anyKeyDown()            — Vorführung (Plan 007): "beliebige Taste beendet sie"
  */
 
 /** Keyboard Lock API (Chromium) — fehlt in lib.dom, daher lokal. */
@@ -93,6 +94,8 @@ export class InputManager {
   private keyboardLocked = false;
   private leaveGuard = false;
   private disposed = false;
+  /** Tasten-/Maustasten-/Rad-Drücke seit dem letzten anyKeyDown() (ohne Wiederholungen). */
+  private presses = 0;
 
   constructor(target: PointerLockTarget, getSettings: () => GameSettings) {
     this.target = target;
@@ -310,6 +313,17 @@ export class InputManager {
     return this.state.consumeActions();
   }
 
+  /**
+   * Seit dem letzten Aufruf eine Taste, Maustaste (im Lock) oder das Mausrad gedrückt? Setzt zurück.
+   * Zählt auch, während ein Bot/Override die Tick-Eingabe stellt — genau dann braucht man es: die
+   * Vorführung endet mit jeder Taste. Mausbewegung zählt nicht (Zittern der Hand).
+   */
+  anyKeyDown(): boolean {
+    const any = this.presses > 0;
+    this.presses = 0;
+    return any;
+  }
+
   /** Bots/Playwright: ersetzt die Tick-Eingabe komplett; null = wieder echte Eingabe. */
   setOverride(fn: InputOverride | null): void {
     this.state.setOverride(fn);
@@ -458,6 +472,7 @@ export class InputManager {
       // Pause-Menü und drehte die Kamera. exitLock unterdrückt die zweite Pause aus
       // dem Lock-Verlust: genau ein 'pause' und eine freie Maus.
       e.preventDefault();
+      if (!e.repeat) this.presses++;
       this.state.keyDown(e.code, e.repeat);
       this.exitLock();
       return;
@@ -480,6 +495,7 @@ export class InputManager {
     ) {
       return;
     }
+    if (!e.repeat) this.presses++;
     if (this.isLocked && !e.repeat && this.state.isBlockedCtrl(e.code)) {
       this.notify('ctrlCrouchNeedsFullscreen');
     }
@@ -511,6 +527,7 @@ export class InputManager {
     const code = MOUSE_CODES[e.button];
     if (code === undefined) return;
     if (e.button !== 0) e.preventDefault();
+    this.presses++;
     this.state.keyDown(code, false);
   };
 
@@ -531,6 +548,7 @@ export class InputManager {
     if (!this.isLocked) return;
     e.preventDefault();
     if (e.deltaY === 0 && e.deltaX === 0) return;
+    this.presses++;
     this.state.wheel();
   };
 

@@ -59,7 +59,7 @@ function buildTimeline(): Timed[] {
     const gain = k === 0 ? 0 : GAINS[k - 1];
     out.push({
       at,
-      e: { type: 'jump', speed: hopSpeed(k), gain, perfect: gain >= 0, chain: k + 1, sync: gain >= 0 ? 0.86 : 0.41, crouched: false, coyote: false },
+      e: { type: 'jump', speed: hopSpeed(k), gain, perfect: gain >= 0, clean: gain >= 0, chain: k + 1, sync: gain >= 0 ? 0.86 : 0.41, crouched: false, coyote: false },
     });
   }
   out.push({ at: 6.2, e: { type: 'checkpoint', index: 1, total: 3, time: 6.2 - RUN_START, split: -0.42 } });

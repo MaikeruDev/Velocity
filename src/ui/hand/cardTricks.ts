@@ -12,17 +12,27 @@ import { VIEW_ALIGNED } from './rot';
  * - vanish: Zaubertrick — Hand wischt darüber, Karte löst sich (Dither) mit Poof auf, kurz
  *   leere Hand, dann erscheint sie mit Schwung (Überschwinger) wieder.
  * Tempo steuert Häufigkeit und Wildheit.
+ * Plan 007 KI8, Surf ≥ 500 u/s: Zustand surfFan — die Hand hebt die Karte in den Fahrtwind und
+ * fächelt (Wedeln um die Hochachse, 2.4 Hz), gegen die Rampe geneigt; Surf-Ende → zurück in den Griff.
  */
 
-export const CARD_TRICKS = ['none', 'spin', 'turn', 'tossSpin', 'vanish'] as const;
+export const CARD_TRICKS = ['none', 'spin', 'turn', 'tossSpin', 'vanish', 'surfFan'] as const;
 export type CardTrick = Exclude<(typeof CARD_TRICKS)[number], 'none'>;
+
+const CARD_NAMES: readonly string[] = CARD_TRICKS.filter((t) => t !== 'none');
 
 export const CARD_TIER_TRICKS: readonly (readonly CardTrick[])[] = [[], ['spin', 'turn'], ['tossSpin', 'spin', 'turn'], ['vanish', 'tossSpin', 'tossSpin']];
 
 /** Mitte der Karte im Griff (Handgelenk-Raum) — Daumen und Zeigefinger halten die untere Ecke. */
 export const CARD_HOLD_POS = [-5.6, 11.9, -1.2] as const;
 
-const COOLDOWN = { spin: 0.9, turn: 0.9, tossSpin: 0.8, vanish: 1.2 } as const;
+const COOLDOWN = { spin: 0.9, turn: 0.9, tossSpin: 0.8, vanish: 1.2, surfFan: 0.5 } as const;
+const SURF_FROM = 500;
+const SURF_MIN = 0.5;
+const FAN_IN = 0.3;
+const FAN_OUT = 0.3;
+const FAN_HZ = 2.4;
+const FAN_AMP = 0.75;
 
 const SPIN_TIME = 0.9;
 const TURN_TIME = 0.7;
@@ -48,6 +58,37 @@ export class CardTricks extends PropTricks<CardTrick> {
   private spins = 1;
   /** Laufende halbe Drehung des turn-Tricks (rad). */
   private turnExtra = 0;
+  private surfOut = -1;
+
+  override get trickNames(): readonly string[] {
+    return CARD_NAMES;
+  }
+
+  protected override isState(id: CardTrick): boolean {
+    return id === 'surfFan';
+  }
+
+  protected override start(id: CardTrick): void {
+    super.start(id);
+    this.surfOut = -1;
+  }
+
+  protected override onSurfStart(speed: number): void {
+    if (speed >= SURF_FROM) this.start('surfFan');
+  }
+
+  protected override onFree(inp: PropFrameInput, speed: number): void {
+    if (inp.surfing && speed >= SURF_FROM) this.start('surfFan');
+  }
+
+  /** Tools: wie früher __vel.forceTrick — Karten-Tricks mit der Wildheit von Stufe 3. */
+  override debugPlayName(name: string, at: number): boolean {
+    if (name !== 'none' && this.isTrick(name)) {
+      this.debugPlayTier(name, 3, at);
+      return true;
+    }
+    return super.debugPlayName(name, at);
+  }
 
   protected resetRun(): void {
     this.flipped = false;
@@ -121,7 +162,8 @@ export class CardTricks extends PropTricks<CardTrick> {
     this.spins = tier >= 3 ? 3 : tier === 2 ? 2 : 1;
   }
 
-  protected evaluate(id: CardTrick, t: number, _dt: number, _inp: PropFrameInput, _m: number, o: PropOut): boolean {
+  protected evaluate(id: CardTrick, t: number, _dt: number, inp: PropFrameInput, _m: number, o: PropOut): boolean {
+    if (id === 'surfFan') return this.surfFan(t, inp, o);
     if (id === 'spin') {
       const time = SPIN_TIME * (0.8 + 0.2 * this.spins);
       const u = t / time;
@@ -170,6 +212,20 @@ export class CardTricks extends PropTricks<CardTrick> {
     }
     // vanish
     return this.vanish(t, o);
+  }
+
+  /** Surf (KI8): Karte hoch in den Fahrtwind, fächeln (geschlossene Zeitfunktion), gegen die Rampe geneigt. */
+  private surfFan(t: number, inp: PropFrameInput, o: PropOut): boolean {
+    if (this.surfOut < 0 && !inp.surfing && t >= SURF_MIN) this.surfOut = t;
+    const inE = smooth(t / FAN_IN);
+    const outE = this.surfOut < 0 ? 0 : smooth((t - this.surfOut) / FAN_OUT);
+    const e = inE * (1 - outE);
+    this.offsetView(o, 0.6 * e, 2.2 * e, 1.4 * e);
+    this.rotateView(o, 0, 0, 1, (0.2 - 0.35 * this.surfLean) * e);
+    this.rotateView(o, 0, 1, 0, FAN_AMP * Math.sin(Math.PI * 2 * FAN_HZ * t) * e);
+    o.hroll = -0.06 * e;
+    if (this.mark(0, FAN_IN, t)) this.kick(o, 0.08, -0.2);
+    return this.surfOut >= 0 && t >= this.surfOut + FAN_OUT;
   }
 
   private vanish(t: number, o: PropOut): boolean {

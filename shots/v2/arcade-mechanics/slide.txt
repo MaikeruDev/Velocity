@@ -1,0 +1,81 @@
+
+## S1 Flach: Sprint (320) bzw. Bhop-Landung, dann Ducken gehalten, W gehalten — Tempo nach t (u/s), Strecke bis < 160 u/s
+
+| Variante | Start | 0.1 s | 0.25 s | 0.5 s | 1.0 s | 1.5 s | Strecke bis <160 | Dauer bis <160 |
+|---|---|---|---|---|---|---|---|---|
+| Original (Duck-Walk) | 320 | 320 | 187 | 85 | 85 | 85 | 77 u | 0.28 s |
+| Slide | 320 | 351 | 324 | 281 | 205 | 85 | 344 u | 1.34 s |
+| Slide ohne Schub | 320 | 302 | 278 | 238 | 168 | 85 | 250 u | 1.06 s |
+| Original (Duck-Walk) | 500 | 320 | 187 | 85 | 85 | 85 | 84 u | 0.28 s |
+| Slide | 500 | 477 | 445 | 393 | 301 | 222 | 611 u | 1.95 s |
+| Slide ohne Schub | 500 | 477 | 445 | 393 | 301 | 222 | 611 u | 1.95 s |
+| Original (Duck-Walk) | 800 | 467 | 212 | 85 | 85 | 85 | 118 u | 0.30 s |
+| Slide | 800 | 768 | 723 | 651 | 523 | 413 | – u | – s |
+| Slide ohne Schub | 800 | 768 | 723 | 651 | 523 | 413 | – u | – s |
+
+## S2 Bhop-Landung mit Tempo v (Ducken gehalten, kein Sprung) — nach g s Bodenzeit springen: Absprungtempo
+
+| Variante | v | g = 1 Tick | 0.1 s | 0.2 s | 0.4 s |
+|---|---|---|---|---|---|
+| Original, stehend | 500 | 480 | 292 | 170 | 58 |
+| Original, geduckt | 500 | 480 | 292 | 170 | 58 |
+| Slide | 500 | 498 | 477 | 455 | 414 |
+| Original, stehend | 800 | 768 | 467 | 272 | 96 |
+| Original, geduckt | 800 | 768 | 467 | 272 | 96 |
+| Slide | 800 | 798 | 768 | 737 | 680 |
+| Original, stehend | 1100 | 1055 | 642 | 374 | 133 |
+| Original, geduckt | 1100 | 1055 | 642 | 374 | 133 |
+| Slide | 1100 | 1097 | 1059 | 1019 | 946 |
+
+## S3 Begehbarer Hang 1024 u lang, Anlauf 320 oben: Tempo am Hangfuß und Zeit für den Hang (bergab); bergauf: Tempo oben
+
+| Hang | Original W (Sprint) | Original geduckt | Slide | Slide bergauf (Start 600) | Original bergauf (Start 600, W) |
+|---|---|---|---|---|---|
+| 8° | 320 u/s · 3.20 s | STALL | STALL | z -454 | oben 320 |
+| 15° | 320 u/s · 3.20 s | STALL | 344 u/s · 3.38 s | z -492 | oben 320 |
+| 25° | 320 u/s · 3.20 s | STALL | 517 u/s · 2.59 s | z -518 | oben 320 |
+| 35° | 320 u/s · 3.20 s | STALL | 610 u/s · 2.30 s | z -531 | oben 320 |
+| 44° | 320 u/s · 3.20 s | STALL | 640 u/s · 2.23 s | z -557 | oben 320 |
+
+## S4 Duck-Tunnel (Decke 60 u, 768 u lang). Anflug aus dem Bhop mit v, Landung 150 u vor dem Tunnel, Ducken gehalten
+
+| Anflug | Original (Duck-Walk) | Slide | Slide, Landung erst 40 u vorher | Original: Sprint 320 vom Boden, 0.2 s vorher ducken |
+|---|---|---|---|---|
+| 320 | 9.41 s · raus mit 85 | 8.59 s · raus mit 85 | 7.70 s · raus mit 85 | 9.27 s · raus mit 85 |
+| 600 | 9.41 s · raus mit 85 | 3.12 s · raus mit 85 | 2.20 s · raus mit 178 |  |
+| 900 | 9.13 s · raus mit 85 | 1.17 s · raus mit 524 | 1.10 s · raus mit 571 |  |
+
+## S5 Missbrauch: nur W (+Maus geradeaus), 12 s flach — mittleres/max. Tempo der letzten 6 s
+
+| Strategie | Original Ø / max | Slide Ø / max | Slide-Schübe |
+|---|---|---|---|
+(Spalten: Original | Slide (50/380/2 s) | Slide (70/400/1 s))
+
+| Sprint, Leertaste gehalten (Auto-Hop) | 320 / 320 | 320 / 320 · 320 / 320 | 0 |
+| Landung → Rutschen 0.15 s → Sprung | 85 / 85 | 85 / 85 · 85 / 85 | 1 |
+| Schub-Farmer: 0.26 s laufen → Ducken (Schub) → sofort springen | 320 / 320 | 337 / 369 · 370 / 388 | 12 |
+| Schub-Farmer + 1.0 s Rutschen | 137 / 320 | 257 / 369 · 271 / 388 | 6 |
+| Landung → rutschen bis < 300 → Sprung | 295 / 295 | 300 / 300 · 300 / 300 | 1 |
+| (Referenz: 5°-Hand strafet, Original) | 394 | | |
+
+## S6 Bhop unberührt? StrafeBot (Sprung im Landetick), 20 Hops ab 320 — Tempo nach 10 s, mit/ohne Ducken in der Luft
+
+- aim 0°, crouchInAir false: Original 965.261 | Slide 965.261 (Rutsch-Ticks 0)
+- aim 3°, crouchInAir false: Original 647.737 | Slide 647.737 (Rutsch-Ticks 0)
+- aim 0°, crouchInAir true: Original 965.261 | Slide 965.261 (Rutsch-Ticks 0)
+- aim 3°, crouchInAir true: Original 647.737 | Slide 647.737 (Rutsch-Ticks 0)
+
+## S8 Lenken in der Rutsche: Blick 90° gedreht (in 0.3 s), Start 600 — Drehung der Flugrichtung nach 0.5 s / Tempo
+
+- steerRate 0.8 rad/s (46°/s): Richtung 23°, Tempo 479
+- steerRate 1.4 rad/s (80°/s): Richtung 39°, Tempo 479
+- steerRate 2 rad/s (115°/s): Richtung 56°, Tempo 479
+
+## S7 Medaillen-Instrument unverändert? timedRun (Spiel-Uhr), Seeds 1–4
+
+- level1 {"sync":1}: Original 22.242 22.242 22.242 22.242 | Slide 22.242 22.242 22.242 22.242
+- level1 {"aimNoiseDeg":3}: Original 34.453 35.391 33.750 33.492 | Slide 34.453 35.391 33.750 33.492
+- level2 {"sync":1}: Original 15.852 15.852 15.852 15.852 | Slide 15.852 15.852 15.852 15.852
+- level2 {"aimNoiseDeg":3}: Original 19.555 24.563 20.492 19.492 | Slide 19.555 24.563 20.492 19.492
+
+→ shots/v2/arcade-mechanics/slide.json

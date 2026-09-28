@@ -1,0 +1,138 @@
+{
+  "can": {
+    "tilt": {
+      "up": 0.067,
+      "left": 0.157
+    },
+    "sip": {
+      "up": -0.093,
+      "left": 0.055
+    },
+    "flip": {
+      "up": -0.011,
+      "left": 0.137
+    },
+    "highFlip": {
+      "up": -0.097,
+      "left": 0.112
+    },
+    "twirl": {
+      "up": 0,
+      "left": 0.183
+    },
+    "doubleFlip": {
+      "up": -0.124,
+      "left": 0.131
+    },
+    "behindThrow": {
+      "up": -0.118,
+      "left": 0.149
+    }
+  },
+  "card": {
+    "spin": {
+      "up": -0.062,
+      "left": 0.259
+    },
+    "turn": {
+      "up": -0.07,
+      "left": 0.228
+    },
+    "tossSpin": {
+      "up": -0.239,
+      "left": 0.253
+    },
+    "vanish": {
+      "up": -0.056,
+      "left": 0.137
+    }
+  },
+  "knife": {
+    "open": {
+      "up": -0.064,
+      "left": 0.107
+    },
+    "close": {
+      "up": -0.165,
+      "left": 0.2
+    },
+    "rollover": {
+      "up": -0.18,
+      "left": 0.184
+    },
+    "aerial": {
+      "up": -0.278,
+      "left": 0.126
+    },
+    "doubleAerial": {
+      "up": -0.314,
+      "left": 0.129
+    }
+  },
+  "approvedEnvelope": {
+    "up": -0.314,
+    "left": 0.055,
+    "note": "höchster/linkester Punkt aller abgenommenen Tricks"
+  },
+  "yoyoPrototype": {
+    "anchorWrist": [
+      -0.95,
+      10.69,
+      -3.57
+    ],
+    "holdWrist": [
+      -1.36,
+      7.79,
+      -4.42
+    ],
+    "sleeper": {
+      "up": 0.145,
+      "left": 0.264,
+      "down": 0.475,
+      "insideApproved": true,
+      "duration": 1.8
+    },
+    "pass": {
+      "up": 0.086,
+      "left": 0.128,
+      "down": 0.3,
+      "insideApproved": true,
+      "duration": 0.93
+    },
+    "snap": {
+      "up": 0.145,
+      "left": 0.273,
+      "down": 0.475,
+      "insideApproved": true,
+      "duration": 0.63
+    },
+    "breakaway": {
+      "up": 0.041,
+      "left": 0.09,
+      "down": 0.419,
+      "insideApproved": true,
+      "duration": 1.13
+    },
+    "around": {
+      "up": -0.037,
+      "left": 0.115,
+      "down": 0.437,
+      "insideApproved": true,
+      "duration": 1.05
+    },
+    "aroundDouble": {
+      "up": -0.037,
+      "left": 0.115,
+      "down": 0.437,
+      "insideApproved": true,
+      "duration": 1.6
+    },
+    "cradle": {
+      "up": 0.132,
+      "left": 0.254,
+      "down": 0.353,
+      "insideApproved": true,
+      "duration": 2.15
+    }
+  }
+}

@@ -89,6 +89,38 @@ pummelige Finger, Stulpe mit schwarzem Band). Bei Zweifeln gegen diese Bilder pr
   über den Griff und bleiben rechts unten. Der Schluck holt die Dose kurz zur Mitte — nur in Ruhe.
 - Zauber-"Poof": Pixel-Punkte (ganze Low-Res-Pixel, Weiß/Cyan), Auflösen per Bayer-Screen-Door.
 
+## Kosmetik v2 (Plan 007)
+
+- **Skins = Geometrie je Rig-Slot**: Handfläche, 4×3 Fingerglieder, 3 Daumenglieder, Unterarm (VM_RIG).
+  Je Slot EIN Lit-Mesh + EINE Hülle — Teile (Nieten, Scharniere, Ballen …) per Vertex-Farbe in eine
+  Geometrie zusammengeführt (`mergeGeometries`). So folgen alle Skins allen Posen und Griffen, und die
+  Draw-Call-Zahl bleibt bei 36 wie beim Handschuh. Varianten ohne neue Form bleiben Material (Gold).
+- **Gold**: Handschuh-Geometrie, warmes Gelb mit hartem Licht (Wrap 0.1), **gestuftes Glanzband**
+  (Reflexion des Blicks JE PIXEL, 3 harte Stufen — Environment-Map-Look, kein PBR), Tinte/Kontur
+  dunkelbraun. Funkeln bei perfektem Hop: 3 Pixel-Kreuze an den Knöcheln, 0.25 s.
+- **Roboter**: kantige Hülsen (Superellipse n = 4) mit Spalt, dunkle Scharniere, Sensor-Pads, gerippter
+  Unterarm; das **LED-Band pulst mit der Kick** und wird mit dem Tempo heller (Licht, keine Bewegung —
+  bleibt auch bei motionFx 0).
+- **Fidget-Spinner**: Drehzahl = Tempo. Gegen Wagenrad-Aliasing höchstens 0.9 rad Drehung pro Frame;
+  darüber ein **Unschärfe-Ring als Bayer-Screen-Door** (Dichte ≤ 0.45, Körper-/Trim-Farbe), kein Blending.
+  Nabe blinkt am Checkpoint grün (vorn) / rot (zurück).
+- **Schnur** (Jo-Jo, Kendama, ab Phase 2): `Line`, 1 Low-Res-Pixel, rohe Farbe, 9 Punkte.
+- **Bild-Hülle der Tricks** (gemessen, `npx tsx tools/cosmetics/envelope.ts`): kein Trick eines neuen
+  Gegenstands höher als −0.314 oder weiter links als 0.055 Bildhöhen ab Bildmitte (16:9) — das ist die
+  Hülle der abgenommenen Dose/Karte/Messer. Ausnahme: ruhige Momente nach dem Ziel (Foto).
+- **Budget** je Kombination Skin × Gegenstand: ≤ 50 Draw Calls, ≤ 12 000 Dreiecke
+  (`node tools/viewmodel-shots.mjs budget`).
+- **Umbauten an Bestehendem** (Hand, Dose, Karte, Messer) bleiben pixelgleich — Beweis deterministisch
+  mit `node tools/cosmetics/vm-hash.mjs check` gegen die eingecheckte Baseline (252 Kacheln Spiel/Menü,
+  `tools/cosmetics/vm-hash-baseline/`; auf anderer GPU: HEAD selbst hashen, `write` + `cmp`), nicht
+  mit In-Game-Blättern (die streuen zwischen zwei Läufen desselben Codes). Einzige bewusste Abweichung
+  zu Plan 006: der Lasche-Ruck der festgehaltenen Dose ("can crack 0.5/0.8") wirkt am Frame-Ende.
+- **Zeitpunkt von Impulsen** (Hand, Wackeln, Tricks): Events und Marken gelten am Frame-Ende (fallen.md
+  #77); Zustände (Luft, A/D, Ducken) ab dem Frame-Ende, in dem der Snapshot sie zeigt; eine Marke mitten
+  im Frame per Impulsantwort exakt nachgeholt (`Spring.impulse`, `PropTricks.spinKick`). Maßstab: jeder
+  Frame bei 30/60/144/240 Hz gegen die Referenz (viewHand.test, cosmetics.test, rope.test).
+- **Ziel-Foto** (`RendererApi.snapshot`): Kopie des geditherten Low-Res-Bilds OHNE HUD, Nearest.
+
 ## Verboten
 
 - Glatte, moderne Darstellung: PBR, Schatten-Maps, SSAO, Bloom mit weichem

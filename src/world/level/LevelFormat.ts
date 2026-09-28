@@ -10,6 +10,9 @@
  * handeditierbar — es ist die einzige Wahrheit, die das Spiel lädt.
  */
 
+import type { GameEventType } from '../../engine/events';
+import type { Verdict } from '../../engine/trainingTypes';
+
 export type Vec3Tuple = readonly [number, number, number];
 export type Vec2Tuple = readonly [number, number];
 
@@ -192,6 +195,122 @@ export interface LevelFile {
   readonly medals?: LevelMedals;
   /** Ideallinie für Bots, siehe RouteNode. */
   readonly route?: readonly RouteNode[];
+  /**
+   * Sichere Linie einer Gabel (Plan 007, L3): gleicher Start und gleiches Ziel wie `route`, aber
+   * der verzeihende Weg. Nur für Bots, Validator und Medaillen (Bronze/Silber werden hier gemessen,
+   * Gold/VELOCITY/Autor auf `route`) — kein Gameplay.
+   */
+  readonly safeRoute?: readonly RouteNode[];
+  /** Empfohlene Lektionen vor diesem Level (TrainingIndexEntry.id), Menü: "Empfohlen: T7/T8". */
+  readonly prepLessons?: readonly string[];
+  /**
+   * Lektions-Map des Trainingsmodus (Plan 007). Nie zusammen mit `medals`/`parTime`: Lektionen
+   * haben keinen Timer, keine Bestzeit, keinen Ghost (der Validator prüft das).
+   */
+  readonly training?: TrainingDef;
+}
+
+// ---------------------------------------------------------------- Trainingsmodus (Plan 007)
+
+export type TrainingGroup = 'basics' | 'advanced';
+
+/** Pflichtstufe (bestanden = 1 Stern), Bonus (2 Sterne), Meister (3 Sterne). Default 'required'. */
+export type StageRank = 'required' | 'bonus' | 'master';
+
+/** Achsparallele Box, in der die Hull (32 × Hull-Höhe) liegen muss. `id` ist lektionsweit eindeutig. */
+export interface TrainingZoneDef {
+  readonly id: string;
+  readonly min: Vec3Tuple;
+  readonly max: Vec3Tuple;
+}
+
+/** Tor: kollidiert wie eine Wand, bis eine Stufe es öffnet (StageDef.opens). Farbe Default = Trim-Farbe. */
+export interface GateDef extends TrainingZoneDef {
+  readonly tint?: string;
+}
+
+/** Seite der Hops bei goodHops: A + Maus links, D + Maus rechts, im Wechsel oder egal. */
+export type HopSide = 'left' | 'right' | 'alternate' | 'any';
+
+/** Messbare Aufgabe einer Stufe. Zonen/Tore werden per id referenziert. */
+export type TaskDef =
+  /** Hull berührt die Zone. */
+  | { readonly kind: 'reach'; readonly zone: string }
+  /** Hops in Folge (Kette reißt am Boden). */
+  | { readonly kind: 'hopChain'; readonly count: number }
+  /** Hops mit Urteil 'good'; minSideShare = Mindestanteil A/D-Ticks in der Luft (Default Judge). */
+  | { readonly kind: 'goodHops'; readonly count: number; readonly side: HopSide; readonly minSideShare?: number }
+  /** Tempo ≥ min (u/s); holdHops = so viele Landungen in Folge darüber; ground = am Boden (Prestrafe). */
+  | { readonly kind: 'speed'; readonly min: number; readonly holdHops?: number; readonly ground?: boolean }
+  /** So lange (s) ununterbrochen surfen. */
+  | { readonly kind: 'surfHold'; readonly seconds: number }
+  /** Beim Surfen ≥ min (u/s). */
+  | { readonly kind: 'surfSpeed'; readonly min: number }
+  /** Geduckt in der Zone landen, count Mal. */
+  | { readonly kind: 'crouchLand'; readonly zone: string; readonly count: number }
+  /**
+   * Zonen in Reihenfolge mit ≥ minSpeed; airborne = zwischen den Zonen kein Boden, außer bis
+   * groundGrace (s) am Stück.
+   */
+  | { readonly kind: 'course'; readonly zones: readonly string[]; readonly minSpeed: number; readonly airborne?: boolean; readonly groundGrace?: number }
+  /** Ein Spiel-Ereignis count Mal (z. B. 'slideStart'). */
+  | { readonly kind: 'event'; readonly event: GameEventType; readonly count: number };
+
+/**
+ * Vorführung (Taste H): hand = Strafe-Hand in Ich-Perspektive (rateDeg °/s, Muster, Startseite),
+ * route = Bot fährt LevelFile.route von Knoten `from` bis `to`. seconds = Höchstdauer.
+ */
+export type DemoDef =
+  | { readonly kind: 'hand'; readonly rateDeg: number; readonly pattern: 'circle' | 'zigzag'; readonly side?: 'left' | 'right'; readonly seconds: number }
+  | { readonly kind: 'route'; readonly from: number; readonly to: number; readonly aimNoiseDeg?: number; readonly seconds: number };
+
+/** Tipp im Moment: Auslöser, optional Zone/Urteil und Verzögerung (s). Text ≤ 2 × 40 Zeichen. */
+export interface StageTipDef {
+  readonly on: 'air' | 'land' | 'surf' | 'stuck' | 'zone' | 'verdict';
+  readonly zone?: string;
+  readonly verdict?: Verdict;
+  readonly after?: number;
+  readonly text: string;
+}
+
+export interface StageDef {
+  readonly id: string;
+  /** ≤ 16 Zeichen (Lektionskarte im HUD). */
+  readonly title: string;
+  /** ≤ 2 Zeilen à ≤ 40 Zeichen, Zeilenumbruch mit "\n". */
+  readonly text: string;
+  readonly task: TaskDef;
+  readonly rank?: StageRank;
+  /** Tore (GateDef.id), die bei Abschluss aufgehen. */
+  readonly opens?: readonly string[];
+  /** Respawn-Punkt dieser Stufe (Füße, yaw in Grad). Fehlt = der vorherigen Stufe bzw. LevelFile.spawn. */
+  readonly spawn?: { readonly pos: Vec3Tuple; readonly yaw: number };
+  readonly demo?: DemoDef;
+  readonly tips?: readonly StageTipDef[];
+}
+
+export interface TrainingDef {
+  /** Nummer der Lektion (T1 = 1). */
+  readonly lesson: number;
+  /** Kurzname für Listen, z. B. "T3". */
+  readonly short: string;
+  readonly group: TrainingGroup;
+  readonly zones?: readonly TrainingZoneDef[];
+  readonly gates?: readonly GateDef[];
+  readonly stages: readonly StageDef[];
+  /** forceKeys = Showkeys in der Lektion immer an; turnBand = Zielband am Drehbalken. */
+  readonly hud?: { readonly forceKeys?: boolean; readonly turnBand?: boolean };
+}
+
+/** public/levels/training/index.json — Reihenfolge = Lektionsliste. `file` relativ zu dieser index.json. */
+export interface TrainingIndexEntry {
+  readonly id: string;
+  readonly name: string;
+  readonly subtitle?: string;
+  readonly file: string;
+  readonly lesson: number;
+  readonly short: string;
+  readonly group: TrainingGroup;
 }
 
 /**
@@ -220,4 +339,6 @@ export interface LevelIndexEntry {
   readonly file: string;
   /** Kopie von LevelFile.medals (build.ts) — die Titel-Liste zeigt Medaillen, ohne Level zu laden. */
   readonly medals?: LevelMedals;
+  /** Kopie von LevelFile.prepLessons (build.ts). */
+  readonly prepLessons?: readonly string[];
 }

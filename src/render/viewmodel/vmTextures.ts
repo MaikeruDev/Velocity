@@ -319,3 +319,57 @@ export function knifeBladeTexture(): DataTexture {
   for (const y of [18, 32, 46]) p.ellipse(7.5, y, 2.4, 2.4, hex(0x1c1e26));
   return p.toTexture();
 }
+
+// ------------------------------------------------------------------ Münze (Plan 007)
+
+const COIN_W = 20;
+const COIN_BASE = hex(0xe0aa2a);
+const COIN_LIGHT = hex(0xffdc72);
+const COIN_DARK = hex(0x9a6418);
+const COIN_INK = hex(0x5e3208);
+const COIN_FIELD = hex(0x6a3a10);
+
+/** Grund: Goldscheibe mit geprägtem Rand (Kreis außen dunkel, innen Glanzring). */
+function coinBase(): Px {
+  const p = new Px(COIN_W, COIN_W);
+  p.fill(COIN_BASE);
+  const c = COIN_W / 2 - 0.5;
+  for (let y = 0; y < COIN_W; y++) {
+    for (let x = 0; x < COIN_W; x++) {
+      const r = Math.hypot(x - c, y - c);
+      if (r > 9.2) p.set(x, y, COIN_DARK);
+      else if (r > 8.2) p.set(x, y, COIN_LIGHT);
+      else if (r > 7.4) p.set(x, y, COIN_DARK);
+    }
+  }
+  return p;
+}
+
+/**
+ * Kopf: eigenes geprägtes "V" (Chevron) mit Lichtkante oben links — kein echtes Münzmotiv.
+ * Zahl: eigener Blitz HELL auf dunklem Bronze-Feld. Hell gegen dunkel liest sich bei ~14 px Münze
+ * sofort (Kopf = vorn, Zahl = zurück); zwei dunkle Motive auf Gold waren im Spielbild kaum zu trennen.
+ */
+export function coinFaceTexture(side: 'heads' | 'tails'): DataTexture {
+  const p = coinBase();
+  const c = COIN_W / 2 - 0.5;
+  if (side === 'heads') {
+    // Dickes V, Schatten rechts unten, Licht links oben.
+    p.tri(c - 5.5, c + 4.5, c - 2.5, c + 4.5, c + 0.5, c - 4.5, COIN_INK);
+    p.tri(c - 2.5, c + 4.5, c + 0.5, c - 4.5, c + 0.5, c - 0.5, COIN_INK);
+    p.tri(c + 6, c + 4.5, c + 3, c + 4.5, c + 0.5, c - 4.5, COIN_INK);
+    p.tri(c + 3, c + 4.5, c + 0.5, c - 4.5, c + 0.5, c - 0.5, COIN_INK);
+    p.rect(c - 5, c + 4, 2, 1, COIN_LIGHT);
+    p.rect(c + 4, c + 4, 2, 1, COIN_LIGHT);
+  } else {
+    // Dunkles Feld innerhalb des Prägerings, heller Blitz (Zickzack), dazu zwei Punkte.
+    for (let y = 0; y < COIN_W; y++) for (let x = 0; x < COIN_W; x++) if (Math.hypot(x - c, y - c) <= 7.4) p.set(x, y, COIN_FIELD);
+    p.tri(c + 1.5, c + 6, c - 3.5, c - 0.5, c + 0.5, c + 0.5, COIN_LIGHT);
+    p.tri(c - 3.5, c - 0.5, c + 3.5, c + 0.5, c + 0.5, c + 0.5, COIN_LIGHT);
+    p.tri(c + 3.5, c + 0.5, c - 1.5, c - 6, c - 0.5, c - 0.5, COIN_LIGHT);
+    p.tri(c - 3.5, c - 0.5, c - 0.5, c - 0.5, c + 3.5, c + 0.5, COIN_LIGHT);
+    p.set(c - 4, c + 4, COIN_LIGHT);
+    p.set(c + 4, c - 4, COIN_LIGHT);
+  }
+  return p.toTexture();
+}

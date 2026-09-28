@@ -130,6 +130,37 @@ Vier offene Punkte aus der Prüfung von Runde 1; Zahlen vorher → nachher im Pl
 - **Level 2, Spawn.** ambientSky #3b2d80 → #5a4abc, Mond höher (sunDir.y 0.5) und heller
   (#bce2ff): unteres Bilddrittel Luma 0.182 → 0.226, Anteil Luma < 0.1 45.5 → 32.7 %.
 
+## Level-Werkzeug für Plan 007 (level-tools, 28.09.)
+
+Vorbau für L3 (Surf-Gabel), L4 (Turm) und die Lektionen, damit Phase 2 in getrennten Dateien arbeitet.
+Alles gemessen gegen die Phase-0-Physik (eingefrorene Kopie, weil der Movement-Strang parallel umbaut):
+
+- **lib.ts:** `SurfPath` (Kurven auf Gehrung, Halbrampen, Grat-Bande, `riderPos` für die achsparallele
+  Hull), `dropFrom` (**Endtangente**: die Folgerampe übernimmt die Fahrtrichtung am Ende, nicht die des
+  letzten Sehnenstücks — die L3-Kehre hat damit 180.000° statt 174.375°), `catchBand`, `surfPad`
+  (Checkpoint an Pfaden, beliebiger yaw), `Helix` (Wendel, Bande mit `boardRisers`, an Achsen als Box),
+  `railing`, `placeNodes` (Knoten per Hull-Trace), `surfCheckpoint` (gerade Ketten, Achse wählbar),
+  `chainKillZones`, `finishAfterLaunch`, `killTiles`. **Nachweis:** Die Prototypen L3 und L4 lassen sich
+  mit diesen Bausteinen byte-gleich nachbauen (alle vier JSONs inkl. gemessener minSpeed und Medaillen),
+  L3 mit dem Prototyp-Modus `yawFrom: 'piece'`. L1/L2 bauen byte-gleich.
+- **physics.ts:** `resumeIndex` prüft die Höhe (Knoten-y in [Trigger − 8, Trigger-Oberkante],
+  `nodeInTrigger`); `SpeedCurve`-Cache über ALLE Config-Felder (`configKey`); `withRoute(level,
+  'route' | 'safeRoute')`; `timedRun(…, jitter)`, `jitterMedian`, `START_JITTERS`.
+  L4-Prototyp ohne Schatten-Knoten-Workaround: CP3-Wiedereinstieg vorher Knoten 12 (y 310, eine Etage
+  tiefer), CP3→CP4 6/8 Modelle; jetzt Knoten 43 (y 1088), alle Abschnitte ab CP3 8/8.
+- **build.ts:** Registry `LEVELS` (level1–level4, Stubs liefern null) und Lektionen
+  (`tools/levels/training/index.ts`). `levels:build -- <id>` schreibt nur diese Datei, **nie index.json**.
+- **validate-levels.ts:** Gabeln, Lektionen, Crouch-Kanten, Schatten-Knoten (Regeln 11–13 unten);
+  `ValidateOptions.probes` für Proben außerhalb der id-Weiche; `levels:check -- level3` prüft auch eine
+  Datei, die (noch) nicht im Index steht. Ohne safeRoute/training ist der Bericht zeilengleich zu vorher.
+- **designProbes.ts:** level3/level4 rufen `probes/level3.ts`/`level4.ts` (Stubs); die Bausteine sind
+  exportiert (`autoHopRaster`, `wHolder`, `dropToGround`, `band`, `LATERALS`, `groundTag`, …),
+  `finaleReserve(…, yawDeg)` misst entlang einer beliebigen Flugrichtung, neu `helixBoard(Probe)`
+  (Geradeaus-Hüpfer über eine Wendel: Tode, Abstürze > 150 u — auch noch im Fall —, Luft-Hänger).
+- **Selbsttest 33/33** (vorher 25/25): Crouch-Kante < 64 u, Bande-Lücke und Schatten-Knoten an einer
+  Turm-Attrappe, drei Lektions-Fehler; dazu Turm (mit Physik) und Lektion unverändert fehlerfrei.
+  Nimmt man `nodeInTrigger` die Höhe, wird die saubere Turm-Attrappe rot.
+
 ## Physik-Grundlage (Source-Units, Default-Config)
 
 | Größe | Wert |
@@ -229,6 +260,48 @@ Strafe-Kurven ab Sprint (320 u/s), Tempo nach Hop 1/2/4/6/10/15/20:
    3°-Hand (Spiel-Uhr) oder über 1.25 × davon liegt. Die VELOCITY-Medaille schaltet
    Kosmetik frei (Plan 005: L1 → Neon-Handschuh, L2 → Dose) — eine Änderung von
    `velocity` verschiebt also auch Freischaltungen (bereits verdiente bleiben).
+   **Plan 007:** Gold/VELOCITY/Autor sind der Median über **49 Start-Jitter**
+   (`physics.START_JITTERS`: Zellmitten eines 7 × 7-Rasters im Kasten ±16 u quer × ±1° Blick bis zum
+   ersten Absprung; die Mitte ist der alte Einzellauf), Bronze/Silber werden auf `safeRoute` gemessen,
+   falls vorhanden. Der perfekte Bot ist deterministisch, aber chaotisch. Plan 007 sah 5 Starts (Mitte +
+   Ecken) vor — die Ecken sind keine faire Stichprobe (L1, Phase-0-Physik: alle vier im langsamen Zweig,
+   Median 26.72 s; Repo-Physik: zwei zu zwei, 22.27 s). 49 statt 25:
+   auf dem ruhigen L2 schwankte der Median über 5 × 5 / 7 × 7 / 9 × 9 um 0.19 s (16.01/16.20/16.15 s);
+   Kosten ≈ 0.4 s je Level.
+   **Der Median trägt nur, wenn der Bot EINEN Zweig fährt.** L1 zerfällt in zwei (Bonk an der
+   Crouch-Kante: der langsame Zweig springt 16 u vor der Wand ab, 548 → 86 u/s, und verliert beim Neustart
+   CP2 → CP3 rund 2.5 s). Phase-0-Physik, 7 × 7: 33/49 bei 21.9–23.9 s, 16/49 bei 25.9–30.7 s; Median
+   über 5 × 5/7 × 7/9 × 9/11 × 11 = 23.16/23.02/22.61/22.88 s, das 25-%-Quantil stabil 22.24 — der alte
+   Einzellauf (22.24) war also **kein** Glückstreffer. Repo-Physik (Movement in Arbeit): nur noch 12/49 im
+   schnellen Zweig (21.7–22.3 s), Median 25.2 s stabil im **langsamen** Zweig, das 25-%-Quantil springt
+   22.00 ↔ 24.51. Keine Kennzahl ist auf einem zweigeteilten Level belastbar — deshalb melden
+   `physics.jitterBranches` (Lücke ≥ 4 % des Medians zwischen benachbarten Zeiten, je Seite ≥ 10 % der
+   Starts; L2 und der L4-Prototyp: ein Zweig), build.ts (laute Warnung, am Ende wiederholt) und
+   levels:check (Warnung, mit dem Abschnitt des größten Verlusts) den Zerfall. **Zu reparieren ist das
+   Level**, nicht die Kennzahl. Mit 49 Starts (Phase-0-Physik) gegen den Einzellauf: L1 Gold/VELOCITY/Autor
+   24.5/23.4/22.25 → **25.4/24.2/23.03 s** (zweigeteilt, Warnung), L2 17.5/16.7/15.86 → **17.9/17.1/16.2 s**;
+   Bronze, Silber, Par gleich. Die committeten JSONs tragen noch die alten Werte — Phase 3 baut alle
+   Medaillen neu.
+11. **Gabeln haben eine sichere Linie** (`LevelFile.safeRoute`, Plan 007): gleicher Start und gleiches
+   Ziel wie `route`. Der Validator prüft beide Linien (Berichtszeilen `[route]`/`[safeRoute]`): Surf-Raster,
+   Surf-Übergang bei 320 u/s und Respawn-Surfer sind auf safeRoute Fehler, auf route Warnung (die schnelle
+   Linie darf riskant sein); RouteFollower sync 1.0/0.8 sind auf beiden Pflicht. Bronze/Silber/Par kommen
+   von der sicheren Linie, build.ts warnt, wenn der perfekte Bot auf safeRoute schon VELOCITY schafft.
+   L3-Prototyp: nach der alten Regel 1 Fehler auf der schnellen Linie (inner1a, 1400 u/s), jetzt 0 Fehler.
+12. **Crouch-Kanten ≥ 66 u** (Plan 007 A6). Ohne Ducken reicht es heute (Repo-Physik, `ledgeStep` 5) bis
+   **≈ 63.8 u**: Sprung 57 + Auto-Hop-Landehöhe bis 1.75 u (der Boden-Trace fängt 2 u über dem Boden,
+   von dort springt der nächste Hop) + Kanten-Assist 5. Die alte Regel "≥ 64 u (57 + 5 + 2)" vergaß die
+   Landehöhe — eine 64-u-Kante hat 0.2–0.5 u Reserve, ein Tuning-Schritt kippt sie still. Der Validator
+   prüft jeden Knoten mit `crouch` zweifach: physikalisch im Level (W + Leertaste gehalten, nie geduckt,
+   Anlauf 16–400 u vor der Wand, Sprint bis 1.2 × Plan, Linie ±48 — **0 Erfolge** Pflicht, sonst Fehler)
+   und gegen die Reichweite der Config (`noDuckReach`: Attrappe Boden + Wand, Bisektion auf 0.05 u) —
+   **Reserve < 2 u ist eine Warnung**. Phase-0-Physik (ohne Kanten-Assist) reichte 58.7 u. L1 (64 u) hat
+   in der Repo-Physik 0.5 u Reserve → Warnung; neue Kanten (L4) gleich auf ≥ 66 u.
+13. **Gestapelte Level: Checkpoint-Trigger in der Höhe begrenzen.** Liegen Knoten einer anderen Etage im
+   Trigger, setzt der Wiedereinstieg nach einem Respawn beim ersten Durchgang an — Bots, Spiel-Uhr und
+   Proben fahren dann die falsche Etage ab. Der Validator meldet "Schatten-Knoten", wenn der
+   Wiedereinstieg nicht zum Durchgang am Spawn gehört. Knoten unter einem Podest (untere Umdrehung) sind
+   erlaubt, seit `resumeIndex` die Höhe prüft — der Workaround `dropShadowNodes` (L4-Prototyp) entfällt.
 
 ---
 
@@ -385,8 +458,15 @@ Kurve; eine Kurve zur Plattformmitte kostete die Menschenmodelle die Landung).
 
 ## Werkzeuge
 
-- `npm run levels:build` — baut `level1.json`, `level2.json`, `index.json` und
-  gibt die Planungszahlen aus (misst dabei SpeedCurves und das Surf-Band).
+- `npm run levels:build` — baut alle Level der Registry (`build.ts` `LEVELS`: level1–level4, Stubs
+  werden übersprungen), `index.json`, die Lektionen nach `training/` samt `training/index.json`, und gibt
+  die Planungszahlen aus (misst dabei SpeedCurves und das Surf-Band). `-- level3` baut nur diese Datei,
+  `-- training` nur die Lektionen, `-- <Lektions-id>` eine Lektion — mit Filter nie `index.json`.
+- `npm run levels:check -- training` bzw. `-- <id>` — Lektionen bzw. ein Level, auch wenn es noch nicht
+  im Index steht. Lektionen: Vertrag statisch (IDs, Referenzen, Titel ≤ 16, Texte ≤ 2 × 40, kein
+  medals/parTime), Physik über `tools/levels/training/check.ts`.
+- `npx tsx tools/levels/medalProbe.ts [id …]` — Spiel-Uhr-Mediane je Bot-Modell (beide Linien einer
+  Gabel) und der sync-1.0-Median über die Start-Jitter.
 - `npm run levels:check` — Validator (`tools/validate-levels.ts`), ~6 s:
   statisch (Kompilierung, Spawns mitten auf der Fläche, Trigger, Kill-Zonen,
   Z-Fighting, Deko, Route mit Reserve und Überschieß-Band) und Physik:
@@ -398,7 +478,7 @@ Kurve; eine Kurve zur Plattformmitte kostete die Menschenmodelle die Landung).
   `tools/levels/designProbes.ts` (Erstkontakt, Grundkurs-Ausstiege, Slalom,
   Crouch-Kante, Rutsche, Könner-Inseln, Ausfahrt, S0-Grube, S0-Rückweg, Finale-Reserve),
   "Deko auf der Flugbahn" (Oberkörper+Kopf der Hull entlang von vier Bot-Bahnen gegen jede
-  Deko), Medaillen-Reihenfolge, am Ende der Selbsttest (24 eingebaute Fehler).
+  Deko), Medaillen-Reihenfolge, am Ende der Selbsttest (33 Fälle, ~22 s; gesamt ~26 s).
   `npm run levels:check -- level1` prüft nur ein Level (ohne Selbsttest).
 - `npx tsx tools/levels/trace.ts <level> [cp] [sync] [abTick] [alleN] [zielfehlerGrad] [seed]`
   — Bot-Trace ab Start oder Checkpoint, auch mit Menschenmodell und beliebigem Seed.

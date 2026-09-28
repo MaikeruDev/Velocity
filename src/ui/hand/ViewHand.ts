@@ -13,7 +13,20 @@ import type { HandFrameInput } from './handMotion';
 import { KnifeTricks } from './knifeTricks';
 import type { KnifeTrick } from './knifeTricks';
 import { HAND_POSES, POSE, POSE_JOINTS } from './poses';
-import type { PropControl } from './propTricks';
+import type { PropControl, PropFrameInput } from './propTricks';
+import { CLAW_REST, SkinFx } from './skinFx';
+import { SpinnerTricks } from './spinnerTricks';
+import type { SpinnerTrick } from './spinnerTricks';
+import { YoyoTricks } from './yoyoTricks';
+import { LighterTricks } from './lighterTricks';
+import { CoinTricks } from './coinTricks';
+import { KendamaTricks } from './kendamaTricks';
+import { PhoneTricks } from './phoneTricks';
+import type { PhoneTrick } from './phoneTricks';
+import type { KendamaTrick } from './kendamaTricks';
+import type { CoinTrick } from './coinTricks';
+import type { LighterTrick } from './lighterTricks';
+import type { YoyoTrick } from './yoyoTricks';
 
 /**
  * View-Hand (Plan 006): steuert die 3D-Hand — Bewegung (HandMotion), Posen als Gelenkwinkel
@@ -23,6 +36,16 @@ import type { PropControl } from './propTricks';
  *
  * Anker: Handgelenk unten rechts im 16:9-Safe-Frame (ui/safeFrame) — auf 21:9/32:9 bleibt
  * der Abstand zur Bildmitte wie auf 16:9, auf 4:3 rückt die Hand mit dem Bildrand nach innen.
+ *
+ * Plan 007: Gegenstände kommen aus PROP_FACTORIES (lazy, je Gegenstand eine Trick-Maschine),
+ * forceTrick ist generisch (PropControl.debugPlayName), Skin-Effekte (Gold-Funkeln, Roboter-LED)
+ * aus SkinFx. Reaktionen auf Movement-Events (K8, liest nur Events): Rutschen → Hand flach, tief
+ * und außen, keine neuen Tricks; Lip-Step → kurzer Griff; Vault → Abdrücken.
+ *
+ * Phase 2 (cosmetics-items): Training (KI9) — lessonStage = Faust 0.6 s, lessonDone = Daumen hoch 2.4 s,
+ * gezählter Hop = kleiner Ruck; mit Gegenstand reagiert der wie an einem Checkpoint ohne Referenz (Münze
+ * Kopf, Spinner-Nabe neutral, Handy vibriert ohne Split — kein Ziel-Foto in der Lektion). Skin-Gelenke
+ * (Skelett klappert, Katze tretelt) nur auf den Frame. Handy: takeShutter()/selfieFrame() für das Selfie.
  */
 
 /** Handgelenk so weit vom rechten Rand des Safe-Frames und von der Unterkante (Bildhöhen). */
@@ -39,12 +62,45 @@ const THUMBS_HOP_CHAIN = 5;
 const THUMBS_HOP_SYNC = 0.8;
 const THUMBS_COOLDOWN = 12;
 const FIST_TIME = 0.6;
+/** Kanten-Assist (Plan 007 K8): Lip-Step = kurzer Griff, Vault = flache Hand drückt ab. */
+const LEDGE_GRIP_TIME = 0.22;
+const LEDGE_VAULT_TIME = 0.35;
 /** Überblenden der Gelenke (s) ohne Wunsch des Gegenstands. */
 const POSE_TAU = 0.07;
 /** Posenwechsel mit kurzem Strecken (Cartoon-Smear). */
 const POSE_POP = 0.3;
+/** Training (KI9): Stufe geschafft = Ruck wie am Checkpoint, gezählter Hop = kleiner Ruck. */
+const LESSON_KICK = -0.8;
+const HOP_COUNT_KICK = 0.3;
+const HOP_COUNT_SQUASH = -0.5;
+/** Trainings-Stufe/-Abschluss für den Gegenstand: ein Checkpoint ohne Referenz (kein Split, keine Bestzeit). Einmal angelegt. */
+const LESSON_CP: GameEvent = { type: 'checkpoint', index: 0, total: 0, time: 0, split: null };
+/** Selfie-Hand (Peace) im 16:9-Bild der Rückansicht: Lage und Drehung (gemessen im Kontaktblatt). */
+const SELFIE = { x: 0.3, y: 0.16, z: 6, pitch: 0.2, yaw: -1.5, roll: -0.6 } as const;
 
-export type AnyTrick = CanTrick | CardTrick | KnifeTrick;
+export type AnyTrick = CanTrick | CardTrick | KnifeTrick | SpinnerTrick | YoyoTrick | LighterTrick | CoinTrick | KendamaTrick | PhoneTrick;
+
+/**
+ * Registry der Trick-Maschinen (Plan 007): je Gegenstand eine Fabrik, lazy beim ersten Anlegen.
+ * Gegenstände ohne Eintrag hält die Hand nicht (leere Hand, Renderer zeichnet nichts).
+ * Vollständig seit Plan 007 Phase 2 (tests/cosmetics: Registries decken sich mit render/viewmodel/items).
+ */
+export const PROP_FACTORIES: { readonly [K in HeldItemId]?: () => PropControl } = {
+  can: () => new CanTricks(),
+  card: () => new CardTricks(),
+  knife: () => new KnifeTricks(),
+  spinner: () => new SpinnerTricks(),
+  yoyo: () => new YoyoTricks(),
+  lighter: () => new LighterTricks(),
+  coin: () => new CoinTricks(),
+  kendama: () => new KendamaTricks(),
+  phone: () => new PhoneTricks(),
+};
+
+/** Hat die Hand für diesen Gegenstand eine Trick-Maschine? */
+export function hasPropTricks(i: HeldItemId): boolean {
+  return PROP_FACTORIES[i] !== undefined;
+}
 
 export interface ViewHandState {
   readonly visible: boolean;
@@ -61,13 +117,19 @@ export interface ViewHandState {
   readonly cardVisible: number;
   readonly knifeOpen: boolean;
   readonly frame: { readonly x: number; readonly y: number; readonly z: number; readonly roll: number; readonly pitch: number; readonly yaw: number };
+  /** Plan 007: Skin (= glove), Skin-Effekt, zweiter Körper, Schnur, Gegenstands-Kanäle, Rutschen. */
+  readonly skin: GloveId;
+  readonly skinFx: number;
+  readonly sub: { readonly x: number; readonly y: number; readonly z: number; readonly visible: number };
+  readonly stringCount: number;
+  readonly param: readonly number[];
+  readonly sliding: boolean;
+  /** Trick-Namen des gehaltenen Gegenstands (leer ohne Gegenstand). */
+  readonly tricks: readonly string[];
 }
 
 export class ViewHand {
   readonly motion = new HandMotion();
-  readonly can = new CanTricks();
-  readonly card = new CardTricks();
-  readonly knife = new KnifeTricks();
   readonly frame: ViewModelFrame = createViewModelFrame();
   /** Einstellung "Hand anzeigen". */
   enabled = true;
@@ -88,6 +150,15 @@ export class ViewHand {
   private overrideLeft = 0;
   private thumbsCooldown = 0;
   private started = false;
+  private motionFxValue = 1;
+  private readonly props = new Map<HeldItemId, PropControl>();
+  private current: PropControl | null = null;
+  private readonly skinFx = new SkinFx();
+  /** Selfie-Frame (Peace-Hand), einmal angelegt; zuletzt gesehener Auslöser des Handys. */
+  private readonly selfie: ViewModelFrame = createViewModelFrame();
+  private seenShutter = 0;
+  /** Eingabe an den Gegenstand (einmal angelegt, pro Frame befüllt). */
+  private readonly propIn = { speed: 0, onGround: true, surfing: false, surfSide: 0, handX: 0, handY: 0, handTilt: 0 };
 
   constructor() {
     this.joints.set(POSE_JOINTS[POSE.relaxed]);
@@ -99,10 +170,9 @@ export class ViewHand {
 
   set motionFx(v: number) {
     const m = clamp(fin(v), 0, 1);
+    this.motionFxValue = m;
     this.motion.motionFx = m;
-    this.can.motionFx = m;
-    this.card.motionFx = m;
-    this.knife.motionFx = m;
+    for (const p of this.props.values()) p.motionFx = m;
   }
 
   get currentItem(): HeldItemId {
@@ -113,12 +183,38 @@ export class ViewHand {
     return this.glove;
   }
 
+  /** Dose/Karte/Messer als typisierte Sicht (Tools, Tests, Dev-Seite) — legt die Maschine bei Bedarf an. */
+  get can(): CanTricks {
+    const p = this.propFor('can');
+    if (p instanceof CanTricks) return p;
+    throw new Error('Dose fehlt in PROP_FACTORIES');
+  }
+
+  get card(): CardTricks {
+    const p = this.propFor('card');
+    if (p instanceof CardTricks) return p;
+    throw new Error('Karte fehlt in PROP_FACTORIES');
+  }
+
+  get knife(): KnifeTricks {
+    const p = this.propFor('knife');
+    if (p instanceof KnifeTricks) return p;
+    throw new Error('Messer fehlt in PROP_FACTORIES');
+  }
+
+  get spinner(): SpinnerTricks {
+    const p = this.propFor('spinner');
+    if (p instanceof SpinnerTricks) return p;
+    throw new Error('Spinner fehlt in PROP_FACTORIES');
+  }
+
   /** Seitenverhältnis des Bildes (Low-Res-Breite / -Höhe) für den Safe-Frame-Anker. */
   setAspect(a: number): void {
     if (Number.isFinite(a) && a > 0.2) this.aspect = a;
   }
 
   setGlove(g: GloveId): void {
+    if (g !== this.glove) this.skinFx.reset();
     this.glove = g;
   }
 
@@ -126,33 +222,52 @@ export class ViewHand {
   setItem(i: HeldItemId): void {
     if (i === this.item) return;
     this.item = i;
-    this.prop()?.reset();
+    this.current = this.propFor(i);
+    this.current?.reset();
+  }
+
+  /** Trick-Maschine eines Gegenstands (lazy aus PROP_FACTORIES), null = keine. */
+  private propFor(i: HeldItemId): PropControl | null {
+    const have = this.props.get(i);
+    if (have) return have;
+    const make = PROP_FACTORIES[i];
+    if (!make) return null;
+    const p = make();
+    p.motionFx = this.motionFxValue;
+    this.props.set(i, p);
+    return p;
   }
 
   private prop(): PropControl | null {
-    const i = this.item;
-    return i === 'can' ? this.can : i === 'card' ? this.card : i === 'knife' ? this.knife : null;
+    return this.current;
+  }
+
+  /** Tools/Tests: Trick-Maschine des gehaltenen Gegenstands (null = leere Hand). */
+  get activeProp(): PropControl | null {
+    return this.current;
   }
 
   /** Tools (__vel.forceTrick): Trick des aktuellen Gegenstands starten/festhalten. false = unbekannt. */
   forceTrick(name: string, at = -1): boolean {
-    if (this.item === 'can' && isCanTrick(name)) this.can.debugPlay(name, at);
-    else if (this.item === 'card' && isCardTrick(name)) this.card.debugPlayTier(name, 3, at);
-    else if (this.item === 'knife' && isKnifeTrick(name)) this.knife.debugPlay(name, at);
-    else if (name === 'none') this.prop()?.stop();
-    else return false;
-    return true;
+    const p = this.prop();
+    if (name === 'none') {
+      p?.stop();
+      return true;
+    }
+    return p ? p.debugPlayName(name, at) : false;
   }
 
   /** Tick-Pfad (EventBus): nur Zahlen setzen. */
   onEvent(e: GameEvent): void {
     this.motion.onEvent(e);
+    this.skinFx.onEvent(e, this.glove, this.motionFxValue);
     const p = this.prop();
+    if (p) p.hold = this.motion.isSliding;
     p?.onEvent(e);
     const holding = p !== null;
     switch (e.type) {
       case 'jump':
-        if (!holding && e.perfect && e.gain > 0 && e.chain >= THUMBS_HOP_CHAIN && e.sync >= THUMBS_HOP_SYNC && this.thumbsCooldown <= 0 && this.override < 0) {
+        if (!holding && e.clean && e.gain > 0 && e.chain >= THUMBS_HOP_CHAIN && e.sync >= THUMBS_HOP_SYNC && this.thumbsCooldown <= 0 && this.override < 0) {
           this.setOverride(POSE.thumbsUp, THUMBS_HOP);
           this.thumbsCooldown = THUMBS_COOLDOWN;
         }
@@ -162,6 +277,20 @@ export class ViewHand {
         break;
       case 'finish':
         if (!holding) this.setOverride(POSE.thumbsUp, THUMBS_FINISH);
+        break;
+      case 'lessonStage':
+        // KI9: Faust (Stufe) bzw. Daumen hoch (Lektion fertig); mit Gegenstand wie Checkpoint/Ziel.
+        this.motion.queueKick(LESSON_KICK, 0);
+        if (holding) p.onEvent(LESSON_CP);
+        else if (e.lessonDone) this.setOverride(POSE.thumbsUp, THUMBS_FINISH);
+        else if (this.override !== POSE.thumbsUp) this.setOverride(POSE.fist, FIST_TIME);
+        break;
+      case 'lessonHop':
+        if (e.counted) this.motion.queueKick(HOP_COUNT_KICK, HOP_COUNT_SQUASH);
+        break;
+      case 'ledge':
+        // Mit Gegenstand hält die Hand fest (nur der Ruck aus HandMotion).
+        if (!holding && this.override !== POSE.thumbsUp) this.setOverride(e.kind === 'vault' ? POSE.flat : POSE.grip, e.kind === 'vault' ? LEDGE_VAULT_TIME : LEDGE_GRIP_TIME);
         break;
       case 'respawn':
       case 'levelLoaded':
@@ -174,8 +303,9 @@ export class ViewHand {
     }
   }
 
+  /** Nur aus onEvent (Tick-Pfad): der Posen-Pop wirkt am Frame-Ende wie die Event-Impulse. */
   private setOverride(pose: number, time: number): void {
-    if (this.override !== pose) this.motion.kick(0, POSE_POP);
+    if (this.override !== pose) this.motion.queueKick(0, POSE_POP);
     this.override = pose;
     this.overrideLeft = time;
   }
@@ -188,13 +318,28 @@ export class ViewHand {
     }
     if (dt <= 0) return;
     const p = this.prop();
+    const sliding = this.motion.isSliding;
     if (p) {
-      p.update(dt, inp);
-      this.motion.kick(p.out.kickY, p.out.kickSq);
+      const pi = this.propIn;
+      pi.speed = inp.speed;
+      pi.onGround = inp.onGround;
+      pi.surfing = inp.surfing;
+      pi.surfSide = inp.surfSide;
+      // Hand-Bewegung des letzten Frames (der Gegenstand läuft vor HandMotion, sein Ruck geht an sie).
+      pi.handX = this.motion.x;
+      pi.handY = this.motion.y;
+      pi.handTilt = this.motion.tilt;
+      p.hold = sliding;
+      p.update(dt, pi);
+    }
+    this.motion.update(dt, inp);
+    if (p) {
+      // Trick-Impulse fallen auf den Frame, in dem ihre Marke überschritten wird = sein Ende (fallen.md #77).
+      this.motion.kickFrom(p.out);
       p.out.kickY = 0;
       p.out.kickSq = 0;
     }
-    this.motion.update(dt, inp);
+    this.skinFx.update(dt, this.glove, inp, !p && this.override < 0 && this.force < 0 && this.groundTime > 0.5, this.motionFxValue);
 
     // Pose
     const speed = Math.max(0, fin(inp.speed));
@@ -210,7 +355,8 @@ export class ViewHand {
     if (p) {
       base = p.out.pose;
       tau = p.out.poseTau;
-    } else if (inp.surfing || this.groundTime < GROUND_POSE_AFTER) base = POSE.open;
+    } else if (this.motion.isSliding) base = POSE.flat;
+    else if (inp.surfing || this.groundTime < GROUND_POSE_AFTER) base = POSE.open;
     else if (speed > RUN_SPEED || (this.basePose === POSE.run && speed > RUN_SPEED_OFF)) base = POSE.run;
     else base = POSE.relaxed;
     const next = this.force >= 0 ? this.force : !p && this.override >= 0 ? this.override : base;
@@ -222,6 +368,14 @@ export class ViewHand {
     const k = this.motion.motionFx <= 0 ? 1 : 1 - Math.exp(-dt / Math.max(0.01, tau));
     const j = this.joints;
     for (let i = 0; i < j.length; i++) j[i] += (target[i] - j[i]) * k;
+    if (p) {
+      // Schnur-Anker & Co. per FK aus den Gelenken DIESES Frames, Hand-Bewegung dieses Frames.
+      const pi = this.propIn;
+      pi.handX = this.motion.x;
+      pi.handY = this.motion.y;
+      pi.handTilt = this.motion.tilt;
+      p.afterPose(j, pi, dt);
+    }
     this.writeFrame();
   }
 
@@ -242,6 +396,8 @@ export class ViewHand {
     f.yaw = m.yaw;
     f.squash = m.squash;
     f.joints.set(this.joints);
+    this.skinFx.applyJoints(this.glove, f.joints);
+    f.skinFx = this.skinFx.value;
     const p = this.prop();
     if (p) {
       const o = p.out;
@@ -268,7 +424,56 @@ export class ViewHand {
       f.poofPos[0] = o.poofPos[0];
       f.poofPos[1] = o.poofPos[1];
       f.poofPos[2] = o.poofPos[2];
-    } else f.poof = -1;
+      f.subPos[0] = o.sub[0];
+      f.subPos[1] = o.sub[1];
+      f.subPos[2] = o.sub[2];
+      f.subRot[0] = o.subRot[0];
+      f.subRot[1] = o.subRot[1];
+      f.subRot[2] = o.subRot[2];
+      f.subSpin = o.subSpin;
+      f.subVisible = o.subVisible;
+      f.stringCount = o.stringCount;
+      if (o.stringCount > 0) f.stringPts.set(o.string);
+      f.propParam.set(o.param);
+    } else {
+      f.poof = -1;
+      f.subVisible = 0;
+      f.stringCount = 0;
+    }
+  }
+
+  /**
+   * Handy (KI7): true genau einmal je Auslöser des Ziel-Fotos — dann macht Game das Selfie
+   * (RendererApi.selfie(96, 54, selfieFrame())). Andere Gegenstände: immer false.
+   */
+  takeShutter(): boolean {
+    const p = this.current;
+    if (p instanceof PhoneTricks && p.shutterCount > this.seenShutter) {
+      this.seenShutter = p.shutterCount;
+      return true;
+    }
+    return false;
+  }
+
+  /** Peace-Hand für das Selfie (zweiter Viewmodel-Durchgang): aktueller Skin, ohne Gegenstand. */
+  selfieFrame(): ViewModelFrame {
+    const f = this.selfie;
+    f.visible = true;
+    f.glove = this.glove;
+    f.item = 'none';
+    f.x = SELFIE.x;
+    f.y = SELFIE.y;
+    f.z = SELFIE.z;
+    f.pitch = SELFIE.pitch;
+    f.yaw = SELFIE.yaw;
+    f.roll = SELFIE.roll;
+    f.squash = 1;
+    f.joints.set(POSE_JOINTS[POSE.peace]);
+    f.skinFx = this.glove === 'cat' ? CLAW_REST : 0;
+    f.poof = -1;
+    f.subVisible = 0;
+    f.stringCount = 0;
+    return f;
   }
 
   /** Frame für diesen Frame fertig machen (Sichtbarkeit), Rückgabe für RenderFx.viewModel. */
@@ -281,6 +486,8 @@ export class ViewHand {
   state(): ViewHandState {
     const f = this.frame;
     const p = this.prop();
+    const can = this.props.get('can');
+    const knife = this.props.get('knife');
     return {
       visible: f.visible,
       pose: HAND_POSES[this.pose] ?? '?',
@@ -292,28 +499,21 @@ export class ViewHand {
       item: this.item,
       trick: p ? p.trick : 'none',
       trickTime: p ? p.trickTime : 0,
-      canOpen: this.can.opened,
+      canOpen: can instanceof CanTricks ? can.opened : false,
       cardVisible: this.item === 'card' ? f.propVisible : 0,
-      knifeOpen: this.knife.isOpen,
+      knifeOpen: knife instanceof KnifeTricks ? knife.isOpen : false,
       frame: { x: f.x, y: f.y, z: f.z, roll: f.roll, pitch: f.pitch, yaw: f.yaw },
+      skin: this.glove,
+      skinFx: f.skinFx,
+      sub: { x: f.subPos[0], y: f.subPos[1], z: f.subPos[2], visible: f.subVisible },
+      stringCount: f.stringCount,
+      param: Array.from(f.propParam),
+      sliding: this.motion.isSliding,
+      tricks: p ? p.trickNames : [],
     };
   }
 }
 
 function isGroundPose(p: number): boolean {
   return p === POSE.relaxed || p === POSE.run;
-}
-
-const CAN_SET: ReadonlySet<string> = new Set<CanTrick>(['tilt', 'crack', 'sip', 'flip', 'highFlip', 'twirl', 'doubleFlip', 'behindThrow']);
-const CARD_SET: ReadonlySet<string> = new Set<CardTrick>(['spin', 'turn', 'tossSpin', 'vanish']);
-const KNIFE_SET: ReadonlySet<string> = new Set<KnifeTrick>(['open', 'close', 'rollover', 'aerial', 'doubleAerial']);
-
-function isCanTrick(n: string): n is CanTrick {
-  return CAN_SET.has(n);
-}
-function isCardTrick(n: string): n is CardTrick {
-  return CARD_SET.has(n);
-}
-function isKnifeTrick(n: string): n is KnifeTrick {
-  return KNIFE_SET.has(n);
 }

@@ -10,9 +10,35 @@ import { NaiveBot, StrafeBot, runRoute, mulberry32, type Bot } from '../src/play
 import { box, flatLevel, makeLevel, readLevelFile } from '../tools/sim/levels';
 import { makeInput } from '../tools/sim/harness';
 import { surfWorld } from '../tools/sim/scenarios';
+import {
+  FARMER,
+  SLIDE_HOP,
+  airTurn,
+  cornerFall,
+  crouchBhop,
+  curbJump,
+  feelRun,
+  groundStrafeExploit,
+  hillRun,
+  lateCrouchHopSlideEvents,
+  lateJump,
+  noDuckEdge,
+  slideAbuse,
+  slideFromSprint,
+  slideHopAfterLanding,
+  slideOverDrop,
+  slideSlope,
+  slideTunnel,
+  slopeChain,
+  slopeLanding,
+  stairClimb,
+  tapHand,
+} from '../tools/sim/arcade';
 
 const CFG = VELOCITY_DEFAULT;
 const DT = 1 / CFG.tickRate;
+/** Lande-Gnade in Ticks (Plan 007 A3: 0.0625 s bei 128 Tick = 8). */
+const GRACE_TICKS = Math.round(CFG.landGraceTime * CFG.tickRate);
 const NONE = makeInput();
 const JUMP = makeInput({ jumpPressed: true, jumpHeld: true });
 
@@ -112,23 +138,27 @@ describe('Sprung', () => {
     return false;
   }
 
-  it('64-u-Kiste nur per Crouch-Jump, 76 u nie, 48 u normal', () => {
+  it('64-u-Kiste nur per Crouch-Jump, 48 u normal; Kanten-Assist: 76 u nur geduckt, 82 u nie', () => {
     expect(canClear(48, false)).toBe(true);
+    // Aus dem Stand/Lauf ohne Ducken höchstens 57 + ledgeStep 5 = 62 u; aus der Auto-Hop-Landung bis
+    // 63.5 u (Landehöhe, s. Kanten-Assist unten) → Level-Regel Crouch-Kanten ≥ 66 u.
     expect(canClear(64, false)).toBe(false);
     expect(canClear(64, true)).toBe(true);
     expect(canClear(76, false)).toBe(false);
-    expect(canClear(76, true)).toBe(false);
+    // Crouch-Jump 75 u + Lip-Step 5 u: 76 u knapp erreichbar (ohne Assist nie), 82 u nie.
+    expect(canClear(76, true)).toBe(true);
+    expect(canClear(82, true)).toBe(false);
   });
 
   it('Sandbox: Kisten 48/64/76 aus dem Lauf', () => {
     // box64 bei x 600..660, z -200..-140. Anlauf von +z Richtung -z.
-    const tryBox = (x: number, h: number, crouch: boolean): boolean => {
+    const tryBox = (x: number, h: number, crouch: boolean, cfg: MovementConfig = CFG): boolean => {
       for (let z0 = -40; z0 >= -130; z0 -= 4) {
-        const pm = player(SANDBOX, [x, 0, z0], CFG, [0, 0, -200]);
+        const pm = player(SANDBOX, [x, 0, z0], cfg, [0, 0, -200]);
         const input = makeInput({ forward: 1, crouch });
         pm.tick({ ...input, jumpPressed: true, jumpHeld: true });
         // Über der Kiste abbremsen, damit er nicht drüber fliegt.
-        for (let i = 0; i < 1.2 * CFG.tickRate; i++) pm.tick(pm.state.pos.z < -170 ? makeInput({ crouch }) : input);
+        for (let i = 0; i < 1.2 * cfg.tickRate; i++) pm.tick(pm.state.pos.z < -170 ? makeInput({ crouch }) : input);
         if (pm.state.onGround && pm.state.pos.y > h - 0.5) return true;
       }
       return false;
@@ -136,7 +166,9 @@ describe('Sprung', () => {
     expect(tryBox(530, 48, false)).toBe(true);
     expect(tryBox(630, 64, false)).toBe(false);
     expect(tryBox(630, 64, true)).toBe(true);
-    expect(tryBox(730, 76, true)).toBe(false);
+    expect(tryBox(730, 76, false)).toBe(false);
+    // Ohne Kanten-Assist ist die 76er nie erreichbar (Crouch-Jump 75 u).
+    expect(tryBox(730, 76, true, withMovement(CFG, { ledgeStep: 0, ledgeMemory: 0 }))).toBe(false);
   });
 });
 
@@ -353,13 +385,13 @@ describe('Bhop & Strafe', () => {
     const strafe = botRun(new StrafeBot(CFG, { sync: 1 }), CFG, 20);
     const naive = botRun(new NaiveBot(CFG), CFG, 10);
     expect(strafe[9]).toBeGreaterThan(naive[9] * 1.8);
-    // Tuning-Korridor (movement-tuning.md: Cap 24, tempoabhängig 32 → 24 zwischen 350 und 700 u/s)
-    expect(strafe[4]).toBeGreaterThan(640);
-    expect(strafe[4]).toBeLessThan(700);
-    expect(strafe[9]).toBeGreaterThan(820);
-    expect(strafe[9]).toBeLessThan(880);
-    // Skill-Decke: höchstens +5 % gegenüber konstantem Cap 24 (1084).
-    expect(strafe[19]).toBeLessThanOrEqual(1140);
+    // Tuning-Korridor (movement-tuning.md: Cap 24, tempoabhängig 40 → 24 zwischen 350 und 700 u/s, Plan 007 A5)
+    expect(strafe[4]).toBeGreaterThan(700);
+    expect(strafe[4]).toBeLessThan(735);
+    expect(strafe[9]).toBeGreaterThan(875);
+    expect(strafe[9]).toBeLessThan(905);
+    // Skill-Decke: höchstens +8 % gegenüber konstantem Cap 24 (1084).
+    expect(strafe[19]).toBeLessThanOrEqual(1170);
   });
 
   it('gleiche Hand wird nie schlechter belohnt als in CS2 mit 64 Tick (2°/4° Zielfehler)', () => {
@@ -372,10 +404,10 @@ describe('Bhop & Strafe', () => {
     for (const aim of [2, 4]) expect(avgH10(CFG, aim) / avgH10(CS2_CLASSIC, aim)).toBeGreaterThan(0.95);
   });
 
-  it('tempoabhängiger Cap: 32 bis 350 u/s, ab 700 u/s pro Tick identisch mit Cap 24; CS2 konstant 30', () => {
-    expect(airSpeedCapAt(CFG, 0)).toBe(32);
-    expect(airSpeedCapAt(CFG, 350)).toBe(32);
-    expect(airSpeedCapAt(CFG, 525)).toBeCloseTo(28, 9);
+  it('tempoabhängiger Cap: 40 bis 350 u/s, ab 700 u/s pro Tick identisch mit Cap 24; CS2 konstant 30', () => {
+    expect(airSpeedCapAt(CFG, 0)).toBe(40);
+    expect(airSpeedCapAt(CFG, 350)).toBe(40);
+    expect(airSpeedCapAt(CFG, 525)).toBeCloseTo(32, 9);
     expect(airSpeedCapAt(CFG, 700)).toBe(24);
     for (const v of [0, 400, 800, 2000]) expect(airSpeedCapAt(CS2_CLASSIC, v)).toBe(30);
     const fixed = withMovement(CFG, { airSpeedCapLow: 0 });
@@ -470,9 +502,13 @@ describe('Bhop & Strafe', () => {
     run(pm, NONE, CHAIN_GRACE_TICKS, ev); // innerhalb der Frist
     run(pm, JUMP, 1, ev);
     const j2 = ev.filter((e) => e.type === 'jump')[1];
-    expect(j2).toMatchObject({ chain: 2, perfect: false });
+    // Nicht tick-genau, aber in der Lande-Gnade: verlustfrei (clean).
+    expect(j2).toMatchObject({ chain: 2, perfect: false, clean: true });
     ticksUntilLand(pm, NONE, 200);
-    run(pm, NONE, CHAIN_GRACE_TICKS + 2);
+    // Nach einer echten Landung reißt die Kette erst nach der Lande-Gnade (8 Ticks).
+    run(pm, NONE, Math.max(CHAIN_GRACE_TICKS, GRACE_TICKS));
+    expect(pm.state.hopChain).toBe(2);
+    run(pm, NONE, 2);
     expect(pm.state.hopChain).toBe(0);
     run(pm, JUMP, 1, ev);
     expect(ev.filter((e) => e.type === 'jump')[2]).toMatchObject({ chain: 1 });
@@ -561,8 +597,8 @@ describe('Smart-Auto-Hop', () => {
     expect(sprint2.speed).toBeGreaterThanOrEqual(305);
     expect(run2.firstJump).toBeGreaterThan(0.1);
     expect(run2.firstJump).toBeLessThanOrEqual(0.21);
-    // Gegenprobe: ohne Smart-Hop kriecht man mit dem Luft-Cap (32 u/s → < 70 u in 2 s).
-    expect(standing(RAW_HOP, true).dist).toBeLessThan(70);
+    // Gegenprobe: ohne Smart-Hop kriecht man mit dem Luft-Cap (40 u/s → < 90 u in 2 s).
+    expect(standing(RAW_HOP, true).dist).toBeLessThan(90);
   });
 
   it('perfekter StrafeBot ab 320: Smart-Hop ändert nichts, auch nur mit gehaltener Taste', () => {
@@ -631,7 +667,8 @@ describe('Smart-Auto-Hop', () => {
     const smart = climb(CFG);
     expect(smart.t).toBeLessThan(4);
     expect(smart.speed).toBeGreaterThan(250);
-    expect(climb(RAW_HOP).t).toBeGreaterThanOrEqual(6);
+    // Alte Semantik ohne Kanten-Assist hängt (mit Assist holt das Tempo-Gedächtnis sie heraus).
+    expect(climb(withMovement(RAW_HOP, { ledgeStep: 0, ledgeMemory: 0 })).t).toBeGreaterThanOrEqual(6);
   });
 
   it('land.jumpQueued folgt der Smart-Hop-Bedingung', () => {
@@ -1270,5 +1307,460 @@ describe('Interpolation', () => {
     expect(snap.pos.z).toBe(z0);
     expect(pm.state.pos.z).toBeLessThan(z0);
     expect(snap.pos).not.toBe(pm.state.pos);
+  });
+});
+
+// ============================================================ Arcade-Pass (Plan 007, A1–A8)
+
+describe('Arcade-Pass: Knick-Projektion (A1) und Rampbug-Fix (A2)', () => {
+  it('in der Luft mit W in eine konkave Ecke gedrückt → fällt (auch CS2, geduckt oder nicht)', () => {
+    for (const cfg of [CFG, CS2_CLASSIC]) {
+      expect(cornerFall(cfg, false), 'stehend').toBeGreaterThan(150);
+      expect(cornerFall(cfg, true), 'geduckt').toBeGreaterThan(150);
+    }
+  });
+
+  it('Rampbug-Fix ändert an einer glatten Surf-Rampe nichts (keine Fehlauslösung)', () => {
+    const ride = (cfg: MovementConfig): Vector3 => {
+      const pm = player(SURF, [200, -250, -200], cfg, [0, 0, -700]);
+      run(pm, makeInput({ side: -1, yaw: 0 }), 2 * cfg.tickRate);
+      return pm.state.pos.clone();
+    };
+    expect(ride(CFG).equals(ride(withMovement(CFG, { surfSeamFix: false })))).toBe(true);
+  });
+});
+
+describe('Arcade-Pass: Lande-Gnade (A3)', () => {
+  it('Sprung 1…8 Ticks nach der Landung = Landetempo (±1e-6), Tick 9 kostet genau einen Friction-Tick', () => {
+    for (const v of [400, 700, 1000]) {
+      expect(lateJump(CFG, v, 0)).toMatchObject({ clean: true });
+      for (let k = 1; k <= GRACE_TICKS; k++) {
+        const j = lateJump(CFG, v, k);
+        expect(Math.abs(j.speed - v), `v ${v} k ${k}`).toBeLessThanOrEqual(1e-6);
+        expect(j.clean).toBe(true);
+      }
+      const late = lateJump(CFG, v, GRACE_TICKS + 1);
+      expect(late.speed).toBeCloseTo(v - (v * CFG.friction) / CFG.tickRate, 6);
+      expect(late.clean).toBe(false);
+      // Ohne Gnade (CS2-Verhalten): jeder Tick kostet.
+      expect(lateJump(withMovement(CFG, { landGraceTime: 0 }), v, 1).speed).toBeCloseTo(v * (1 - CFG.friction / CFG.tickRate), 6);
+    }
+  });
+
+  it('Schub-Kappe: Ground-Strafe in der Gnade hebt das Tempo nicht über die Landung (Exploit ≤ 500.0)', () => {
+    for (const n of [2, 4, GRACE_TICKS]) expect(groundStrafeExploit(CFG, 500, n)).toBeLessThanOrEqual(500 + 1e-9);
+  });
+
+  it('Tipp-Hand ±20 ms (perfekter Strafe): H20-Median ≥ 1100 (ohne Gnade weit darunter)', () => {
+    const h20 = (cfg: MovementConfig): number => {
+      const xs = [1, 2, 3, 4, 5, 6, 7, 8].map((s) => tapHand(cfg, 0, 20, s * 101, 20)[19] ?? 0).sort((a, b) => a - b);
+      return 0.5 * (xs[3] + xs[4]);
+    };
+    expect(h20(CFG)).toBeGreaterThanOrEqual(1100);
+    expect(h20(withMovement(CFG, { landGraceTime: 0 }))).toBeLessThan(900);
+  });
+
+  it('keine Gnade nach Kanten-Holpern (< 0.1 s Luft): Friction ab dem ersten Bodentick', () => {
+    // 3 u über dem Boden (knapp außerhalb der 2-u-Sonde): kurze Luftphase, keine echte Landung.
+    const pm = player(FLAT, [0, 3, 0], CFG, [0, 0, -300]);
+    const ev: MovementEvent[] = [];
+    let landed = false;
+    for (let t = 0; t < 40 && !landed; t++) {
+      const out = pm.tick(makeInput({ yaw: 0 }));
+      for (const e of out) ev.push({ ...e });
+      landed = out.some((e) => e.type === 'land');
+    }
+    const land = ev.find((e) => e.type === 'land');
+    expect(land).toBeDefined();
+    if (land?.type === 'land') expect(land.airTime).toBeLessThan(0.1);
+    const before = pm.state.speed;
+    pm.tick(makeInput({ yaw: 0 }));
+    expect(pm.state.speed).toBeLessThan(before - 1);
+  });
+});
+
+describe('Arcade-Pass: Hang-Landung (A4)', () => {
+  it('phasenfest: 10° bergab 320/192 u → 415 in allen 16 Phasen (Source 320–415), bergauf kein Verlust', () => {
+    const off = withMovement(CFG, { slopeLandGain: 0 });
+    const phases = (cfg: MovementConfig, deg: number, v: number, h: number, dir: -1 | 1): number[] =>
+      Array.from({ length: 16 }, (_, p) => slopeLanding(cfg, deg, v, h, dir, p / 16));
+    const down = phases(CFG, 10, 320, 192, -1);
+    expect(Math.max(...down) - Math.min(...down)).toBeLessThan(3);
+    expect(Math.min(...down)).toBeGreaterThan(410);
+    const src = phases(off, 10, 320, 192, -1);
+    expect(Math.max(...src) - Math.min(...src)).toBeGreaterThan(60); // die Lotterie, die A4 beendet
+    for (const deg of [5, 16, 25, 35]) {
+      for (const x of phases(CFG, deg, 320, 192, 1)) expect(x, `${deg}° bergauf`).toBeGreaterThanOrEqual(320 - 1e-6);
+    }
+    // Rampslide phasenfest: 16° bergauf mit 1000 u/s fährt in jeder Phase die Rampe hoch.
+    const slide = phases(CFG, 16, 1000, 57, 1);
+    expect(Math.max(...slide) - Math.min(...slide)).toBeLessThan(3);
+  });
+
+  it('W+Space-Kette bergab: 10° ≥ 500, 16° ≥ 640, nie über der Energie-Decke; flacher Boden bitgleich', () => {
+    for (const [deg, min] of [[10, 500], [16, 640]] as const) {
+      const v = slopeChain(CFG, deg, 320, 1500);
+      expect(v, `${deg}°`).toBeGreaterThanOrEqual(min);
+      expect(v).toBeLessThanOrEqual(Math.hypot(320, Math.sqrt(2 * CFG.gravity * 1500 * Math.tan((deg * Math.PI) / 180))));
+    }
+    const flat = (cfg: MovementConfig): number[] => botRun(new StrafeBot(cfg, { sync: 1 }), cfg, 10);
+    expect(flat(CFG)).toEqual(flat(withMovement(CFG, { slopeLandGain: 0 })));
+  });
+
+  it('keine Hügel-Pumpe: W+Leertaste über Wellen gewinnt einmal und bleibt dann stehen (war 320 → 785)', () => {
+    for (const [deg, per] of [[5, 512], [10, 512], [10, 1024]] as const) {
+      const [s10, s20, s30] = hillRun(CFG, deg, per);
+      expect(s30, `${deg}°/${per}`).toBeLessThanOrEqual(1.5 * 320);
+      expect(Math.abs(s30 - s10), `${deg}°/${per} stetig`).toBeLessThan(5);
+      expect(Math.abs(s20 - s10)).toBeLessThan(5);
+    }
+    // Schwerkraft zahlt sich einmal aus: 10°-Wellen heben Lauftempo spürbar.
+    expect(hillRun(CFG, 10, 1024)[0]).toBeGreaterThan(400);
+  });
+
+  it('gestundeter Bergauf-Verlust: bergauf kein Verlust, der nächste Bergab-Gewinn zahlt ihn ab; teleport und Lauftempo löschen ihn', () => {
+    const tan = Math.tan((10 * Math.PI) / 180);
+    const H = 2048 * tan;
+    // x < 0: 10° bergauf Richtung −z; x > 0: 10° bergab Richtung −z.
+    const lvl = level([
+      { type: 'wedge', min: [-4096, -64, -2048], max: [-512, H, 0], rise: '-z', lowY: 0, mat: 'floor' },
+      { type: 'wedge', min: [512, -H - 64, -2048], max: [4096, 0, 0], rise: '+z', lowY: -H, mat: 'floor' },
+      box([-4096, -H - 128, -8000], [4096, -H - 64, 4000]),
+    ]);
+    const UP: [number, number, number] = [-2000, 1000 * tan + 57, -1000];
+    const DOWN: [number, number, number] = [2000, -1000 * tan + 57, -1000];
+    const landSpeed = (pm: PlayerMovement): number => {
+      for (let t = 0; t < 5 * CFG.tickRate; t++) for (const e of pm.tick(NONE)) if (e.type === 'land') return e.speed;
+      return Number.NaN;
+    };
+    const fresh = landSpeed(player(lvl, DOWN, CFG, [0, 0, -600]));
+    expect(fresh).toBeGreaterThan(640);
+    // Bergauf landen (verlustfrei), dann ohne Umweg über das Gefälle: der Gewinn zahlt die Schuld ab.
+    const pm = player(lvl, UP, CFG, [0, 0, -600]);
+    expect(landSpeed(pm)).toBeCloseTo(600, 6);
+    pm.state.pos.set(...DOWN);
+    pm.state.vel.set(0, 0, -600);
+    expect(landSpeed(pm)).toBeLessThan(fresh - 40);
+    // teleport vergisst die Schuld.
+    const tp = player(lvl, UP, CFG, [0, 0, -600]);
+    landSpeed(tp);
+    tp.state.vel.set(0, 0, -600);
+    tp.teleport(new Vector3(...DOWN), { keepVelocity: true });
+    expect(landSpeed(tp)).toBeCloseTo(fresh, 6);
+    // Bei Lauftempo gibt es keine Schuld: unter 320 holt der Boden den Verlust ohnehin zurück.
+    const slow = player(lvl, UP, CFG, [0, 0, -320]);
+    expect(landSpeed(slow)).toBeCloseTo(320, 6);
+    slow.state.pos.set(...DOWN);
+    slow.state.vel.set(0, 0, -320);
+    expect(landSpeed(slow)).toBeGreaterThan(360);
+  });
+});
+
+describe('Arcade-Pass: Anfänger-Cap 40 (A5)', () => {
+  it('4°-Hand erreicht 500 u/s im Median ≤ 2.0 s, 5°-Hand in ≥ 7/8 Seeds, 3°-Hand H10 ≥ 620', () => {
+    const t4: number[] = [];
+    let reach5 = 0;
+    const h3: number[] = [];
+    for (let s = 1; s <= 8; s++) {
+      t4.push(feelRun(CFG, 4, s, 320).t500);
+      if (!Number.isNaN(feelRun(CFG, 5, s, 320).t500)) reach5++;
+      h3.push(feelRun(CFG, 3, s, 320).lands[9]);
+    }
+    const med = (xs: number[]): number => {
+      const s = xs.map((x) => (Number.isNaN(x) ? 99 : x)).sort((a, b) => a - b);
+      return 0.5 * (s[3] + s[4]);
+    };
+    expect(med(t4)).toBeLessThanOrEqual(2.0);
+    expect(reach5).toBeGreaterThanOrEqual(7);
+    expect(med(h3)).toBeGreaterThanOrEqual(620);
+  });
+});
+
+describe('Arcade-Pass: Kanten-Assist (A6)', () => {
+  const BOX = (h: number): CompiledLevel => level([box([-512, -64, -1024], [512, 0, 512]), box([-256, 0, -700], [256, h, -300], 'box')]);
+
+  /** Sprung auf eine Kiste der Höhe h ohne Ducken, W gehalten: Ledge-Events, ob man oben steht, Steps im Steigen. */
+  function hopOnto(h: number, cfg: MovementConfig, z0: number, v: number): { up: boolean; ledge: MovementEvent[]; risingSteps: number } {
+    const pm = player(BOX(h), [0, 0, z0], cfg, [0, 0, -v]);
+    const ledge: MovementEvent[] = [];
+    let risingSteps = 0;
+    pm.tick(makeInput({ forward: 1, jumpPressed: true, jumpHeld: true }));
+    for (let i = 0; i < CFG.tickRate; i++) {
+      const vy = pm.state.vel.y;
+      for (const e of pm.tick(makeInput({ forward: 1 }))) {
+        if (e.type !== 'ledge') continue;
+        ledge.push({ ...e });
+        if (e.kind === 'step' && vy > 0) risingSteps++;
+      }
+    }
+    return { up: pm.state.onGround && pm.state.pos.y > h - 0.5, ledge, risingSteps };
+  }
+
+  it('Lip-Step: 60-u-Kiste ohne Ducken nur mit Assist, landet auf der Kante (step, dy ≤ ledgeStep)', () => {
+    let upOn = 0;
+    let upOff = 0;
+    let rising = 0;
+    const steps: number[] = [];
+    for (let z0 = -80; z0 >= -280; z0 -= 5) {
+      const on = hopOnto(60, CFG, z0, 250);
+      if (on.up) upOn++;
+      rising += on.risingSteps;
+      for (const e of on.ledge) if (e.type === 'ledge' && e.kind === 'step') steps.push(e.dy);
+      if (hopOnto(60, withMovement(CFG, { ledgeStep: 0, ledgeMemory: 0 }), z0, 250).up) upOff++;
+    }
+    expect(upOff).toBe(0);
+    expect(upOn).toBeGreaterThan(0);
+    expect(steps.length).toBeGreaterThan(0);
+    // Auch knapp vor dem Scheitel (Rest-Aufstieg reicht nicht über die Kante) fängt der Lip-Step.
+    expect(rising).toBeGreaterThan(0);
+    for (const dy of steps) {
+      expect(dy).toBeGreaterThan(0);
+      expect(dy).toBeLessThanOrEqual(CFG.ledgeStep + 0.1);
+    }
+  });
+
+  it('Gedächtnis: zu spät geduckt an der 64er-Kante kommt man mit Tempo an (vault), ohne Assist kriecht man', () => {
+    const arrive = (cfg: MovementConfig): { speed: number; vaults: number } => {
+      const pm = player(BOX(64), [0, 0, -150], cfg, [0, 0, -500]);
+      let vaults = 0;
+      let bonk = -1;
+      pm.tick(makeInput({ forward: 1, jumpPressed: true, jumpHeld: true }));
+      for (let i = 0; i < CFG.tickRate; i++) {
+        const prev = pm.state.speed;
+        // Ducken erst 4 Ticks (31 ms) nach dem Anprall.
+        for (const e of pm.tick(makeInput({ forward: 1, crouch: bonk >= 0 && i >= bonk + 4 }))) if (e.type === 'ledge' && e.kind === 'vault') vaults++;
+        if (bonk < 0 && pm.state.speed < prev * 0.5) bonk = i;
+        if (pm.state.onGround && pm.state.pos.y > 63) return { speed: pm.state.speed, vaults };
+      }
+      return { speed: Number.NaN, vaults };
+    };
+    const on = arrive(CFG);
+    const off = arrive(withMovement(CFG, { ledgeStep: 0, ledgeMemory: 0 }));
+    expect(on.vaults).toBe(1);
+    expect(on.speed).toBeGreaterThan(0.75 * 500);
+    expect(off.speed).toBeLessThan(0.5 * 500);
+  });
+
+  it('nur frontal: streifender Anprall (60° zur Wandnormalen) bekommt kein Tempo zurück', () => {
+    // Wand 40 u hoch, man fliegt schräg dagegen und steigt darüber — kein vault.
+    const lvl = level([box([-2048, -64, -2048], [2048, 0, 2048]), box([-2048, 0, -400], [2048, 40, -300])]);
+    const yaw = (60 * Math.PI) / 180;
+    const pm = player(lvl, [0, 2, -280], CFG, [-Math.sin(yaw) * 500, 0, -Math.cos(yaw) * 500]);
+    let events = 0;
+    pm.tick(makeInput({ jumpPressed: true, jumpHeld: true, yaw }));
+    for (let i = 0; i < CFG.tickRate; i++) for (const e of pm.tick(makeInput({ yaw }))) if (e.type === 'ledge') events++;
+    expect(events).toBe(0);
+  });
+
+  it('Crouch-Kanten-Regel ≥ 66 u: aus dem Lauf höchstens 57 + 5 u, aus der Auto-Hop-Landung bis 63.5 u; Treppe 48/192 ≤ 3.5 s', () => {
+    for (let z0 = -80; z0 >= -280; z0 -= 10) expect(hopOnto(64, CFG, z0, 450).up).toBe(false);
+    // Auto-Hop-Landungen schweben bis 1.5 u über dem Boden (2-u-Sonde) — der nächste Sprung startet dort.
+    const at62 = noDuckEdge(CFG, 62);
+    expect(at62.strafe + at62.w, '62 u erreichbar (sonst prüft die 66er-Probe nichts)').toBeGreaterThan(0);
+    const at66 = noDuckEdge(CFG, 66);
+    expect(at66.strafe + at66.w).toBe(0);
+    expect(stairClimb(CFG, 48, 192, 320)).toBeLessThanOrEqual(3.5);
+  });
+
+  it('Sprung direkt vor einer Stufe bleibt ein Sprung (Lip-Step nicht im klaren Steigen); ohne Gedächtnis fängt der Lip-Step mit vel.y = 0', () => {
+    for (const [h, d] of [[4, 1], [8, 6], [16, 25]] as const) {
+      const r = curbJump(CFG, h, d, 600);
+      expect(r.air, `${h} u`).toBeGreaterThan(0.6);
+      expect(r.land, `${h} u`).toBeCloseTo(600, 6);
+    }
+    // Nur Lip-Step (ledgeMemory 0): steigend auf die Stufe, gelandet — der Rest-Aufstieg (vel.y) ist weg.
+    const lipOnly = curbJump(withMovement(CFG, { ledgeMemory: 0 }), 4, 1, 600);
+    expect(lipOnly.air).toBeLessThan(0.05);
+    expect(lipOnly.land).toBeCloseTo(600, 6);
+  });
+
+  it('teleport vergisst das Tempo-Gedächtnis', () => {
+    // Anprall an der 64er-Kiste (Gedächtnis läuft 0.2 s), dann direkt über die Kante teleportieren: Füße weit
+    // über der Anprallhöhe, dort frei, auf der alten Höhe blockiert — ein altes Gedächtnis griffe sofort.
+    const pm = player(BOX(64), [0, 0, -150], CFG, [0, 0, -500]);
+    pm.tick(makeInput({ forward: 1, jumpPressed: true, jumpHeld: true }));
+    let bonk = false;
+    for (let i = 0; i < CFG.tickRate / 2 && !bonk; i++) {
+      const prev = pm.state.speed;
+      pm.tick(makeInput({ forward: 1 }));
+      bonk = pm.state.speed < prev * 0.5 && !pm.state.onGround;
+    }
+    expect(bonk).toBe(true);
+    pm.teleport(new Vector3(0, 70, -285));
+    const ev: MovementEvent[] = [];
+    run(pm, NONE, 4, ev);
+    expect(ev.filter((e) => e.type === 'ledge').length).toBe(0);
+    expect(pm.state.speed).toBe(0);
+  });
+});
+
+describe('Arcade-Pass: Rutschen (A7)', () => {
+  it('Sprint 320 + C: Schub, ≥ 345 nach 0.1 s, ≥ 1.0 s bis < 160, Auge in ≤ 0.07 s unten, keine Schritte', () => {
+    const r = slideFromSprint(CFG);
+    expect(r.at01).toBeGreaterThanOrEqual(345);
+    expect(r.dur).toBeGreaterThanOrEqual(1.0);
+    expect(r.eyeT).toBeLessThanOrEqual(0.07);
+    expect(r.steps).toBe(0);
+    // Ohne Rutschen: Duck-Walk bremst in 0.28 s unter 160.
+    expect(slideFromSprint(withMovement(CFG, { slideMinSpeed: 0 })).dur).toBeLessThan(0.4);
+  });
+
+  it('Events und Snapshot: slideStart (boost), sliding, slideEnd unter slideExitSpeed; kein Schub nach einer Landung (Bodenzeit)', () => {
+    const pm = player(FLAT, [0, 0, 0]);
+    run(pm, makeInput({ forward: 1, sprint: true }), 64);
+    const ev: MovementEvent[] = [];
+    run(pm, makeInput({ forward: 1, sprint: true, crouch: true }), 1, ev);
+    expect(ev.find((e) => e.type === 'slideStart')).toMatchObject({ type: 'slideStart', boost: true });
+    expect(pm.state.sliding).toBe(true);
+    expect(pm.state.ducked).toBe(true);
+    const snap = PlayerMovement.createSnapshot();
+    pm.copySnapshot(snap);
+    expect(snap.sliding).toBe(true);
+    run(pm, makeInput({ forward: 1, sprint: true, crouch: true }), 3 * CFG.tickRate, ev);
+    const end = ev.find((e) => e.type === 'slideEnd');
+    expect(end?.type === 'slideEnd' ? end.speed : Number.NaN).toBeLessThan(CFG.slideExitSpeed);
+    expect(pm.state.sliding).toBe(false);
+    // Landung mit 300 + Ducken (unter slideBoostCap): rutscht, aber ohne Schub — Bodenzeit < slideBoostMinGround.
+    const land = player(FLAT, [0, 40, 0], CFG, [0, -200, -300]);
+    const ev2: MovementEvent[] = [];
+    let top = 0;
+    for (let i = 0; i < CFG.tickRate / 2; i++) {
+      for (const e of land.tick(makeInput({ crouch: true }))) ev2.push({ ...e });
+      top = Math.max(top, land.state.speed);
+    }
+    expect(ev2.find((e) => e.type === 'slideStart')).toMatchObject({ boost: false });
+    expect(top).toBeLessThanOrEqual(300 + 1e-6);
+  });
+
+  it('Sprung im Landetick mit gehaltenem Ducken: 0 Rutsch-Ticks, Bhop bitgleich zu ohne Rutschen', () => {
+    for (const aim of [0, 3]) {
+      const on = crouchBhop(CFG, aim);
+      const off = crouchBhop(withMovement(CFG, { slideMinSpeed: 0 }), aim);
+      expect(on.slideTicks).toBe(0);
+      expect(on.slideEvents).toBe(0);
+      expect(on.speed).toBe(off.speed);
+    }
+  });
+
+  it('Landung 800 + Ducken, Sprung nach 0.2 s ≥ 700 (ohne Rutschen < 400); im Gnade-Fenster keine Rutsch-Reibung', () => {
+    expect(slideHopAfterLanding(CFG, 800, 0.2)).toBeGreaterThanOrEqual(700);
+    expect(slideHopAfterLanding(withMovement(CFG, { slideMinSpeed: 0 }), 800, 0.2)).toBeLessThan(400);
+    const pm = player(FLAT, [0, 40, 0], CFG, [0, -200, -800]);
+    const input = makeInput({ crouch: true });
+    let landed = false;
+    for (let i = 0; i < CFG.tickRate && !landed; i++) landed = pm.tick(input).some((e) => e.type === 'land');
+    const v0 = pm.state.speed;
+    const ev: MovementEvent[] = [];
+    run(pm, input, GRACE_TICKS, ev);
+    expect(pm.state.speed).toBe(v0);
+    // In der Gnade rutscht die Physik schon (keine Schritte), gemeldet wird erst danach.
+    expect(pm.state.sliding).toBe(false);
+    expect(ev.some((e) => e.type === 'slideStart' || e.type === 'footstep')).toBe(false);
+    run(pm, input, 1, ev);
+    expect(pm.state.speed).toBeLessThan(v0);
+    expect(pm.state.sliding).toBe(true);
+    expect(ev.filter((e) => e.type === 'slideStart')).toMatchObject([{ type: 'slideStart', boost: false }]);
+  });
+
+  it('Crouch-Hop 1–8 Ticks nach der Landung meldet keine Rutsche (kein Kratzen beim clean-Hop), danach schon', () => {
+    for (let k = 1; k <= GRACE_TICKS; k++) expect(lateCrouchHopSlideEvents(CFG, k), `k ${k}`).toBe(0);
+    expect(lateCrouchHopSlideEvents(CFG, GRACE_TICKS + 4)).toBe(2); // slideStart + slideEnd beim Sprung
+  });
+
+  it('Duck-Tunnel bei 900: durch in ≤ 1.3 s mit ≥ 450; unter der Decke rutscht man weiter, auch ohne C', () => {
+    const t = slideTunnel(CFG, 900);
+    expect(t.time).toBeLessThanOrEqual(1.3);
+    expect(t.exit).toBeGreaterThanOrEqual(450);
+    const lvl = level([box([-4096, -64, -4096], [4096, 0, 4096]), box([-256, 60, -2000], [256, 188, 0])]);
+    const pm = player(lvl, [0, 0, 300], CFG);
+    run(pm, makeInput({ forward: 1, sprint: true }), 64);
+    const duck = makeInput({ forward: 1, sprint: true, crouch: true });
+    for (let i = 0; i < CFG.tickRate && pm.state.pos.z > -40; i++) pm.tick(duck);
+    expect(pm.state.pos.z).toBeLessThan(-40);
+    expect(pm.state.sliding).toBe(true);
+    run(pm, makeInput({ forward: 1, sprint: true }), 16); // C los, Decke drüber
+    expect(pm.state.ducked).toBe(true);
+    expect(pm.state.sliding).toBe(true);
+  });
+
+  it('über eine Kante ohne Sprung: unten weiter ab slideExitSpeed, ohne Schub; nach Crouch-Jump oder mit C los nicht', () => {
+    // Kante bei ~230 u/s: unter slideMinSpeed, über slideExitSpeed — vorher Duck-Walk (85 nach 0.3 s).
+    const r = slideOverDrop(CFG, { runup: 230 });
+    expect(r.edge).toBeGreaterThan(CFG.slideExitSpeed);
+    expect(r.edge).toBeLessThan(CFG.slideMinSpeed);
+    expect(r.resumed).toBe(true);
+    expect(r.boost).toBe(false);
+    expect(r.after03).toBeGreaterThanOrEqual(180);
+    expect(slideOverDrop(CFG, { runup: 230, drop: 64 }).after03).toBe(r.after03);
+    // Unter slideExitSpeed endet es wie auf dem Boden.
+    expect(slideOverDrop(CFG, { runup: 330 }).resumed).toBe(false);
+    // Ein Sprung beendet die Rutsche bewusst: Crouch-Jump-Landungen bremsen wie in Source (schmale Ziele).
+    const j = slideOverDrop(CFG, { jump: true });
+    expect(j.land).toBeLessThan(CFG.slideMinSpeed);
+    expect(j.resumed).toBe(false);
+    expect(j.after03).toBeLessThan(100);
+    // C in der Luft losgelassen: Hull steht wieder, kein Rutschen.
+    expect(slideOverDrop(CFG, { release: true }).resumed).toBe(false);
+  });
+
+  it('Missbrauch: Schub-Farmer Ø ≤ 1.1 × 320, Slide-Hop ohne Schub ≤ 305; Hang 25° ab 320 → ≥ 480', () => {
+    expect(slideAbuse(CFG, FARMER)).toBeLessThanOrEqual(1.1 * 320);
+    expect(slideAbuse(CFG, SLIDE_HOP)).toBeLessThanOrEqual(305);
+    expect(slideSlope(CFG, 25)).toBeGreaterThanOrEqual(480);
+  });
+
+  it('CS2 (slideMinSpeed 0): kein Rutschen, Duck-Walk wie Source', () => {
+    const pm = player(FLAT, [0, 0, 0], CS2_CLASSIC);
+    run(pm, makeInput({ forward: 1 }), 64);
+    const ev: MovementEvent[] = [];
+    run(pm, makeInput({ forward: 1, crouch: true }), 64, ev);
+    expect(ev.some((e) => e.type === 'slideStart')).toBe(false);
+    expect(pm.state.sliding).toBe(false);
+  });
+});
+
+describe('Arcade-Pass: Luftlenkung mit W (A8)', () => {
+  it('nur W: v_h dreht zur Blickrichtung, Betrag bleibt; 320 u/s in 0.3 s 30–35° (Blick 90°)', () => {
+    const t45 = airTurn(CFG, 320, 45, 0.3);
+    expect(t45.speed).toBeCloseTo(320, 6);
+    expect(t45.turn).toBeGreaterThan(25);
+    const t90 = airTurn(CFG, 320, 90, 0.3);
+    expect(t90.turn).toBeGreaterThanOrEqual(30);
+    expect(t90.turn).toBeLessThanOrEqual(35);
+    // Der Tempo-Zuwachs (+2.5) ist Sources W-Schub quer im ersten Tick (auch ohne Lenkung), nicht die Lenkung.
+    expect(Math.abs(t90.speed - airTurn(withMovement(CFG, { airControl: 0 }), 320, 90, 0.3).speed)).toBeLessThan(0.1);
+  });
+
+  it('wirkungslos mit A/D, bei airControl 0 bitgleich, Strafe-Bots 0/2/3/5° bitgleich', () => {
+    const off = withMovement(CFG, { airControl: 0 });
+    for (const side of [-1, 1]) expect(airTurn(CFG, 320, 60, 0.3, side)).toEqual(airTurn(off, 320, 60, 0.3, side));
+    for (const aim of [0, 2, 3, 5]) {
+      const bot = (cfg: MovementConfig): number[] => botRun(new StrafeBot(cfg, aim > 0 ? { aimNoiseDeg: aim, seed: 3 } : { sync: 1 }), cfg, 10);
+      expect(bot(CFG)).toEqual(bot(off));
+    }
+  });
+
+  it('an der Surf-Flanke und ≤ 0.5 s nach steilem Kontakt keine Lenkung', () => {
+    const off = withMovement(CFG, { airControl: 0 });
+    const surf = (cfg: MovementConfig): Vector3 => {
+      const pm = player(SURF, [200, -250, -200], cfg, [0, 0, -600]);
+      run(pm, makeInput({ side: -1, yaw: 0 }), CFG.tickRate / 2);
+      run(pm, makeInput({ forward: 1, yaw: 0.35 }), 2 * CFG.tickRate);
+      return pm.state.pos.clone();
+    };
+    expect(surf(CFG).equals(surf(off))).toBe(true);
+    const leave = (cfg: MovementConfig, wait: number): number => {
+      const pm = player(SURF, [200, -250, -200], cfg, [0, 0, -600]);
+      run(pm, makeInput({ side: -1, yaw: 0 }), CFG.tickRate / 2);
+      pm.state.vel.set(500, 200, -300);
+      run(pm, makeInput(), 1 + wait);
+      const a0 = Math.atan2(-pm.state.vel.x, -pm.state.vel.z);
+      run(pm, makeInput({ forward: 1, yaw: a0 + Math.PI / 3 }), 16);
+      return Math.atan2(-pm.state.vel.x, -pm.state.vel.z) - a0;
+    };
+    expect(leave(CFG, 0)).toBeCloseTo(leave(off, 0), 9);
+    // Nach der Pause lenkt W wieder.
+    const w = Math.round(0.6 * CFG.tickRate);
+    expect(leave(CFG, w)).toBeGreaterThan(leave(off, w) + 0.1);
   });
 });

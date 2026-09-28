@@ -1,0 +1,26 @@
+
+## A) Riesenrampe, 3 s nur W (Start 400 u/s in der Luft über der Flanke)
+
+| Blick (+ = zur Rampe) | vorher: Höhenverlust / Tempo / surft | surfw dive 0 | surfw dive 150 | surfw dive 300 |
+|---|---|---|---|---|
+| -30° | 2516 u / 2049 u/s / ja | -19 u / 401 u/s / ja | 327 u / 415 u/s / ja | 663 u / 496 u/s / ja |
+| -15° | 2550 u / 2060 u/s / ja | -19 u / 401 u/s / ja | 327 u / 415 u/s / ja | 663 u / 496 u/s / ja |
+| 0° | 2550 u / 2060 u/s / ja | -19 u / 401 u/s / ja | 327 u / 415 u/s / ja | 663 u / 496 u/s / ja |
+| 15° | 2550 u / 2060 u/s / ja | -19 u / 401 u/s / ja | 327 u / 415 u/s / ja | 663 u / 496 u/s / ja |
+| 30° | 2550 u / 2060 u/s / ja | -19 u / 401 u/s / ja | 327 u / 415 u/s / ja | 663 u / 496 u/s / ja |
+
+## B) W-Surfer in den echten Leveln (Ziel erreicht / Zeit / Tempo am Ziel bzw. Grund), Blickversatz −10/−5/0/+5/+10°
+
+| Level | Abschnitt | Blick | vorher | surfw dive 0 | surfw dive 150 | surfw dive 300 |
+|---|---|---|---|---|---|---|
+| L2 | CP2 → CP3 (Stand) | 0° | ✗ timeout nach 30.0 s | ✓ 6.6 s, 319 u/s | ✓ 6.6 s, 322 u/s | ✗ timeout nach 30.0 s |
+| L2 | CP3 → CP4 (Stand) | 0° | ✓ 1.9 s, 549 u/s | ✓ 1.9 s, 319 u/s | ✓ 1.9 s, 324 u/s | ✓ 1.9 s, 345 u/s |
+| L2 | CP4 → Ziel (Stand) | 0° | ✗ kill nach 2.5 s | ✗ kill nach 7.6 s | ✗ kill nach 7.0 s | ✗ kill nach 6.0 s |
+| L1 | Rutsche ab 1. Surf-Knoten, 400 u/s | 0° | ✓ 4.6 s, 579 u/s | ✓ 6.8 s, 387 u/s | ✓ 6.0 s, 398 u/s | ✓ 5.9 s, 407 u/s |
+| L1 | Rutsche ab 1. Surf-Knoten, 700 u/s | 0° | ✓ 3.3 s, 739 u/s | ✓ 4.3 s, 682 u/s | ✓ 3.8 s, 691 u/s | ✓ 3.4 s, 713 u/s |
+
+Summe im Ziel (false = vorher, Zahl = surfw mit dive): {"0":4,"150":4,"300":3,"n":5,"false":3}
+
+## C) Kontrolle: Grundtechnik-Surfer (A/D) — vorher vs. surfw (muss identisch sein)
+
+bitgleich: 20/20

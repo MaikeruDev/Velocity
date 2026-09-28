@@ -58,8 +58,8 @@ function simulate(r: CameraRig, v: MutableCameraView, seconds: number, yaw = 0, 
   }
 }
 
-const JUMP_PERFECT = (gain = 30): MovementEvent => ({ type: 'jump', speed: 800, gain, perfect: true, chain: 5, sync: 0.9, crouched: false, coyote: false });
-const JUMP_MISSED: MovementEvent = { type: 'jump', speed: 300, gain: -20, perfect: false, chain: 2, sync: 0.5, crouched: false, coyote: false };
+const JUMP_PERFECT = (gain = 30): MovementEvent => ({ type: 'jump', speed: 800, gain, perfect: true, clean: true, chain: 5, sync: 0.9, crouched: false, coyote: false });
+const JUMP_MISSED: MovementEvent = { type: 'jump', speed: 300, gain: -20, perfect: false, clean: false, chain: 2, sync: 0.5, crouched: false, coyote: false };
 const land = (impact: number, jumpQueued = false): MovementEvent => ({ type: 'land', impact, speed: 500, airTime: 0.8, jumpQueued });
 
 describe('FOV (Hor+)', () => {
@@ -105,6 +105,9 @@ describe('Effekte bei Einstellung 0 exakt aus', () => {
     r.onEvent(land(1400));
     Object.assign(v, { onGround: false, surfing: true, surfNormal: new Vector3(0.8, 0.6, 0), strafeInput: 1, speed: 1200, vel: new Vector3(0, -100, -1200) });
     simulate(r, v, 1, 1.1, 0.3, () => check(1.1, 0.3));
+    // Rutschen (Plan 007): kein Rumpeln, kein Roll.
+    Object.assign(v, { onGround: true, surfing: false, surfNormal: new Vector3(), sliding: true, speed: 900, vel: new Vector3(0, 0, -900) });
+    simulate(r, v, 1, 0.2, 0, () => check(0.2, 0));
   });
 });
 
@@ -262,7 +265,7 @@ describe('FOV-Kick (C1): Log-Kurve relativ zu runSpeed, kein Sprint-Term', () =>
     simulate(r, v, 2);
     const atJump = hfov43(cam);
     expect(atJump - 90).toBeCloseTo(speedFovKick(320), 2);
-    r.onEvent({ type: 'jump', speed: 320, gain: 0, perfect: false, chain: 1, sync: 0, crouched: false, coyote: false });
+    r.onEvent({ type: 'jump', speed: 320, gain: 0, perfect: false, clean: false, chain: 1, sync: 0, crouched: false, coyote: false });
     v.onGround = false;
     let min = Infinity;
     simulate(r, v, 1, 0, 0, () => {
@@ -944,5 +947,206 @@ describe('Integration mit PlayerMovement + Interpolation', () => {
       expect(maxRawJump).toBeGreaterThan(8); // ungeglättet springt es
       expect(maxCamJump).toBeLessThan(0.6 * maxRawJump);
     }
+  });
+});
+
+// ============================================================ Arcade-Pass (Plan 007): Rutschen und Kanten-Assist
+
+describe('Rutschen (Plan 007 A7): Rückmeldung', () => {
+  const sliding = (patch: Partial<MutableCameraView> = {}): MutableCameraView =>
+    view({ eyePos: new Vector3(0, 46, 0), eyeHeight: 46, ducked: true, onGround: true, sliding: true, speed: 700, vel: new Vector3(0, 0, -700), ...patch });
+
+  it('kein Head-Bob beim Rutschen (Schrittphase steht), Bob kommt beim Aufstehen zurück', () => {
+    const { cam, rig: r } = rig({ ...DEFAULT_CAMERA_SETTINGS, screenShake: 0 });
+    const v = sliding({ stridePhase: 0.25 });
+    simulate(r, v, 0.5);
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < 144; i++) {
+      v.stridePhase = (v.stridePhase + 0.02) % 1; // selbst wenn sie liefe: kein Bob
+      r.update(FRAME, v, 0, 0);
+      lo = Math.min(lo, cam.position.y - v.eyePos.y);
+      hi = Math.max(hi, cam.position.y - v.eyePos.y);
+    }
+    expect(hi - lo).toBeLessThan(0.02);
+  });
+
+  it('Rutsch-Rumpeln: nur Translation (Yaw/Pitch exakt), 0.15–0.5 u mit dem Tempo, × screenShake und × motionFx', () => {
+    const amp = (settings: CameraRigSettings, speed: number): number => {
+      const { cam, rig: r } = rig({ ...settings, headBob: 0 });
+      const v = sliding({ speed, vel: new Vector3(0, 0, -speed) });
+      simulate(r, v, 0.3);
+      let m = 0;
+      for (let i = 0; i < 144; i++) {
+        r.update(FRAME, v, 0.3, -0.1);
+        expect(cam.rotation.y).toBe(0.3);
+        m = Math.max(m, r.fxState.slideRumble);
+      }
+      return m;
+    };
+    const slow = amp(DEFAULT_CAMERA_SETTINGS, 300);
+    const fast = amp(DEFAULT_CAMERA_SETTINGS, 1000);
+    expect(slow).toBeGreaterThan(0.1);
+    expect(fast).toBeGreaterThan(slow);
+    expect(fast).toBeLessThanOrEqual(0.5 + 1e-9);
+    expect(amp({ ...DEFAULT_CAMERA_SETTINGS, screenShake: 0 }, 1000)).toBe(0);
+    expect(amp({ ...DEFAULT_CAMERA_SETTINGS, motionFx: 0 }, 1000)).toBe(0);
+    // Pitch bleibt bis auf das Lande-Nicken der Blick (hier keine Landung): exakt.
+    const { cam, rig: r } = rig(DEFAULT_CAMERA_SETTINGS);
+    const v = sliding();
+    simulate(r, v, 0.5, 0, -0.2, () => expect(cam.rotation.x).toBe(-0.2));
+  });
+
+  it('motionFx 0 und screenShake 0: Rutschen ohne jede Kamera-Reaktion (Position = Auge, kein Roll)', () => {
+    const { cam, rig: r } = rig(OFF);
+    const v = sliding();
+    let yaw = 0;
+    simulate(r, v, 1, 0, 0, () => {
+      // Lenken: die Geschwindigkeit dreht (Carve), die Kamera bleibt trotzdem exakt.
+      yaw += 0.01;
+      v.vel.set(-Math.sin(yaw) * 700, 0, -Math.cos(yaw) * 700);
+      expect(cam.position.equals(v.eyePos)).toBe(true);
+      expect(cam.rotation.z === 0).toBe(true);
+    });
+  });
+
+  it('Carve-Roll beim Lenken in der Rutsche (Querbeschleunigung), Vorzeichen folgt der Kurve', () => {
+    const { rig: r } = rig({ ...DEFAULT_CAMERA_SETTINGS, screenShake: 0 });
+    const v = sliding();
+    let a = 0;
+    simulate(r, v, 0.5, 0, 0, () => {
+      a -= 1.4 * FRAME; // Rechtskurve mit slideSteerRate
+      v.vel.set(-Math.sin(a) * 700, 0, -Math.cos(a) * 700);
+    });
+    expect(r.fxState.roll).toBeGreaterThan(0.2);
+  });
+});
+
+describe('Lande-Gnade (Plan 007 A3): verlustfreier Hop wird gelobt', () => {
+  it('Sprung 4 Ticks nach der Landung (clean, nicht perfekt): Pop wie beim perfekten Hop, der Dip läuft ohne Sprung aus', () => {
+    const { cam, rig: r } = rig({ ...DEFAULT_CAMERA_SETTINGS, headBob: 0, screenShake: 0 });
+    const v = view({ eyePos: new Vector3(0, 64, 0), onGround: true, speed: 700, vel: new Vector3(0, 0, -700) });
+    r.update(FRAME, v, 0, 0);
+    r.onEvent(land(600));
+    for (let i = 0; i < 4; i++) r.update(FRAME, v, 0, 0); // Landung ist als Dip nachgeholt
+    const before = cam.position.y;
+    r.onEvent({ type: 'jump', speed: 700, gain: 25, perfect: false, clean: true, chain: 4, sync: 0.9, crouched: false, coyote: false });
+    let pop = 0;
+    let maxStep = 0;
+    let last = before;
+    simulate(r, v, 0.2, 0, 0, () => {
+      pop = Math.max(pop, r.fxState.pop);
+      maxStep = Math.max(maxStep, Math.abs(cam.position.y - last));
+      last = cam.position.y;
+    });
+    expect(pop).toBeGreaterThan(0.5);
+    expect(maxStep).toBeLessThan(1);
+  });
+});
+
+describe('Kanten-Assist (Plan 007 A6): Lip-Step glätten', () => {
+  const STEP = (dy: number): MovementEvent => ({ type: 'ledge', kind: 'step', speed: 400, dy });
+
+  it('Stufe im neuesten Tick: nur der schon sichtbare Teil (tickAlpha · dy) wird ausgeglichen, dann linear in 0.1 s', () => {
+    const { cam, rig: r } = rig(OFF);
+    // Der Lip-Step passiert in der Luft (vel.y ≠ 0): die Boden-Stufenglättung sieht ihn nicht.
+    const v = view({ eyePos: new Vector3(0, 64, 0), onGround: false, vel: new Vector3(0, -50, -400) });
+    r.update(FRAME, v, 0, 0);
+    r.onTick();
+    r.onEvent(STEP(4));
+    // Interpolation zeigt 30 % der Stufe; der Abbau (4 u in 0.1 s) beginnt in diesem Frame.
+    v.eyePos.y = 64 + 0.3 * 4;
+    v.tickAlpha = 0.3;
+    r.update(FRAME, v, 0, 0);
+    expect(cam.position.y).toBeCloseTo(64 + FRAME * 40, 9);
+    // Nächster Tick: Stufe voll sichtbar (gelandet), Versatz = Rest nach zwei Frames Abbau.
+    r.onTick();
+    Object.assign(v, { onGround: true, vel: new Vector3(0, 0, -400) });
+    v.eyePos.y = 68;
+    v.tickAlpha = 0.5;
+    r.update(FRAME, v, 0, 0);
+    expect(cam.position.y).toBeCloseTo(68 - (4 - 2 * FRAME * 40), 6);
+    simulate(r, v, 0.1);
+    expect(cam.position.y).toBe(68);
+    expect(r.fxState.ledgeOffset).toBe(0);
+  });
+
+  it('Integration: Lip-Step auf eine 60-u-Kiste — kein Frame springt mehr als 1.5 × der mittlere Anstieg der Glättung (60/144 Hz)', () => {
+    const lvl = compileLevel(makeLevel([box([-512, -64, -1024], [512, 0, 512]), box([-256, 0, -700], [256, 60, -300])]));
+    let checked = 0;
+    for (const hz of [60, 144]) {
+      for (const [z0, v0] of [[-180, 250], [-170, 250], [-190, 260], [-200, 280]] as const) {
+        const pm = new PlayerMovement(lvl.world, VELOCITY_DEFAULT);
+        pm.state.vel.set(0, 0, -v0);
+        pm.teleport(new Vector3(0, 0, z0), { keepVelocity: true });
+        const prev = PlayerMovement.createSnapshot();
+        const curr = PlayerMovement.createSnapshot();
+        const interp = PlayerMovement.createSnapshot();
+        pm.copySnapshot(prev);
+        pm.copySnapshot(curr);
+        const { cam, rig: r } = rig({ ...DEFAULT_CAMERA_SETTINGS, headBob: 0, screenShake: 0, motionFx: 0 });
+        const v = makeCameraView();
+        const tickDt = 1 / VELOCITY_DEFAULT.tickRate;
+        let acc = 0;
+        let k = 0;
+        let stepFrame = -1;
+        let dy = 0;
+        const camY: number[] = [];
+        const eyeY: number[] = [];
+        for (let f = 0; f < hz; f++) {
+          acc += 1 / hz;
+          while (acc >= tickDt) {
+            pm.copySnapshot(prev);
+            const ev = pm.tick({ ...NO_INPUT, forward: 1, jumpPressed: k === 0, jumpHeld: k === 0 });
+            r.onTick();
+            for (const e of ev) {
+              r.onEvent(e);
+              if (e.type === 'ledge' && e.kind === 'step' && stepFrame < 0) {
+                stepFrame = f;
+                dy = e.dy;
+              }
+            }
+            pm.copySnapshot(curr);
+            acc -= tickDt;
+            k++;
+          }
+          lerpSnapshot(prev, curr, acc / tickDt, interp);
+          cameraViewFromSnapshot(interp, false, 0, v, acc / tickDt);
+          r.update(1 / hz, v, 0, 0);
+          camY.push(cam.position.y);
+          eyeY.push(v.eyePos.y);
+        }
+        if (stepFrame < 0) continue;
+        checked++;
+        // Mittlerer Anstieg der Glättung: dy über 0.1 s; dazu die Bewegung vor der Stufe (Fall/Steigen).
+        const meanRise = (dy / 0.1) / hz;
+        const before = Math.abs(eyeY[stepFrame - 1] - eyeY[stepFrame - 2]);
+        let rawMax = 0;
+        let camMax = 0;
+        for (let i = stepFrame; i < Math.min(camY.length, stepFrame + Math.ceil(0.15 * hz)); i++) {
+          rawMax = Math.max(rawMax, Math.abs(eyeY[i] - eyeY[i - 1]));
+          camMax = Math.max(camMax, Math.abs(camY[i] - camY[i - 1]));
+        }
+        expect(rawMax, `${hz} Hz z0 ${z0}: ungeglättet springt es`).toBeGreaterThan(0.5 * dy);
+        expect(camMax, `${hz} Hz z0 ${z0}`).toBeLessThanOrEqual(1.5 * meanRise + before);
+        // Nach der Glättung wieder exakt am Auge.
+        expect(camY[camY.length - 1]).toBeCloseTo(eyeY[eyeY.length - 1], 9);
+      }
+    }
+    expect(checked).toBeGreaterThanOrEqual(4);
+  });
+
+  it('respawn setzt den Versatz zurück; der Vault (ohne Höhensprung) versetzt nichts', () => {
+    const { cam, rig: r } = rig(OFF);
+    const v = view({ eyePos: new Vector3(0, 64, 0), onGround: true });
+    r.onTick();
+    r.onEvent({ type: 'ledge', kind: 'vault', speed: 500, dy: 0 });
+    r.update(FRAME, v, 0, 0);
+    expect(cam.position.y).toBe(64);
+    r.onEvent(STEP(5));
+    r.onTick();
+    r.onEvent({ type: 'respawn', reason: 'fall' });
+    r.update(FRAME, v, 0, 0);
+    expect(cam.position.y).toBe(64);
   });
 });

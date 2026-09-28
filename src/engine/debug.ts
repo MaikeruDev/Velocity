@@ -3,7 +3,11 @@ import type { AudioApi, BeatInfo } from '../audio/types';
 import type { MovementConfig } from '../player/MovementConfig';
 import type { PlayerInput, PlayerSnapshot } from '../player/types';
 import type { RenderSettings } from '../render/types';
-import type { FinishResult } from '../ui/types';
+import { debugRenderer } from '../render/PS2Renderer';
+import type { RenderStats } from '../render/PS2Renderer';
+import type { FinishResult, HudData, HudKeys, LessonHud, LessonResult } from '../ui/types';
+import { Hud } from '../ui/Hud';
+import type { StageRank, TaskDef } from '../world/level/LevelFormat';
 import type { ViewHandState } from '../ui/hand/ViewHand';
 import type { AnyTrick } from '../ui/hand/ViewHand';
 import { HAND_POSES } from '../ui/hand/poses';
@@ -60,6 +64,64 @@ export interface VelState {
   readonly hints: { readonly crouch: number; readonly surf: number; readonly strafe: number };
   /** Dauer des JIT-Vorwärmens beim ersten Level (ms, −1 = noch nicht). */
   readonly jitWarmupMs: number;
+  /** Laufende Lektion (Plan 007): id, sonst null. Details: training(). */
+  readonly lesson: string | null;
+}
+
+/** Laufende Lektion für Tools (__vel.training, Plan 007). */
+export interface TrainingDebugInfo {
+  readonly lessonId: string;
+  readonly name: string;
+  /** Index der aktiven Stufe (= stageTotal nach der letzten). */
+  readonly stageIndex: number;
+  readonly stageTotal: number;
+  readonly stageId: string | null;
+  readonly stageTitle: string;
+  readonly text: string;
+  readonly count: number;
+  readonly goal: number;
+  readonly style: 'pips' | 'bar';
+  readonly rank: StageRank;
+  /** Alle Pflichtstufen erledigt. */
+  readonly done: boolean;
+  /** Sterne dieser Sitzung und gespeicherte Sterne. */
+  readonly stars: number;
+  readonly savedStars: number;
+  readonly completed: readonly string[];
+  /** Vorführung läuft; demoPlays = der Bot spielt wirklich (Tools). */
+  readonly demo: boolean;
+  readonly demoPlays: boolean;
+  readonly demoLeft: number;
+  readonly suspended: boolean;
+  /** Optik je Tor (0 zu … 1 aufgelöst) und Kollision (true = blockiert). */
+  readonly gateOpen: readonly number[];
+  readonly gateBlocked: readonly boolean[];
+  /** Tore der Lektion (CompiledLevel.gates-Reihenfolge) als Box. */
+  readonly gates: readonly { readonly id: string; readonly min: Vec3Like; readonly max: Vec3Like }[];
+  /** Zonen der Lektion (CompiledLevel.zones) als Box — Tools steuern Ersatz-Bots darauf zu. */
+  readonly zones: readonly { readonly id: string; readonly min: Vec3Like; readonly max: Vec3Like }[];
+  /** Die aktuelle Stufe hat eine Vorführung. */
+  readonly hasDemo: boolean;
+  /** Vorführung hat die Aufgabe der Stufe erfüllt (Band "SO GEHT'S!"); demoStill = Stillstand am Stück (s). */
+  readonly demoGoal: boolean;
+  readonly demoStill: number;
+  /** Die aktive Stufe bewertet Strafen: Urteile am Gain-Popup, Urteils-Tipps, SYNC-Zeile. */
+  readonly judge: boolean;
+  /** Alle Stufen der Lektion (Reihenfolge der Def): Rang und ob es eine Vorführung gibt. */
+  readonly stages: readonly { readonly id: string; readonly title: string; readonly rank: StageRank; readonly hasDemo: boolean }[];
+  /** Aufgabe der aktiven Stufe (null nach der letzten) — Tools wählen danach einen Ersatz-Bot. */
+  readonly task: TaskDef | null;
+  /** Letzter Tipp der Lektion (null = noch keiner), seine Art und Zähler. */
+  readonly tip: string | null;
+  readonly tipKind: 'stage' | 'verdict' | 'demo' | null;
+  readonly tipSerial: number;
+  /** Gerade sichtbarer HUD-Hinweis (Coach-Band). */
+  readonly notice: string | null;
+  /** Start der aktuellen Stufe (Füße, yaw in Grad). */
+  readonly spawn: { readonly x: number; readonly y: number; readonly z: number; readonly yaw: number };
+  /** Ergebnis, sobald gezeigt; resultIn = s bis zum automatischen Ergebnis (−1 = keins). */
+  readonly result: LessonResult | null;
+  readonly resultIn: number;
 }
 
 export type RecordedEvent = GameEvent & { readonly t: number };
@@ -102,6 +164,23 @@ export interface HudLayoutInfo {
   /** Speedometer-Block (Zahl + Ketten-/Sync-Zeile), Zeilen [top, bottom] und halbe Nennbreite um die Bildmitte. */
   readonly speedRows: readonly [number, number];
   readonly speedHalfWidth: number;
+  /** Mittleres Band (Zeilen [top, bottom], 35–65 % der Höhe), das das Lektions-HUD frei lässt (Plan 007 TU2). */
+  readonly centerBand: readonly [number, number];
+  /**
+   * Zuletzt gezeichnete Rechtecke [x, y, w, h] in HUD-Pixeln: card (Lektionskarte), verdict (Gain-Popups mit
+   * Urteil), notice (Coach-/Info-Band), demo (Vorführungs-Band), speed (Speedometer-Zahl). w = 0: nicht gezeichnet.
+   */
+  readonly rects: Readonly<Record<string, readonly [number, number, number, number]>>;
+  /** Gerade sichtbares Urteil am Gain-Popup ("GUT", "MAUS!"), sonst null. */
+  readonly verdict: string | null;
+  /**
+   * Urteils-Zähler des HUD: verdictSerial = Urteile angenommen (je 'lessonHop' mit Urteil +1), verdictDrawn = Nummer
+   * des jüngsten Urteils, das der letzte draw() wirklich gezeichnet hat. Tools prüfen damit den Verzug je Hop.
+   */
+  readonly verdictSerial: number;
+  readonly verdictDrawn: number;
+  /** HUD zeigt Urteile (Lektion, Stufe mit Strafe-Aufgabe). */
+  readonly judge: boolean;
 }
 
 /** Geometrie-Eckdaten des geladenen Levels — Tools leiten Kamerapositionen daraus ab statt sie hart zu kodieren. */
@@ -113,6 +192,17 @@ export interface LevelInfo {
   readonly killY: number;
   readonly triggers: readonly TriggerInfo[];
   readonly route: readonly { readonly pos: Vec3Like; readonly note: string | null; readonly crouch: boolean; readonly surf: boolean }[];
+}
+
+/** Ziel-Foto (Plan 007 K7) für Tools: Größe, Anteil nicht-schwarzer Pixel und das Bild als PNG-Data-URL. */
+export interface SnapshotInfo {
+  readonly width: number;
+  readonly height: number;
+  readonly lowResWidth: number;
+  readonly lowResHeight: number;
+  /** Anteil der Pixel mit Helligkeit > 8/255 (0 = schwarz/leer). */
+  readonly litShare: number;
+  readonly dataUrl: string;
 }
 
 /** Eingabe-Funktion aus dem Tool: bekommt den Live-Zustand, liefert die gedrückten Tasten (Rest = los). */
@@ -158,10 +248,38 @@ export interface VelHandle {
   resetUnlocks(): UnlockId[];
   unlocks(): UnlockId[];
   /**
-   * Trick des gehaltenen Gegenstands starten (Namen aus CAN_/CARD_/KNIFE_TRICKS), optional bei
-   * Trick-Zeit at (s) festhalten; 'none' = zurück. false = passt nicht zum Gegenstand.
+   * Trick des gehaltenen Gegenstands starten (Namen: hand().tricks, z. B. CAN_/CARD_/KNIFE_/
+   * SPINNER_TRICKS), optional bei Trick-Zeit at (s) festhalten; 'none' = zurück. false = passt nicht.
    */
   forceTrick(name: AnyTrick | 'none', at?: number): boolean;
+  /**
+   * Ziel-Foto (Plan 007 K7): RendererApi.snapshot des letzten Bildes (ohne HUD), Standard = Low-Res-
+   * Größe. null = kein Renderer/noch kein Bild.
+   */
+  snapshot(w?: number, h?: number): SnapshotInfo | null;
+  /** Render-Kennzahlen (u. a. viewModelCalls/viewModelTriangles für das Kosmetik-Budget). */
+  renderStats(): RenderStats | null;
+  /** Trainingsmodus (Plan 007): laufende Lektion, null = keine. */
+  training(): TrainingDebugInfo | null;
+  /** Aktuelle Stufe überspringen (zählt nicht), Spieler an den Start der nächsten. */
+  trainingSkip(): TrainingDebugInfo | null;
+  /** Lektion neu (wie R). */
+  trainingReset(): TrainingDebugInfo | null;
+  /**
+   * Vorführung der Stufe starten/stoppen (wie Taste H; on fehlt = umschalten). play = der Bot spielt die
+   * Lektion wirklich (Stufe für Stufe, zählt). false = nicht möglich (keine Lektion/Vorführung).
+   */
+  demo(opts?: { readonly on?: boolean; readonly play?: boolean }): boolean;
+  /** Messung: mittlere CPU-Zeit des Frame-Callbacks (ms) seit dem letzten Aufruf, davon updateLesson; lessonTickMs = Session-Ticks je Frame (ab dem 2. Aufruf). */
+  frameCost(): { readonly ms: number; readonly lessonMs: number; readonly lessonTickMs: number; readonly frames: number };
+  /**
+   * Messung (Plan 007 TU2): HUD update+draw je Frame (ms) auf einem eigenen HUD in Spielgröße — normales
+   * Level (Timer, Gain-Popups) gegen Lektion (Karte, Urteile, Zielband) und Lektion mit Vorführung
+   * (+ Demo-Band). Alle 45 Frames eine Landung/ein Urteil. n Frames je Variante, abwechselnd in Blöcken.
+   */
+  benchHud(n?: number): { readonly normal: number; readonly lesson: number; readonly lessonDemo: number };
+  /** Lektionsliste mit gespeicherten Sternen; loaded = Lektion schon geladen (Admin-Abhaken möglich). */
+  lessons(): { readonly id: string; readonly name: string; readonly short: string; readonly stars: number; readonly loaded: boolean }[];
 }
 
 declare global {
@@ -231,6 +349,7 @@ export function installDebug(deps: DebugDeps): VelHandle {
       notice: game.hudNotice,
       hints: { crouch: game.hintsShown.crouch, surf: game.hintsShown.surf, strafe: game.hintsShown.strafe },
       jitWarmupMs: Math.round(game.jitWarmupMs * 10) / 10,
+      lesson: game.lessonSession !== null ? game.currentLevelId : null,
     };
   };
 
@@ -333,9 +452,129 @@ export function installDebug(deps: DebugDeps): VelHandle {
     },
     unlocks: () => unlocks.list(),
     forceTrick: (name, at) => game.forceTrick(name, at ?? -1),
+    snapshot: (w, h) => {
+      const r = debugRenderer();
+      if (!r) return null;
+      const c = r.snapshot(w ?? r.lowResWidth, h ?? r.lowResHeight);
+      if (!c) return null;
+      const ctx = c.getContext('2d');
+      let lit = 0;
+      if (ctx) {
+        const d = ctx.getImageData(0, 0, c.width, c.height).data;
+        for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 24) lit++;
+      }
+      return { width: c.width, height: c.height, lowResWidth: r.lowResWidth, lowResHeight: r.lowResHeight, litShare: round3(lit / Math.max(1, c.width * c.height)), dataUrl: c.toDataURL('image/png') };
+    },
+    renderStats: () => debugRenderer()?.stats ?? null,
+    training: () => game.trainingInfo(),
+    trainingSkip: () => {
+      game.skipStage();
+      return game.trainingInfo();
+    },
+    trainingReset: () => {
+      if (game.lessonSession !== null) game.restartRun();
+      return game.trainingInfo();
+    },
+    demo: (opts) => {
+      const on = opts?.on ?? !(game.trainingInfo()?.demo ?? false);
+      return game.setDemo(on, opts?.play ?? false);
+    },
+    lessons: () => game.lessonList(),
+    frameCost: () => game.takeFrameCost(),
+    benchHud: (n) => benchHud(game, n ?? 3000),
   };
   window.__vel = handle;
   return handle;
+}
+
+/**
+ * HUD-Messung (benchHud): drei Varianten, je ein eigenes HUD (sonst verwirft jeder Wechsel die
+ * vorgerenderten Kacheln der anderen), in kurzen Blöcken reihum mit wechselnder Reihenfolge — so
+ * verteilen sich GC, Takt und GPU-Rückstau gleich auf alle drei.
+ */
+function benchHud(game: Game, n: number): { normal: number; lesson: number; lessonDemo: number } {
+  const live = game.hudLayout();
+  const makeHud = (demo: boolean): Hud => {
+    const hud = new Hud();
+    hud.resize(live.width, live.height);
+    hud.setMovement(game.movementConfig);
+    hud.setDemoKey('H');
+    hud.demoAvailable = true;
+    hud.demo = demo;
+    hud.visible = true;
+    return hud;
+  };
+  const makeKeys = (band: { lo: number; hi: number } | null): { -readonly [K in keyof HudKeys]-?: HudKeys[K] } => ({
+    forward: 0,
+    side: -1,
+    jump: true,
+    crouch: false,
+    turnDeg: 120,
+    inAir: true,
+    strafe: 1,
+    forwardInAirMs: 0,
+    turnBand: band,
+  });
+  const lesson: LessonHud = game.lessonSession?.hud ?? {
+    lessonTitle: 'T3 · AIR-STRAFE',
+    stageTitle: 'LINKSKURVE',
+    text: 'IN DER LUFT: A HALTEN\nUND DIE MAUS NACH LINKS ZIEHEN',
+    count: 2,
+    goal: 5,
+    style: 'pips',
+    rank: 'required',
+    stageIndex: 0,
+    stageTotal: 5,
+    demo: false,
+  };
+  const base = {
+    speed: 412,
+    hopChain: 5,
+    strafeSync: 0.9,
+    onGround: false,
+    surfing: false,
+    runTime: 12.34,
+    running: true,
+    checkpoint: { index: 1, total: 3 },
+    levelName: 'X',
+    levelSubtitle: null,
+    bestTime: 20.5,
+    showSpeedometer: true,
+    showKeys: true,
+    paused: false,
+    ghostDiff: null,
+    ghostOverHud: false,
+    nextMedal: null,
+  };
+  const band = { lo: 40, hi: 360 };
+  const jump = { type: 'jump', speed: 412, gain: 23, perfect: true, clean: true, chain: 5, sync: 0.9, crouched: false, coyote: false } as const;
+  const hop = { type: 'lessonHop', verdict: 'good', gain: 23, counted: true, count: 2, goal: 5 } as const;
+  const variants = [
+    { hud: makeHud(false), data: { ...base, keys: makeKeys(null), lesson: null } satisfies HudData, ev: jump, sum: 0, frame: 0 },
+    { hud: makeHud(false), data: { ...base, keys: makeKeys(band), runTime: null, running: false, lesson } satisfies HudData, ev: hop, sum: 0, frame: 0 },
+    { hud: makeHud(true), data: { ...base, keys: makeKeys(band), runTime: null, running: false, lesson } satisfies HudData, ev: hop, sum: 0, frame: 0 },
+  ];
+  const run = (v: (typeof variants)[number], frames: number): number => {
+    const t0 = performance.now();
+    for (let i = 0; i < frames; i++) {
+      if (v.frame++ % 45 === 0) v.hud.onEvent(v.ev);
+      v.hud.update(1 / 60, v.data);
+      v.hud.draw();
+    }
+    return performance.now() - t0;
+  };
+  // Aufwärmen (Glyphen-Caches, Kacheln, JIT), dann kurze Blöcke reihum.
+  for (const v of variants) run(v, 200);
+  const block = 25;
+  let frames = 0;
+  for (let r = 0; frames < n; r++) {
+    for (let k = 0; k < variants.length; k++) {
+      const v = variants[(k + r) % variants.length];
+      v.sum += run(v, block);
+    }
+    frames += block;
+  }
+  return { normal: variants[0].sum / frames, lesson: variants[1].sum / frames, lessonDemo: variants[2].sum / frames };
 }
 
 /** FPS-Anzeige für ?debug — per Intervall, nicht im Frame-Pfad. */

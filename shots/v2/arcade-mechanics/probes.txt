@@ -1,0 +1,13 @@
+- Original       level1: Fehler 0, Warnungen 1, neu 0 · Median sync1 22.24 s · 2° 28.94 s · 3° 34.45 s
+- Original       level2: Fehler 0, Warnungen 0, neu 0 · Median sync1 15.85 s · 2° 17.80 s · 3° 20.34 s
+- Slide          level1: Fehler 0, Warnungen 1, neu 0 · Median sync1 22.24 s · 2° 28.94 s · 3° 34.45 s
+- Slide          level2: Fehler 0, Warnungen 0, neu 0 · Median sync1 15.85 s · 2° 17.80 s · 3° 20.34 s
+- Kanten-Assist  level1: Fehler 0, Warnungen 1, neu 0 · Median sync1 22.24 s · 2° 28.94 s · 3° 33.75 s
+- Kanten-Assist  level2: Fehler 0, Warnungen 0, neu 0 · Median sync1 15.85 s · 2° 17.80 s · 3° 20.34 s
+- Luftkontrolle  level1: Fehler 0, Warnungen 1, neu 0 · Median sync1 22.24 s · 2° 28.94 s · 3° 34.45 s
+- Luftkontrolle  level2: Fehler 0, Warnungen 0, neu 0 · Median sync1 15.85 s · 2° 17.80 s · 3° 20.34 s
+- Alle drei      level1: Fehler 0, Warnungen 1, neu 0 · Median sync1 22.24 s · 2° 28.94 s · 3° 33.75 s
+- Alle drei      level2: Fehler 0, Warnungen 0, neu 0 · Median sync1 15.85 s · 2° 17.80 s · 3° 20.34 s
+
+→ shots/v2/arcade-mechanics/probes.json
+exit 0

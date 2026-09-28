@@ -1,0 +1,33 @@
+[momentum patch] VELOCITY_DEFAULT += {"airSpeedCapLow":40}
+Physik: airSpeedCapLow 40, FadeFrom 350, FadeTo 700, MOM=
+  level1 Planung:
+    Hop-Reihe: Plan-Tempo 450 → 549 → 613 → 659 → 692 → 726 → 757 → 786 u/s; Lücken 203 / 205 / 235 / 236 / 235 / 91 / 233 u; Tiefen 192 / 176 / 224 / 240 / 272 / 576 u
+    Hop-Reihe braucht ab Plattformmitte (mit Reserve): 416 / 447 / 483 / 494 / 308 u/s
+    Kehre: Radius 1395 u, Plan-Tempo 750 / 775 / 799 / 823 / 848 / 871 / 889; Slalom 907 u/s (Inseln 608 u)
+    Abkürzung: 5 Inseln, Sprünge à 512 u, braucht 606 u/s
+    Rutsche: 2956 u, 444 u Gefälle bis zum Kicker; Launch (unteres Band) 729 u/s; Ziel auf y=-1110
+
+### level1 (neu gebaut, 192 Brushes)
+  Voll-Lauf sync 1.0: 8/8 im Ziel, Median 29.0 s, max 1000 u/s
+  Voll-Lauf sync 0.8: 8/8 im Ziel, Median 31.5 s, max 1030 u/s
+  Voll-Lauf Hand 2° : 8/8 im Ziel, Median 31.2 s, max 919 u/s
+  Voll-Lauf Hand 3° : 8/8 im Ziel, Median 36.7 s, max 799 u/s
+  Voll-Lauf sync 0.7: 8/8 im Ziel, Median 33.1 s, max 964 u/s
+  Spiel-Uhr 3°-Hand (Bronze÷1.05): 33.02 s
+  Spiel-Uhr sync 1.0 (Autor): 25.86 s
+  ✗ Design: Könner-Inseln: Hand 1° über die Inseln 1/6 durch (x x x x x 29.0 s), Ersparnis Ø -2.85 s (1 Paare); perfekter Bot scheitert
+  Design: 1 Fehler, 0 Warnungen, 5 ok
+  level2 Planung:
+    Ausfahrt: Vorfeld schließt die Lücke Ring → E1 (Sprint-Sprung von T0 trägt 334 u); Stufe 3 (über S1 auf S2): ab 1199 u/s, mit Reserve 1319
+    Launch braucht 334 u/s (ohne Reserve); Lücke 464 u; Ziel auf y=-2479, Strecke 8967 u nach Norden
+
+### level2 (neu gebaut, 338 Brushes)
+  Voll-Lauf sync 1.0: 8/8 im Ziel, Median 16.3 s, max 1123 u/s
+  Voll-Lauf sync 0.8: 8/8 im Ziel, Median 18.2 s, max 1013 u/s
+  Voll-Lauf Hand 2° : 8/8 im Ziel, Median 19.5 s, max 964 u/s
+  Voll-Lauf Hand 3° : 8/8 im Ziel, Median 21.1 s, max 880 u/s
+  Voll-Lauf sync 0.7: 8/8 im Ziel, Median 20.0 s, max 948 u/s
+  Spiel-Uhr 3°-Hand (Bronze÷1.05): 19.70 s
+  Spiel-Uhr sync 1.0 (Autor): 14.98 s
+  ✗ Design: Ausfahrt hat Todesstreifen mit Auto-Hop: 1/600 Läufe (z. B. ab Knoten 15 1100 u/s Versatz 96: kill bei 1602,-1236,-3145 (ring→surf2))
+  Design: 1 Fehler, 0 Warnungen, 5 ok

@@ -4,6 +4,7 @@ import { medalAtLeast, medalFor } from '../ui/medals';
 import type { MedalId } from '../ui/medals';
 import type { SettingsPatch, StorageLike } from './Settings';
 import { defaultStorage } from './Settings';
+import type { TrainingProgressView } from './trainingTypes';
 
 /**
  * Freischaltungen (Plan 005, Zuordnung neu in Plan 006): Kosmetik für die View-Hand,
@@ -29,14 +30,45 @@ import { defaultStorage } from './Settings';
  * Merker. Die Sperre hebt nur eine bewusste Admin-Aktion wieder auf (Schalter an, "Alles
  * freischalten", Medaille für das betroffene Level setzen) — ein echter Lauf nicht, sonst
  * käme eine absichtlich gesperrte Kosmetik beim nächsten Ziel ungefragt zurück.
+ *
+ * Plan 007 (Kosmetik v2): 14 Freischaltungen nach der Freischalt-Tabelle (Plan 007 §7), dazu
+ * Anforderungen aus dem Trainings-Fortschritt ({kind:'training'}, Lektionen erzeugen keine Bestzeit).
  */
 
-export type UnlockId = 'glove.neon' | 'item.card' | 'item.can' | 'item.knife';
+export type UnlockId =
+  | 'glove.neon'
+  | 'glove.gold'
+  | 'glove.robot'
+  | 'glove.skeleton'
+  | 'glove.cat'
+  | 'item.card'
+  | 'item.can'
+  | 'item.knife'
+  | 'item.yoyo'
+  | 'item.spinner'
+  | 'item.coin'
+  | 'item.lighter'
+  | 'item.kendama'
+  | 'item.phone';
 
-export interface UnlockRequirement {
+/** Mindestens diese Medaille in einem Level (aus der Bestzeit). */
+export interface MedalRequirement {
+  readonly kind: 'medal';
   readonly levelId: string;
   readonly medal: MedalId;
 }
+
+/**
+ * Trainings-Fortschritt: jede Lektion der Gruppe mit ≥ minStars (basics = Grundlagen T1–T4,
+ * all = alle Lektionen T1–T8). Ohne geladene Lektionen nie erfüllt.
+ */
+export interface TrainingRequirement {
+  readonly kind: 'training';
+  readonly group: 'basics' | 'all';
+  readonly minStars: 1 | 3;
+}
+
+export type UnlockRequirement = MedalRequirement | TrainingRequirement;
 
 export interface UnlockDef {
   readonly id: UnlockId;
@@ -46,30 +78,91 @@ export interface UnlockDef {
   readonly requires: readonly UnlockRequirement[];
 }
 
+const medal = (levelId: string, m: MedalId): MedalRequirement => ({ kind: 'medal', levelId, medal: m });
+/** Dieselbe Medaille in L1–L4 (Sammelziel). */
+const allLevels = (m: MedalId): MedalRequirement[] => ['level1', 'level2', 'level3', 'level4'].map((id) => medal(id, m));
+
+/** Reihenfolge = Leiter (Plan 007 §7) — Menü/Admin zeigen sie so, und bei mehreren frischen gewinnt die spätere. */
 export const UNLOCKS: readonly UnlockDef[] = [
-  { id: 'glove.neon', name: 'Neon-Handschuh', requires: [{ levelId: 'level1', medal: 'gold' }] },
-  { id: 'item.card', name: 'Sammelkarte', requires: [{ levelId: 'level1', medal: 'velocity' }] },
-  { id: 'item.can', name: 'Dose', requires: [{ levelId: 'level2', medal: 'velocity' }] },
-  {
-    id: 'item.knife',
-    name: 'Butterfly-Messer',
-    requires: [
-      { levelId: 'level1', medal: 'velocity' },
-      { levelId: 'level2', medal: 'velocity' },
-    ],
-  },
+  { id: 'item.spinner', name: 'Fidget-Spinner', requires: [{ kind: 'training', group: 'basics', minStars: 1 }] },
+  { id: 'glove.robot', name: 'Roboter-Hand', requires: [{ kind: 'training', group: 'all', minStars: 1 }] },
+  { id: 'item.coin', name: 'Münze', requires: allLevels('bronze') },
+  { id: 'item.yoyo', name: 'Jo-Jo', requires: [medal('level1', 'silver')] },
+  { id: 'item.lighter', name: 'Sturmfeuerzeug', requires: [medal('level2', 'silver')] },
+  { id: 'item.kendama', name: 'Kendama', requires: [medal('level3', 'silver')] },
+  { id: 'item.phone', name: 'Handy', requires: [medal('level4', 'silver')] },
+  { id: 'glove.neon', name: 'Neon-Handschuh', requires: [medal('level1', 'gold')] },
+  { id: 'glove.skeleton', name: 'Skelett-Hand', requires: [medal('level2', 'gold')] },
+  { id: 'item.card', name: 'Sammelkarte', requires: [medal('level1', 'velocity')] },
+  { id: 'item.can', name: 'Dose', requires: [medal('level2', 'velocity')] },
+  { id: 'item.knife', name: 'Butterfly-Messer', requires: [medal('level1', 'velocity'), medal('level2', 'velocity')] },
+  { id: 'glove.gold', name: 'Gold-Handschuh', requires: allLevels('gold') },
+  { id: 'glove.cat', name: 'Katzenpfote', requires: allLevels('velocity') },
 ];
+
+/**
+ * Freischaltungen, deren Kosmetik es im Spiel noch nicht gibt (Plan 007, bis Phase 3): die
+ * Ableitung (sync, grantEarnedFor) vergibt sie nicht von selbst — sonst bekäme ein Spieler mit
+ * L1-Silber ein Jo-Jo angelegt, das noch niemand zeichnet. Admin/Debug (set, unlockAll) können sie
+ * setzen, deriveUnlocks meldet sie normal. Phase 3 (Strang integration) leert die Menge.
+ */
+export const PENDING_UNLOCKS: ReadonlySet<UnlockId> = new Set<UnlockId>([
+  'item.spinner',
+  'glove.robot',
+  'item.coin',
+  'item.yoyo',
+  'item.lighter',
+  'item.kendama',
+  'item.phone',
+  'glove.skeleton',
+  'glove.gold',
+  'glove.cat',
+]);
 
 export const UNLOCKS_KEY = 'velocity.unlocks.v1';
 const VERSION = 3;
 
 /** Welche Freischaltung eine Kosmetik braucht (null = immer frei). */
 export function gloveUnlock(g: GloveId): UnlockId | null {
-  return g === 'neon' ? 'glove.neon' : null;
+  switch (g) {
+    case 'classic':
+      return null;
+    case 'neon':
+      return 'glove.neon';
+    case 'gold':
+      return 'glove.gold';
+    case 'robot':
+      return 'glove.robot';
+    case 'skeleton':
+      return 'glove.skeleton';
+    case 'cat':
+      return 'glove.cat';
+  }
 }
 
 export function itemUnlock(i: HeldItemId): UnlockId | null {
-  return i === 'can' ? 'item.can' : i === 'card' ? 'item.card' : i === 'knife' ? 'item.knife' : null;
+  switch (i) {
+    case 'none':
+      return null;
+    case 'card':
+      return 'item.card';
+    case 'can':
+      return 'item.can';
+    case 'knife':
+      return 'item.knife';
+    case 'yoyo':
+      return 'item.yoyo';
+    case 'spinner':
+      return 'item.spinner';
+    case 'coin':
+      return 'item.coin';
+    case 'lighter':
+      return 'item.lighter';
+    case 'kendama':
+      return 'item.kendama';
+    case 'phone':
+      return 'item.phone';
+  }
 }
 
 /** Einstellung, die eine frische Freischaltung sofort anlegt ("das ist der Belohnungsmoment"). */
@@ -77,12 +170,32 @@ export function unlockPatch(id: UnlockId): SettingsPatch {
   switch (id) {
     case 'glove.neon':
       return { glove: 'neon' };
+    case 'glove.gold':
+      return { glove: 'gold' };
+    case 'glove.robot':
+      return { glove: 'robot' };
+    case 'glove.skeleton':
+      return { glove: 'skeleton' };
+    case 'glove.cat':
+      return { glove: 'cat' };
     case 'item.card':
       return { heldItem: 'card' };
     case 'item.can':
       return { heldItem: 'can' };
     case 'item.knife':
       return { heldItem: 'knife' };
+    case 'item.yoyo':
+      return { heldItem: 'yoyo' };
+    case 'item.spinner':
+      return { heldItem: 'spinner' };
+    case 'item.coin':
+      return { heldItem: 'coin' };
+    case 'item.lighter':
+      return { heldItem: 'lighter' };
+    case 'item.kendama':
+      return { heldItem: 'kendama' };
+    case 'item.phone':
+      return { heldItem: 'phone' };
   }
 }
 
@@ -98,15 +211,32 @@ export interface MedalSource {
   readonly medals?: LevelMedals | null;
 }
 
-/** Aus Bestzeiten + Medaillen: alle verdienten Freischaltungen (reine Funktion, testbar). */
-export function deriveUnlocks(levels: readonly MedalSource[], best: (levelId: string) => number | null): UnlockId[] {
+/** Eine Anforderung erfüllt? Level ohne Medaillen/unbekannte Level und fehlendes Training: nein. */
+export function requirementMet(
+  r: UnlockRequirement,
+  levels: readonly MedalSource[],
+  best: (levelId: string) => number | null,
+  training?: TrainingProgressView,
+): boolean {
+  if (r.kind === 'medal') {
+    const lv = levels.find((l) => l.id === r.levelId);
+    return lv?.medals ? medalAtLeast(medalFor(best(r.levelId), lv.medals), r.medal) : false;
+  }
+  if (!training) return false;
+  const lessons = training.lessons().filter((l) => r.group === 'all' || l.group === r.group);
+  // Leere Liste (Index nicht geladen) wäre für every() "erfüllt" — ohne Lektionen gibt es nichts.
+  return lessons.length > 0 && lessons.every((l) => training.stars(l.id) >= r.minStars);
+}
+
+/** Aus Bestzeiten + Medaillen (+ Trainings-Fortschritt): alle verdienten Freischaltungen (reine Funktion, testbar). */
+export function deriveUnlocks(
+  levels: readonly MedalSource[],
+  best: (levelId: string) => number | null,
+  training?: TrainingProgressView,
+): UnlockId[] {
   const out: UnlockId[] = [];
   for (const u of UNLOCKS) {
-    const ok = u.requires.every((r) => {
-      const lv = levels.find((l) => l.id === r.levelId);
-      return lv?.medals ? medalAtLeast(medalFor(best(r.levelId), lv.medals), r.medal) : false;
-    });
-    if (ok) out.push(u.id);
+    if (u.requires.every((r) => requirementMet(r, levels, best, training))) out.push(u.id);
   }
   return out;
 }
@@ -206,9 +336,11 @@ export class UnlockStore {
    * nie entfernen; von Hand gesperrte bleiben gesperrt.
    * Gibt nur die NEUEN zurück — das Ergebnis zeigt sie groß an.
    */
-  sync(levels: readonly MedalSource[], best: (levelId: string) => number | null): UnlockId[] {
+  sync(levels: readonly MedalSource[], best: (levelId: string) => number | null, training?: TrainingProgressView): UnlockId[] {
     const fresh: UnlockId[] = [];
-    for (const id of deriveUnlocks(levels, best)) if (!this.locked.has(id) && this.grant(id)) fresh.push(id);
+    for (const id of deriveUnlocks(levels, best, training)) {
+      if (!PENDING_UNLOCKS.has(id) && !this.locked.has(id) && this.grant(id)) fresh.push(id);
+    }
     return fresh;
   }
 
@@ -220,7 +352,8 @@ export class UnlockStore {
   grantEarnedFor(levelId: string, levels: readonly MedalSource[], best: (levelId: string) => number | null): UnlockId[] {
     const fresh: UnlockId[] = [];
     for (const id of deriveUnlocks(levels, best)) {
-      if (!unlockDef(id).requires.some((r) => r.levelId === levelId)) continue;
+      // Nur Medaillen-Anforderungen hängen an einem Level; Training setzt das Admin-Menü getrennt.
+      if (PENDING_UNLOCKS.has(id) || !unlockDef(id).requires.some((r) => r.kind === 'medal' && r.levelId === levelId)) continue;
       this.locked.delete(id);
       if (this.grant(id)) fresh.push(id);
     }

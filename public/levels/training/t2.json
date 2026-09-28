@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "id": "t2",
+  "name": "AUTO-HOP",
+  "subtitle": "Leertaste halten statt hämmern.",
+  "spawn": {
+    "pos": [0,0,0],
+    "yaw": 0
+  },
+  "killY": -600,
+  "music": {
+    "bpm": 132
+  },
+  "environment": {
+    "skyTop": "#060a24",
+    "skyHorizon": "#1d3f7a",
+    "skyBottom": "#070b1f",
+    "fogColor": "#16305e",
+    "fogNear": 1800,
+    "fogFar": 9000,
+    "sunDir": [0.35,0.55,-0.75],
+    "sunColor": "#d6ecff",
+    "ambientSky": "#4a6ad0",
+    "ambientGround": "#141a3a",
+    "trimColor": "#33f0ff",
+    "trimColorAlt": "#ff3fd0",
+    "voidY": -1400
+  },
+  "brushes": [
+    {"type":"box","min":[-512,-64,-3000],"max":[512,0,256],"mat":"floor","tag":"gerade"},
+    {"type":"wedge","min":[-512,-64,-3160],"max":[512,0,-3000],"rise":"-z","lowY":-40,"mat":"metal","tag":"graben0"},
+    {"type":"box","min":[-512,-64,-3760],"max":[512,0,-3160],"mat":"floor","tag":"insel0"},
+    {"type":"wedge","min":[-512,-64,-3936],"max":[512,0,-3760],"rise":"-z","lowY":-40,"mat":"metal","tag":"graben1"},
+    {"type":"box","min":[-512,-64,-4536],"max":[512,0,-3936],"mat":"floor","tag":"insel1"},
+    {"type":"wedge","min":[-512,-64,-4728],"max":[512,0,-4536],"rise":"-z","lowY":-40,"mat":"metal","tag":"graben2"},
+    {"type":"box","min":[-512,-64,-5328],"max":[512,0,-4728],"mat":"floor","tag":"insel2"},
+    {"type":"wedge","min":[-512,-64,-5536],"max":[512,0,-5328],"rise":"-z","lowY":-40,"mat":"metal","tag":"graben3"},
+    {"type":"box","min":[-512,-64,-11536],"max":[512,0,-5536],"mat":"finish","tag":"bonusbahn"},
+    {"type":"box","min":[132,0,-6934],"max":[228,320,-6838],"mat":"wall","tint":"#ff3fd0","tag":"saeule0"},
+    {"type":"box","min":[-228,0,-7634],"max":[-132,320,-7538],"mat":"wall","tint":"#ff3fd0","tag":"saeule1"},
+    {"type":"box","min":[132,0,-8334],"max":[228,320,-8238],"mat":"wall","tint":"#ff3fd0","tag":"saeule2"},
+    {"type":"box","min":[-228,0,-9034],"max":[-132,320,-8938],"mat":"wall","tint":"#ff3fd0","tag":"saeule3"},
+    {"type":"box","min":[132,0,-9734],"max":[228,320,-9638],"mat":"wall","tint":"#ff3fd0","tag":"saeule4"},
+    {"type":"box","min":[-228,0,-10434],"max":[-132,320,-10338],"mat":"wall","tint":"#ff3fd0","tag":"saeule5"},
+    {"type":"box","min":[-576,-64,-11536],"max":[-512,320,256],"mat":"wall","tag":"bande-w"},
+    {"type":"box","min":[512,-64,-11536],"max":[576,320,256],"mat":"wall","tag":"bande-o"},
+    {"type":"box","min":[-576,-64,256],"max":[576,320,320],"mat":"wall","tag":"bande-s"},
+    {"type":"box","min":[-576,-64,-11600],"max":[576,320,-11536],"mat":"wall","tag":"bande-n"},
+    {"type":"hull","points":[[-267,0,-6846],[-267,-4,-6846],[-267,0,-6926],[-267,-4,-6926],[-147,0,-6926],[-147,-4,-6926],[-147,0,-6846],[-147,-4,-6846]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"slalom-mark0","trim":false},
+    {"type":"hull","points":[[147,0,-7546],[147,-4,-7546],[147,0,-7626],[147,-4,-7626],[267,0,-7626],[267,-4,-7626],[267,0,-7546],[267,-4,-7546]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"slalom-mark1","trim":false},
+    {"type":"hull","points":[[-267,0,-8246],[-267,-4,-8246],[-267,0,-8326],[-267,-4,-8326],[-147,0,-8326],[-147,-4,-8326],[-147,0,-8246],[-147,-4,-8246]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"slalom-mark2","trim":false},
+    {"type":"hull","points":[[147,0,-8946],[147,-4,-8946],[147,0,-9026],[147,-4,-9026],[267,0,-9026],[267,-4,-9026],[267,0,-8946],[267,-4,-8946]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"slalom-mark3","trim":false},
+    {"type":"hull","points":[[-480,0,-2976],[-480,-4,-2976],[-480,0,-2992],[-480,-4,-2992],[480,0,-2992],[480,-4,-2992],[480,0,-2976],[480,-4,-2976]],"mat":"marking","tint":"#ffb347","collide":false,"tag":"kante","trim":false},
+    {"type":"hull","points":[[-480,0,-3736],[-480,-4,-3736],[-480,0,-3752],[-480,-4,-3752],[480,0,-3752],[480,-4,-3752],[480,0,-3736],[480,-4,-3736]],"mat":"marking","tint":"#ffb347","collide":false,"tag":"kante","trim":false},
+    {"type":"hull","points":[[-480,0,-4512],[-480,-4,-4512],[-480,0,-4528],[-480,-4,-4528],[480,0,-4528],[480,-4,-4528],[480,0,-4512],[480,-4,-4512]],"mat":"marking","tint":"#ffb347","collide":false,"tag":"kante","trim":false},
+    {"type":"hull","points":[[-480,0,-5304],[-480,-4,-5304],[-480,0,-5320],[-480,-4,-5320],[480,0,-5320],[480,-4,-5320],[480,0,-5304],[480,-4,-5304]],"mat":"marking","tint":"#ffb347","collide":false,"tag":"kante","trim":false},
+    {"type":"box","min":[-224,0,-11252],"max":[-192,224,-11220],"mat":"dark","collide":false,"trim":false},
+    {"type":"box","min":[192,0,-11252],"max":[224,224,-11220],"mat":"dark","collide":false,"trim":false},
+    {"type":"box","min":[-224,224,-11252],"max":[224,256,-11220],"mat":"light","tint":"#9dff5c","collide":false,"trim":false}
+  ],
+  "triggers": [
+    {"kind":"finish","min":[-192,0,-11300],"max":[192,200,-11172],"tag":"finish"}
+  ],
+  "route": [
+    {"pos":[0,0,0]},
+    {"pos":[0,0,-2400],"note":"kette"},
+    {"pos":[0,0,-2980],"jump":true,"minSpeed":300},
+    {"pos":[0,0,-3280]},
+    {"pos":[0,0,-3740],"jump":true,"minSpeed":300},
+    {"pos":[0,0,-4056]},
+    {"pos":[0,0,-4516],"jump":true,"minSpeed":300},
+    {"pos":[0,0,-4848]},
+    {"pos":[0,0,-5308],"jump":true,"minSpeed":300},
+    {"pos":[0,0,-5656]},
+    {"pos":[0,0,-5811],"note":"ende"},
+    {"pos":[-216,0,-6886],"note":"slalom0"},
+    {"pos":[216,0,-7586],"note":"slalom1"},
+    {"pos":[-216,0,-8286],"note":"slalom2"},
+    {"pos":[216,0,-8986],"note":"slalom3"},
+    {"pos":[-216,0,-9686],"note":"slalom4"},
+    {"pos":[216,0,-10386],"note":"slalom5"},
+    {"pos":[0,0,-11236],"note":"portal"}
+  ],
+  "training": {
+    "lesson": 2,
+    "short": "T2",
+    "group": "basics",
+    "zones": [{"id":"ende","min":[-512,0,-5936],"max":[512,200,-5686]},{"id":"slalom0","min":[-342,0,-6934],"max":[-72,300,-6838]},{"id":"slalom1","min":[72,0,-7634],"max":[342,300,-7538]},{"id":"slalom2","min":[-342,0,-8334],"max":[-72,300,-8238]},{"id":"slalom3","min":[72,0,-9034],"max":[342,300,-8938]}],
+    "gates": [{"id":"tor1","min":[-512,0,-2624],"max":[512,320,-2600],"tint":"#ffb347"},{"id":"ausgang","min":[-512,0,-6160],"max":[512,320,-6136],"tint":"#ffb347"}],
+    "stages": [{"id":"halten","title":"HALTEN","text":"W + LEERTASTE GEDRÜCKT HALTEN\nDU HÜPFST VON SELBST WEITER","task":{"kind":"hopChain","count":6},"opens":["tor1"],"spawn":{"pos":[0,0,0],"yaw":0},"demo":{"kind":"route","from":0,"to":1,"seconds":8},"tips":[{"on":"stuck","after":12,"text":"NICHT HÄMMERN: LEERTASTE EINMAL\nDRÜCKEN UND GEDRÜCKT HALTEN"}]},{"id":"graeben","title":"ÜBER DIE GRÄBEN","text":"EINFACH GEDRÜCKT LASSEN:\nDIE GRÄBEN FLIEGEN UNTER DIR VORBEI","task":{"kind":"reach","zone":"ende"},"opens":["ausgang"],"spawn":{"pos":[0,0,-2750],"yaw":0},"demo":{"kind":"route","from":1,"to":10,"seconds":16},"tips":[{"on":"stuck","after":20,"text":"ERST ANLAUFEN, DANN HÜPFEN:\nIM STAND HÜPFT MAN NUR AUF DER STELLE"}]},{"id":"lenken","title":"LENKEN","text":"IN DER LUFT: W HALTEN, MAUS LENKT\nIM SLALOM AN DEN SÄULEN VORBEI","task":{"kind":"course","zones":["slalom0","slalom1","slalom2","slalom3"],"minSpeed":250,"airborne":true,"groundGrace":0.15},"rank":"bonus","spawn":{"pos":[0,0,-6286],"yaw":0},"demo":{"kind":"route","from":11,"to":14,"seconds":12}},{"id":"kette20","title":"KETTE X20","text":"MEISTER: 20 HOPS AM STÜCK\nOHNE ABZUSETZEN, UM DIE SÄULEN","task":{"kind":"hopChain","count":20},"rank":"master"}],
+    "hud": {"forceKeys":true}
+  }
+}

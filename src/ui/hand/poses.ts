@@ -10,7 +10,8 @@ import { VM_JOINT, VM_JOINT_COUNT } from '../../render/types';
  *   finger: [Spreizen (+ = Richtung Daumen), Grund-, Mittel-, Endgelenk] × Zeige/Mittel/Ring/Klein
  */
 
-export const HAND_POSES = ['relaxed', 'open', 'fist', 'run', 'grip', 'pinch', 'knife', 'thumbsUp', 'point', 'flat', 'crack'] as const;
+/** Plan 007 hängt an (Indizes der alten Posen bleiben): coin, phone, peace, phoneTap. */
+export const HAND_POSES = ['relaxed', 'open', 'fist', 'run', 'grip', 'pinch', 'knife', 'thumbsUp', 'point', 'flat', 'crack', 'coin', 'phone', 'peace', 'phoneTap'] as const;
 export type HandPose = (typeof HAND_POSES)[number];
 
 export const POSE: { readonly [K in HandPose]: number } = {
@@ -25,6 +26,10 @@ export const POSE: { readonly [K in HandPose]: number } = {
   point: 8,
   flat: 9,
   crack: 10,
+  coin: 11,
+  phone: 12,
+  peace: 13,
+  phoneTap: 14,
 };
 
 type F4 = readonly [number, number, number, number];
@@ -55,6 +60,15 @@ const DEFS: { readonly [K in HandPose]: PoseDef } = {
   flat: { wrist: [-4, 0, 0], thumb: [-6, 6, 4, 4], fingers: [[-2, 2, 4, 2], [0, 2, 4, 2], [2, 2, 4, 2], [3, 4, 6, 2]] },
   // Dose öffnen: Griff, Daumen hakt unter die Lasche.
   crack: { wrist: [0, 0, 0], thumb: [8, 30, 44, 50], fingers: [[0, 34, 78, 46], [0, 36, 82, 48], [-1, 38, 82, 46], [-3, 40, 80, 44]] },
+  // Münze (Plan 007): lockere Faust, Daumen eingezogen — die Knöchel bilden eine Treppe für den Knöchel-Lauf.
+  coin: { wrist: [0, 0, 0], thumb: [-10, 58, 40, 46], fingers: [[0, 64, 86, 50], [0, 66, 88, 50], [0, 68, 88, 50], [-2, 70, 86, 48]] },
+  // Handy (Plan 007): Finger um den Rücken, Daumen gestreckt über dem Display (scrollt).
+  phone: { wrist: [0, 0, 0], thumb: [20, 12, 17, 12], fingers: [[0, 30, 70, 40], [0, 34, 74, 42], [-1, 38, 76, 42], [-3, 42, 76, 40]] },
+  // Peace-Zeichen (Selfie): Zeige- und Mittelfinger gestreckt und weit gespreizt (bei 96×54 las sich ±10°
+  // als zwei aneinanderliegende Finger), Rest eingerollt, Daumen darüber.
+  peace: { wrist: [0, 0, 0], thumb: [-6, 50, 36, 40], fingers: [[17, 0, 4, 0], [-16, 0, 4, 0], [0, 86, 100, 60], [-2, 84, 96, 58]] },
+  // Handy: Daumen tippt/wischt aufs Display (Wechsel phone ↔ phoneTap = Daumen bewegt sich).
+  phoneTap: { wrist: [0, 0, 0], thumb: [8, 34, 42, 38], fingers: [[0, 30, 70, 40], [0, 34, 74, 42], [-1, 38, 76, 42], [-3, 42, 76, 40]] },
 };
 
 const DEG = Math.PI / 180;

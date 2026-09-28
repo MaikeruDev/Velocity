@@ -7,24 +7,29 @@ import './menu.css';
 import type { BestTimes, SettingsPatch, SettingsStore } from '../engine/Settings';
 import type { BindAction, GameSettings, GloveId, HeldItemId } from '../engine/settingsTypes';
 import type { UnlockId, UnlockStore } from '../engine/Unlocks';
-import { UNLOCKS, gloveUnlock, itemUnlock, unlockDef } from '../engine/Unlocks';
+import { PENDING_UNLOCKS, UNLOCKS, deriveUnlocks, gloveUnlock, itemUnlock, requirementMet, unlockDef } from '../engine/Unlocks';
 import type { GameEvent } from '../engine/events';
-import { ViewHand } from './hand/ViewHand';
+import { ViewHand, hasPropTricks } from './hand/ViewHand';
 import { makeHandInput } from './hand/handMotion';
 import { ViewModelPreview } from '../render/viewmodel/ViewModelPreview';
-import { BIND_ACTIONS } from '../engine/settingsTypes';
+import { hasItemView } from '../render/viewmodel/items';
+import { hasSkin } from '../render/viewmodel/skins';
+import { BIND_ACTIONS, GLOVE_IDS, HELD_ITEM_IDS } from '../engine/settingsTypes';
 import type { InputAction } from '../engine/InputState';
 import { MOUSE_CODES, isBindableCode, keyLabel } from '../engine/InputState';
 import type { MovementPresetId } from '../player/MovementConfig';
-import type { LevelIndexEntry } from '../world/level/LevelFormat';
+import type { LevelIndexEntry, StageRank, TrainingIndexEntry } from '../world/level/LevelFormat';
+import type { LessonStars, TrainingProgressView } from '../engine/trainingTypes';
 import { formatDiff, formatTime } from './format';
 import { MEDAL_NAMES, MEDAL_ORDER, adminTimeFor, medalFor, nextMedal } from './medals';
 import type { MedalId } from './medals';
 import { effectiveLines } from '../render/lowres';
-import type { FinishResult, MenuEvents, MenuScreen, RawMouseStatus } from './types';
+import type { FinishResult, LessonResult, MenuEvents, MenuScreen, RawMouseStatus } from './types';
 
 /**
- * HTML-Overlays: Titel, Pause, Einstellungen, Steuerung, Ergebnis.
+ * HTML-Overlays: Titel, Pause, Einstellungen, Steuerung, Ergebnis — und das Training (Plan 007):
+ * Knopf TRAINING + Neulings-Band im Titel, Lektionsliste ('training'), Ergebnis einer Lektion
+ * ('lessonDone'), eigene Pause in Lektionen, Admin: Lektion abhaken/zurücksetzen.
  *
  * Tastatur: Das Menü hängt sich NICHT selbst an R/Enter/Esc — die Engine
  * reicht ihre InputActions per handleAction() durch, solange das Menü sichtbar
@@ -67,6 +72,46 @@ interface BindCapture {
 
 const PERCENT = (v: number): string => `${Math.round(v * 100)}%`;
 
+/**
+ * Was das Menü vom Trainings-Fortschritt braucht (Game reicht engine/TrainingProgress durch).
+ * Lesen wie TrainingProgressView, dazu Admin-Aktionen.
+ */
+export interface MenuTraining extends TrainingProgressView {
+  /** Mindestens eine Stufe irgendeiner Lektion erledigt (sonst Neuling, sofern ohne Bestzeit). */
+  readonly started: boolean;
+  /** Lektionen spielbar (Lektions-Logik geladen). false = Liste nur ansehen. */
+  readonly playable: boolean;
+  /** Admin: Lektion komplett abhaken. false = die Lektion ist noch nicht geladen (Stufen unbekannt). */
+  complete(lessonId: string): boolean;
+  /** Admin: Lektion zurücksetzen. */
+  reset(lessonId: string): void;
+}
+
+/** Laufende Lektion für die Pause (Plan 007). Aktionen ohne MenuEvent laufen über die Rückrufe. */
+export interface LessonPauseInfo {
+  readonly name: string;
+  readonly stageTitle: string;
+  /** Zähler je Rang, z. B. "Stufe 2/4" oder "Bonus 1/1" (hudLogic.stageLabel). */
+  readonly stageLabel: string;
+  /** Diese Stufe hat eine Vorführung. */
+  readonly demo: boolean;
+  /** Alle Pflichtstufen erledigt → "Ergebnis ansehen". */
+  readonly done: boolean;
+  /** Zurück an den Start der Stufe (wie Taste F). */
+  respawnStage(): void;
+  /** Lektion jetzt beenden und das Ergebnis zeigen (nur wenn done). */
+  showResult(): void;
+}
+
+const STAR_ON = '★';
+const STAR_OFF = '☆';
+
+/** "★★☆" — gefüllte und leere Sterne. */
+function starText(n: number): string {
+  const k = Math.max(0, Math.min(3, n));
+  return STAR_ON.repeat(k) + STAR_OFF.repeat(3 - k);
+}
+
 export class Menu {
   private readonly settings: SettingsStore;
   private readonly best: BestTimes;
@@ -82,6 +127,8 @@ export class Menu {
     nextLevel: new Set(),
     fullscreen: new Set(),
     adminBest: new Set(),
+    demo: new Set(),
+    skipStage: new Set(),
   };
 
   private current: MenuScreen | null = null;
@@ -105,6 +152,13 @@ export class Menu {
   private adminReturn: 'title' | 'pause' = 'title';
   /** Aktualisiert das offene Admin-Menü an Ort und Stelle (kein Neuaufbau: Scroll und Fokus bleiben). */
   private adminRefresh: (() => void) | null = null;
+  /** Training (Plan 007): Lektionsliste + Fortschritt, null = (noch) keins. */
+  private training: MenuTraining | null = null;
+  private selectedLesson = 0;
+  private lessonResult: LessonResult | null = null;
+  private lessonPause: LessonPauseInfo | null = null;
+  /** Taste der Vorführung (Anzeige im Pause-Menü), z. B. 'H'. */
+  private demoKey = 'H';
 
   constructor(root: HTMLElement, settings: SettingsStore, best: BestTimes, unlocks: UnlockStore) {
     this.settings = settings;
@@ -162,6 +216,46 @@ export class Menu {
     else if (this.current === 'admin') this.showAdmin();
   }
 
+  /**
+   * Training (Plan 007): Lektionen + Fortschritt. Game ruft das nach dem Laden von
+   * training/index.json und nach jeder Änderung des Fortschritts (offene Screens bauen neu).
+   */
+  setTraining(t: MenuTraining | null): void {
+    this.training = t;
+    const n = t ? t.lessons().length : 0;
+    this.selectedLesson = Math.min(this.selectedLesson, Math.max(0, n - 1));
+    if (this.current === 'title') this.showTitle();
+    else if (this.current === 'training') this.showTraining();
+    else if (this.current === 'admin') this.adminRefresh?.();
+  }
+
+  /** Beschriftung der Vorführungs-Taste (KeyBinds.demo) für Pause und Liste. */
+  setDemoKey(label: string): void {
+    this.demoKey = label;
+  }
+
+  /** Lektionsliste (aus dem Titel oder nach einer Lektion). */
+  showTraining(): void {
+    this.lockStatus = LOCK_IDLE;
+    const t = this.training;
+    if (t) {
+      const lessons = t.lessons();
+      // Auswahl auf die empfohlene Lektion, solange man nichts anderes gewählt hat.
+      const rec = recommendedIndex(t);
+      if (this.current !== 'training' && rec >= 0) this.selectedLesson = rec;
+      this.selectedLesson = Math.min(this.selectedLesson, Math.max(0, lessons.length - 1));
+    }
+    this.render('training', this.buildTraining());
+  }
+
+  /** Ergebnis einer Lektion: Sterne, Stufenliste, Weiter/Nochmal/Übersicht. */
+  showLessonDone(r: LessonResult): void {
+    this.lessonResult = r;
+    this.lockStatus = LOCK_IDLE;
+    this.guardUntil = performance.now() + FINISH_INPUT_GUARD_MS;
+    this.render('lessonDone', this.buildLessonDone(r));
+  }
+
   /** Level in der Titel-Liste vorauswählen (z. B. das zuletzt gespielte). */
   select(levelId: string): void {
     const i = this.levels.findIndex((l) => l.id === levelId);
@@ -174,10 +268,14 @@ export class Menu {
     this.render('title', this.buildTitle());
   }
 
-  /** Pause-Screen; ein alter Lock-Fehler wird verworfen (danach ggf. setLockStatus). */
-  showPause(): void {
+  /**
+   * Pause-Screen; ein alter Lock-Fehler wird verworfen (danach ggf. setLockStatus). In einer
+   * Lektion (lesson) mit eigenen Einträgen: Vorführung, Stufe neu, Stufe überspringen, Lektion neu.
+   */
+  showPause(lesson: LessonPauseInfo | null = null): void {
     this.lockStatus = LOCK_IDLE;
-    this.render('pause', this.buildPause());
+    this.lessonPause = lesson;
+    this.render('pause', lesson ? this.buildLessonPause(lesson) : this.buildPause());
   }
 
   /**
@@ -266,6 +364,11 @@ export class Menu {
       case 'pause':
         if (a === 'confirm') this.emit('resume', undefined);
         else if (a === 'restart') this.emit('restart', undefined);
+        else if (this.lessonPause) {
+          // Lektion: H = Vorführung, F = Stufe neu (beides wie im Spiel).
+          if (a === 'demo' && this.lessonPause.demo) this.emit('demo', undefined);
+          else if (a === 'respawn') this.lessonPause.respawnStage();
+        }
         // Esc ist keine User-Aktivierung → Pointer Lock ginge nicht; Weiter nur per Klick/Enter.
         return true;
       case 'finish': {
@@ -285,6 +388,19 @@ export class Menu {
       case 'admin':
         if (a === 'pause' || a === 'confirm') this.leaveAdmin();
         return true;
+      case 'training':
+        if (a === 'pause') this.showTitle();
+        else if (a === 'confirm') this.playSelectedLesson();
+        return true;
+      case 'lessonDone': {
+        const r = this.lessonResult;
+        if (a === 'confirm') {
+          if (r?.nextLessonId) this.emit('play', { levelId: r.nextLessonId });
+          else this.emit('toTitle', undefined);
+        } else if (a === 'restart') this.emit('restart', undefined);
+        else if (a === 'pause') this.emit('toTitle', undefined);
+        return true;
+      }
     }
   }
 
@@ -332,7 +448,7 @@ export class Menu {
   private back(): void {
     switch (this.returnTo) {
       case 'pause':
-        this.showPause();
+        this.showPause(this.lessonPause);
         break;
       case 'finish':
         if (this.finishResult) this.render('finish', this.buildFinish(this.finishResult));
@@ -361,10 +477,18 @@ export class Menu {
       }
       return;
     }
-    if (!this.visible || this.current !== 'title' || this.levels.length === 0) return;
+    if (!this.visible || (this.current !== 'title' && this.current !== 'training')) return;
     if (e.code !== 'ArrowUp' && e.code !== 'ArrowDown') return;
     const t = e.target;
     if (t instanceof HTMLInputElement || t instanceof HTMLSelectElement || t instanceof HTMLTextAreaElement) return;
+    if (this.current === 'training') {
+      const n = this.training?.lessons().length ?? 0;
+      if (n === 0) return;
+      e.preventDefault();
+      this.setSelectedLesson((this.selectedLesson + (e.code === 'ArrowDown' ? 1 : n - 1)) % n, true);
+      return;
+    }
+    if (this.levels.length === 0) return;
     e.preventDefault();
     const n = this.levels.length;
     this.setSelected((this.selected + (e.code === 'ArrowDown' ? 1 : n - 1)) % n, true);
@@ -392,7 +516,7 @@ export class Menu {
   /** Code einer Aktion zuweisen (null = Platz leeren). Derselbe Code verschwindet aus allen anderen Aktionen. */
   private assignBind(action: BindAction, slot: number, code: string | null): void {
     const cur = this.settings.get().keybinds;
-    const next: Record<BindAction, string[]> = { jump: [...cur.jump], crouch: [...cur.crouch], sprint: [...cur.sprint] };
+    const next: Record<BindAction, string[]> = { jump: [...cur.jump], crouch: [...cur.crouch], sprint: [...cur.sprint], demo: [...cur.demo] };
     if (code !== null) for (const a of BIND_ACTIONS) next[a] = next[a].filter((c) => c !== code);
     const list = next[action];
     if (code === null) {
@@ -590,10 +714,37 @@ export class Menu {
     }
 
     const levelPanel = h('div', 'vel-panel', h('h2', 'vel-h2', 'Levelauswahl'), list);
+    const newbie = this.isNewbie();
+    const t = this.training;
+    const rec = t ? recommendedIndex(t) : -1;
+    const recEntry = t && rec >= 0 ? t.lessons()[rec] : null;
+    // Neuling (keine Bestzeit, kein Trainingsfortschritt): Training groß anbieten, nie erzwingen.
+    let band: HTMLElement | null = null;
+    if (newbie && recEntry && t?.playable) {
+      // Keine Tasten-Kappe: "T1" in einer Kappe las sich wie eine Taste. Lektion als zweite Zeile.
+      const go = this.btn(
+        h('span', 'vel-newbie-go-label', 'Training starten', h('small', 'vel-newbie-go-sub', `${recEntry.short} · ${recEntry.name}`)),
+        'vel-btn--primary vel-newbie-go',
+        () => this.emit('play', { levelId: recEntry.id }),
+      );
+      go.dataset.lock = '1';
+      band = h(
+        'div',
+        'vel-newbie',
+        h('div', 'vel-newbie-text', h('strong', '', 'Neu hier?'), ' In 15 Minuten lernst du Bhop, Strafen und Surfen.'),
+        go,
+      );
+    }
+    const trainingBtn = this.btn(
+      h('span', 'vel-training-label', 'Training', t ? h('small', 'vel-training-count', trainingCount(t)) : null),
+      'vel-training-btn',
+      () => this.showTraining(),
+    );
     const side = h(
       'div',
       'vel-panel vel-side',
       h('h2', 'vel-h2', 'System'),
+      trainingBtn,
       this.btn('Einstellungen', '', () => this.showSettings()),
       this.btn('Kosmetik', 'vel-cosmetics-btn', () => this.showCosmetics()),
       this.btn('Steuerung', '', () => this.showControls()),
@@ -612,7 +763,198 @@ export class Menu {
       'section',
       'vel-screen vel-title-screen',
       h('div', '', h('h1', 'vel-logo', 'VELOCITY'), h('div', 'vel-logo-bar'), h('p', 'vel-subtitle', 'Bunnyhop · Air-Strafe · Surf — Neon-Parcours mit 128 Tick')),
-      h('div', 'vel-title-grid', h('div', 'vel-col', levelPanel, start, this.lockHint('')), side),
+      h('div', 'vel-title-grid', h('div', 'vel-col', band, levelPanel, start, this.lockHint('')), side),
+    );
+  }
+
+  /** Neuling: keine Bestzeit in irgendeinem Level und kein Trainingsfortschritt. */
+  private isNewbie(): boolean {
+    if (this.training?.started) return false;
+    return this.levels.every((lv) => this.best.get(lv.id) === null);
+  }
+
+  private playSelectedLesson(): void {
+    const t = this.training;
+    const lv = t?.lessons()[this.selectedLesson];
+    if (lv && t?.playable) this.emit('play', { levelId: lv.id });
+  }
+
+  private setSelectedLesson(i: number, focus = false): void {
+    this.selectedLesson = i;
+    const buttons = this.el.querySelectorAll<HTMLButtonElement>('.vel-lesson');
+    buttons.forEach((b, j) => b.classList.toggle('is-selected', j === i));
+    const label = this.el.querySelector('.vel-start-level');
+    const lv = this.training?.lessons()[i];
+    if (label && lv) label.textContent = `${lv.short} ${lessonName(lv)}`;
+    if (focus) buttons[i]?.focus();
+  }
+
+  // ------------------------------------------------------------------ Training (Plan 007)
+
+  /**
+   * Lektionsliste: Grundlagen und Fortgeschritten, je Zeile Nr · Name · Kurzziel · Sterne ·
+   * EMPFOHLEN (erste Lektion ohne Stern). Klick/Enter startet. Bei 1080p ohne Scrollen.
+   */
+  private buildTraining(): HTMLElement {
+    const t = this.training;
+    const lessons = t ? t.lessons() : [];
+    const rec = t ? recommendedIndex(t) : -1;
+    const playable = t?.playable ?? false;
+    const group = (g: 'basics' | 'advanced', title: string, reward: string): HTMLElement | null => {
+      const rows = lessons.map((lv, i) => ({ lv, i })).filter((x) => x.lv.group === g);
+      if (rows.length === 0) return null;
+      const list = h('div', 'vel-lessons');
+      for (const { lv, i } of rows) {
+        const stars = t ? t.stars(lv.id) : 0;
+        const b = h(
+          'button',
+          `vel-btn vel-level vel-lesson${i === this.selectedLesson ? ' is-selected' : ''}`,
+          h('span', 'vel-level-num', lv.short),
+          h('span', 'vel-level-name', lessonName(lv), lv.subtitle ? h('span', 'vel-level-sub', lv.subtitle) : null),
+          h(
+            'span',
+            'vel-lesson-side',
+            i === rec ? h('small', 'vel-lesson-rec', 'Empfohlen') : null,
+            h('span', `vel-stars vel-stars--${stars}`, starText(stars)),
+          ),
+        );
+        b.type = 'button';
+        b.dataset.lock = '1';
+        b.dataset.lesson = lv.id;
+        if (!playable) {
+          b.dataset.off = '1';
+          b.disabled = true;
+        }
+        b.addEventListener('click', () => {
+          this.setSelectedLesson(i);
+          this.playSelectedLesson();
+        });
+        b.addEventListener('focus', () => this.setSelectedLesson(i));
+        list.append(b);
+      }
+      return h('div', 'vel-panel', h('div', 'vel-lesson-head', h('h2', 'vel-h2', title), h('small', 'vel-lesson-reward', reward)), list);
+    };
+    const sel = lessons[this.selectedLesson];
+    const start = h(
+      'button',
+      'vel-btn vel-btn--primary vel-start',
+      h('span', 'vel-start-main', 'Klicken zum Starten'),
+      h('span', 'vel-start-level', sel ? `${sel.short} ${lessonName(sel)}` : ''),
+    );
+    start.type = 'button';
+    start.dataset.lock = '1';
+    start.addEventListener('click', () => this.playSelectedLesson());
+    if (!sel || !playable) {
+      start.dataset.off = '1';
+      start.disabled = true;
+    }
+    const empty = lessons.length === 0 ? h('div', 'vel-panel', h('div', 'vel-hint', t ? 'Keine Lektionen gefunden.' : 'Lektionen werden geladen …')) : null;
+    return h(
+      'section',
+      'vel-screen vel-training-screen',
+      h(
+        'div',
+        'vel-head-row',
+        h('h1', 'vel-h1', 'Training'),
+        h('div', 'vel-row', this.btn('Zurück', 'vel-btn--small', () => this.showTitle(), 'Esc')),
+      ),
+      h(
+        'p',
+        'vel-hint vel-training-intro',
+        'Kurze Lektionen, kein Tod, kein Timer. Jede Stufe misst, was du tust, und sagt dir, was fehlt. ',
+        h('span', 'vel-mono', `[${this.demoKey}]`),
+        ' zeigt es dir vor.',
+      ),
+      empty,
+      h(
+        'div',
+        'vel-training-grid',
+        group('basics', 'Grundlagen', `bestanden → Fidget-Spinner${soon('item.spinner')}`),
+        group('advanced', 'Fortgeschritten', `alles bestanden → Roboter-Hand${soon('glove.robot')}`),
+      ),
+      start,
+      playable || lessons.length === 0 ? this.lockHint('') : h('p', 'vel-hint vel-lock-hint', 'Die Lektions-Logik fehlt in diesem Build — Lektionen lassen sich nur ansehen.'),
+    );
+  }
+
+  /** Ergebnis einer Lektion. Enter = nächste Lektion (oder Übersicht nach der letzten). */
+  private buildLessonDone(r: LessonResult): HTMLElement {
+    const stored = this.training ? this.training.stars(r.lessonId) : r.stars;
+    const rankName = (rank: StageRank): string => (rank === 'bonus' ? 'Bonus' : rank === 'master' ? 'Meister' : '');
+    const body = h('tbody', '');
+    for (const st of r.stages) {
+      body.append(
+        h(
+          'tr',
+          st.done ? 'is-done' : '',
+          h('td', 'vel-stage-mark', st.done ? '✓' : '·'),
+          h('td', '', st.title),
+          h('td', 'vel-dim', rankName(st.rank)),
+        ),
+      );
+    }
+    const next = r.nextLessonId
+      ? this.btn('Nächste Lektion', 'vel-btn--primary', () => {
+          if (r.nextLessonId) this.emit('play', { levelId: r.nextLessonId });
+        }, 'Enter')
+      : null;
+    if (next) next.dataset.lock = '1';
+    const again = this.btn('Nochmal', '', () => this.emit('restart', undefined), 'R');
+    again.dataset.lock = '1';
+    const overview = r.nextLessonId
+      ? this.btn('Übersicht', '', () => this.emit('toTitle', undefined), 'Esc')
+      : this.btn('Übersicht', 'vel-btn--primary', () => this.emit('toTitle', undefined), 'Enter');
+    const missing = r.stages.filter((s) => !s.done && s.rank !== 'required').length;
+    return h(
+      'section',
+      (r.unlocked.length > 0 ? 'vel-screen vel-finish-screen vel-finish-screen--unlock' : 'vel-screen vel-finish-screen') + ' vel-lesson-done',
+      h('h1', 'vel-h1', r.stars > 0 ? 'Geschafft!' : 'Beendet', h('span', 'vel-dim', `· ${r.name}`)),
+      h('p', `vel-lesson-stars vel-stars--${r.stars}`, starText(r.stars)),
+      stored > r.stars ? h('p', 'vel-hint', `Dein Bestwert in dieser Lektion: ${starText(stored)}`) : null,
+      this.unlockBanner(r.unlocked),
+      h(
+        'div',
+        'vel-panel',
+        h('h2', 'vel-h2', 'Stufen'),
+        h('table', 'vel-splits vel-stages', body),
+        missing > 0 ? h('p', 'vel-hint', `Noch ${missing} Bonus-/Meisterstufe${missing === 1 ? '' : 'n'} offen — mehr Sterne mit „Nochmal“.`) : null,
+      ),
+      h('div', 'vel-row', next, again, overview),
+    );
+  }
+
+  /** Pause in einer Lektion: Stufe im Blick, Vorführung und Stufen-Aktionen statt Neustart/Level. */
+  private buildLessonPause(L: LessonPauseInfo): HTMLElement {
+    const resume = this.btn(h('span', 'vel-resume-label', 'Weiter'), 'vel-btn--primary', () => this.emit('resume', undefined), 'Enter');
+    resume.dataset.lock = '1';
+    const demo = L.demo ? this.btn('Vorführung ansehen', '', () => this.emit('demo', undefined), this.demoKey) : null;
+    if (demo) demo.dataset.lock = '1';
+    const again = this.btn('Stufe neu', '', () => L.respawnStage(), 'F');
+    // 'zählt nicht' sichtbar, nicht nur im Tooltip: wer überspringt, soll wissen, dass es keine Sterne gibt.
+    const skip = this.btn(h('span', '', 'Stufe überspringen ', h('small', 'vel-dim', '· zählt nicht')), '', () => this.emit('skipStage', undefined));
+    skip.dataset.lock = '1';
+    skip.title = 'Zählt nicht für die Sterne.';
+    const restart = this.btn('Lektion neu', '', () => this.emit('restart', undefined), 'R');
+    restart.dataset.lock = '1';
+    const result = L.done ? this.btn('Ergebnis ansehen', '', () => L.showResult()) : null;
+    return h(
+      'section',
+      'vel-screen vel-pause-screen vel-lesson-pause',
+      h('h1', 'vel-h1', 'Pause'),
+      h('p', 'vel-lesson-where', h('span', 'vel-dim', `${L.name} · ${L.stageLabel}`), h('strong', '', L.stageTitle)),
+      h(
+        'div',
+        'vel-panel vel-col',
+        resume,
+        demo,
+        again,
+        skip,
+        restart,
+        result,
+        this.btn('Einstellungen', '', () => this.showSettings()),
+        this.btn('Trainingsübersicht', '', () => this.emit('toTitle', undefined)),
+      ),
+      this.lockHint('Die Maus ist frei. Klick auf „Weiter“, um zurück ins Spiel zu kommen.'),
     );
   }
 
@@ -752,11 +1094,43 @@ export class Menu {
   private unlockCondition(id: UnlockId): string {
     return unlockDef(id)
       .requires.map((r) => {
+        if (r.kind === 'training') {
+          const what = r.group === 'basics' ? 'Training Grundlagen' : 'Training komplett';
+          return r.minStars >= 3 ? `${what} mit ★★★` : `${what} bestanden`;
+        }
         const lv = this.levels.find((l) => l.id === r.levelId);
         const limit = lv?.medals ? ` (${formatSecs(lv.medals[r.medal])} s)` : '';
         return `${MEDAL_NAMES[r.medal]}-Medaille in ${lv?.name ?? r.levelId}${limit}`;
       })
       .join(' + ');
+  }
+
+  /**
+   * Bedingung kompakt für Kacheln und Admin (Plan 007 K6): Medaille in ihrer Farbe, Level als Kürzel
+   * ("SILBER · L1", "GOLD in L1–L4"), Training mit Stern; Sammelziele (mehrere Bedingungen) mit
+   * Fortschritt "2/4". Der ganze Satz steht im Tooltip (unlockCondition).
+   */
+  private unlockCompact(id: UnlockId): { readonly el: HTMLElement; readonly progress: string | null } {
+    const reqs = unlockDef(id).requires;
+    const el = h('span', 'vel-cond');
+    const groups = new Map<MedalId, string[]>();
+    for (const r of reqs) {
+      if (r.kind === 'training') {
+        if (el.childNodes.length > 0) el.append(' + ');
+        el.append(h('span', 'vel-cond-training', r.group === 'basics' ? 'TRAINING Grundlagen' : 'TRAINING komplett'), r.minStars >= 3 ? ' ★★★' : ' ★');
+        continue;
+      }
+      const list = groups.get(r.medal) ?? [];
+      list.push(r.levelId);
+      groups.set(r.medal, list);
+    }
+    for (const [medal, ids] of groups) {
+      if (el.childNodes.length > 0) el.append(' + ');
+      el.append(h('span', `vel-medal vel-medal--${medal}`, MEDAL_NAMES[medal]), ` ${ids.length === 1 ? '·' : 'in'} `, h('span', 'vel-cond-levels', levelRange(ids)));
+    }
+    const best = (levelId: string): number | null => this.best.get(levelId);
+    const progress = reqs.length > 1 ? `${reqs.filter((r) => requirementMet(r, this.levels, best)).length}/${reqs.length}` : null;
+    return { el, progress };
   }
 
   private buildCosmetics(): HTMLElement {
@@ -765,38 +1139,53 @@ export class Menu {
     const tier = h('div', 'vel-preview-tier', '');
     this.previewStart = () => this.startPreview(canvas, tier, () => this.effectiveCosmetics(this.settings.get()));
 
-    const option = <T extends string>(label: string, value: T, lock: UnlockId | null, get: (s: GameSettings) => T, set: (v: T) => SettingsPatch): HTMLElement => {
+    /** Eine Kachel: Name, Schloss + Bedingung (Medaillenfarbe) + Fortschritt, "in Arbeit" ohne Umsetzung. */
+    const tile = <T extends string>(label: string, value: T, lock: UnlockId | null, ready: boolean, get: (s: GameSettings) => T, set: (v: T) => SettingsPatch): HTMLElement => {
       const locked = lock !== null && !this.unlocks.has(lock);
+      const cond = locked && lock !== null ? this.unlockCompact(lock) : null;
       const b = h(
         'button',
-        `vel-btn vel-cosm${locked ? ' is-locked' : ''}`,
-        h('span', 'vel-cosm-name', locked ? h('span', 'vel-lock', '') : null, label),
-        locked && lock !== null ? h('span', 'vel-cosm-cond', this.unlockCondition(lock)) : null,
+        `vel-btn vel-cosm${locked ? ' is-locked' : ''}${ready ? '' : ' is-pending'}`,
+        // Schloss vor der Bedingung, nicht vor dem Namen: im 5er-Raster bekäme der Name sonst zu wenig
+        // Breite und bräche mitten im Wort (STURMFEU-ERZEUG).
+        h('span', 'vel-cosm-name', label),
+        cond ? h('span', 'vel-cosm-cond', h('span', 'vel-lock', ''), cond.el) : null,
+        cond?.progress ? h('span', 'vel-cosm-progress', cond.progress) : null,
+        !locked && !ready ? h('span', 'vel-cosm-pending', 'in Arbeit') : null,
       );
       b.type = 'button';
+      b.dataset.cosmetic = value;
       if (locked && lock !== null) {
         b.setAttribute('aria-disabled', 'true');
         b.title = `Gesperrt: ${this.unlockCondition(lock)}`;
+      } else if (!ready) {
+        // Freigeschaltet (z. B. per Admin), aber Hand/Renderer kennen den Gegenstand noch nicht (Plan 007 Phase 2).
+        b.setAttribute('aria-disabled', 'true');
+        b.title = 'Kommt mit dem nächsten Update';
       } else b.addEventListener('click', () => this.settings.update(set(value)));
       // Markiert ist die WIRKSAME Wahl: zeigt die gespeicherte auf etwas Gesperrtes, ist Standard/Nichts aktiv.
       const refresh = (s: GameSettings): void => {
         const eff = this.effectiveCosmetics(s);
-        b.setAttribute('aria-pressed', String(!locked && get({ ...s, glove: eff.glove, heldItem: eff.item }) === value));
+        b.setAttribute('aria-pressed', String(!locked && ready && get({ ...s, glove: eff.glove, heldItem: eff.item }) === value));
       };
       refresh(this.settings.get());
       this.refreshers.push(refresh);
       return b;
     };
 
+    // Reihenfolge: Standard/Nichts zuerst, dann die Freischalt-Leiter (UNLOCKS, Plan 007 §7).
+    const byLadder = (id: UnlockId | null): number => (id === null ? -1 : UNLOCKS.findIndex((u) => u.id === id));
+    const nameOf = (id: UnlockId | null, fallback: string): string => (id === null ? fallback : unlockDef(id).name);
+    const gloveIds = [...GLOVE_IDS].sort((a, b) => byLadder(gloveUnlock(a)) - byLadder(gloveUnlock(b)));
+    const itemIds = [...HELD_ITEM_IDS].sort((a, b) => byLadder(itemUnlock(a)) - byLadder(itemUnlock(b)));
     const gloves = h(
       'div',
       'vel-panel',
-      h('h2', 'vel-h2', 'Handschuh'),
+      h('h2', 'vel-h2', 'Hand'),
       h(
         'div',
-        'vel-cosm-list',
-        option<GloveId>('Standard', 'classic', gloveUnlock('classic'), (s) => s.glove, (v) => ({ glove: v })),
-        option<GloveId>('Neon-Handschuh', 'neon', gloveUnlock('neon'), (s) => s.glove, (v) => ({ glove: v })),
+        'vel-cosm-tiles vel-cosm-tiles--hand',
+        ...gloveIds.map((g) => tile<GloveId>(nameOf(gloveUnlock(g), 'Standard'), g, gloveUnlock(g), hasSkin(g), (s) => s.glove, (v) => ({ glove: v }))),
       ),
     );
     const items = h(
@@ -805,11 +1194,8 @@ export class Menu {
       h('h2', 'vel-h2', 'In der Hand'),
       h(
         'div',
-        'vel-cosm-list',
-        option<HeldItemId>('Nichts', 'none', itemUnlock('none'), (s) => s.heldItem, (v) => ({ heldItem: v })),
-        option<HeldItemId>('Sammelkarte', 'card', itemUnlock('card'), (s) => s.heldItem, (v) => ({ heldItem: v })),
-        option<HeldItemId>('Dose', 'can', itemUnlock('can'), (s) => s.heldItem, (v) => ({ heldItem: v })),
-        option<HeldItemId>('Butterfly-Messer', 'knife', itemUnlock('knife'), (s) => s.heldItem, (v) => ({ heldItem: v })),
+        'vel-cosm-tiles vel-cosm-tiles--item',
+        ...itemIds.map((i) => tile<HeldItemId>(nameOf(itemUnlock(i), 'Nichts'), i, itemUnlock(i), i === 'none' || (hasItemView(i) && hasPropTricks(i)), (s) => s.heldItem, (v) => ({ heldItem: v }))),
       ),
       h('p', 'vel-hint', 'Mit einem Gegenstand macht die Hand Tricks — je schneller du bist, desto wilder. Bewegungs-Feedback 0 % = sie hält still.'),
     );
@@ -819,14 +1205,14 @@ export class Menu {
       'vel-screen vel-cosmetics-screen',
       h('div', 'vel-head-row', h('h1', 'vel-h1', 'Kosmetik'), h('div', 'vel-row', this.btn('Zurück', 'vel-btn--small', () => this.showTitle(), 'Esc'))),
       h('div', 'vel-cosm-grid', h('div', 'vel-col', gloves, items), preview),
-      h('p', 'vel-hint', 'Freischaltungen gibt es für Gold und die VELOCITY-Medaille — die schwerste Zeit unter Gold.'),
+      h('p', 'vel-hint', 'Freigeschaltet wird über Medaillen und das Training — Sammelziele zeigen, wie weit du bist.'),
     );
   }
 
   // ------------------------------------------------------------------ Admin
 
   private leaveAdmin(): void {
-    if (this.adminReturn === 'pause') this.showPause();
+    if (this.adminReturn === 'pause') this.showPause(this.lessonPause);
     else this.showTitle();
   }
 
@@ -857,7 +1243,10 @@ export class Menu {
         b.textContent = on ? 'An' : 'Aus';
         state.textContent = on ? 'frei' : this.unlocks.isLocked(u.id) ? 'von Hand gesperrt' : 'gesperrt';
       });
-      return h('div', 'vel-admin-row', h('span', 'vel-admin-name', u.name, h('small', 'vel-admin-cond', this.unlockCondition(u.id))), state, b);
+      const cond = this.unlockCompact(u.id);
+      const small = h('small', 'vel-admin-cond', cond.el, cond.progress ? h('span', 'vel-cosm-progress', cond.progress) : null);
+      small.title = this.unlockCondition(u.id);
+      return h('div', 'vel-admin-row', h('span', 'vel-admin-name', u.name, small), state, b);
     });
     const unlockPanel = h(
       'div',
@@ -928,14 +1317,68 @@ export class Menu {
       h('p', 'vel-hint', 'Medaille setzen schreibt eine Bestzeit knapp unter der Grenze. „Bestzeit löschen“ entfernt auch den Ghost.'),
     );
 
+    // --- Training (Plan 007): Lektion abhaken/zurücksetzen; Abhaken schaltet über die Ableitung frei.
+    const t = this.training;
+    const lessonRows = (t ? t.lessons() : []).map((lv) => {
+      const stars = h('span', 'vel-admin-time vel-stars', '');
+      const done = this.btn('Abhaken', 'vel-btn--small', () => {
+        if (!t || !t.complete(lv.id)) {
+          stars.textContent = 'nicht geladen';
+          return;
+        }
+        this.grantTraining();
+        refreshAll();
+      });
+      done.dataset.lesson = lv.id;
+      const reset = this.btn('Zurücksetzen', 'vel-btn--small', () => {
+        t?.reset(lv.id);
+        refreshAll();
+      });
+      refreshers.push(() => {
+        const n = t ? t.stars(lv.id) : 0;
+        stars.textContent = starText(n);
+        stars.className = `vel-admin-time vel-stars vel-stars--${n}`;
+        reset.disabled = n === 0;
+      });
+      return h(
+        'div',
+        'vel-admin-level vel-admin-lesson',
+        h('div', 'vel-admin-level-head', h('span', 'vel-admin-name', `${lv.short} ${lessonName(lv)}`), stars),
+        h('div', 'vel-admin-level-ctl', h('div', 'vel-row', done, reset)),
+      );
+    });
+    const trainingPanel = h(
+      'div',
+      'vel-panel',
+      h('h2', 'vel-h2', 'Training'),
+      lessonRows.length > 0 ? null : h('div', 'vel-hint', t ? 'Keine Lektionen gefunden.' : 'Lektionen werden geladen …'),
+      ...lessonRows,
+      h('p', 'vel-hint', 'Abhaken = alle Stufen (★★★). Freischaltungen aus dem Training (Spinner, Roboter) folgen sofort.'),
+    );
+
     refreshAll();
     return h(
       'section',
       'vel-screen vel-admin-screen',
       h('div', 'vel-head-row', h('h1', 'vel-h1', 'Admin'), h('div', 'vel-row', this.btn('Zurück', 'vel-btn--small', () => this.leaveAdmin(), 'Esc'))),
       h('p', 'vel-hint vel-admin-note', 'Admin-Freischaltungen gelten wie echte.'),
-      h('div', 'vel-admin-grid', unlockPanel, levelPanel),
+      h('div', 'vel-admin-grid', unlockPanel, h('div', 'vel-col', levelPanel, trainingPanel)),
     );
+  }
+
+  /**
+   * Admin hat Training abgehakt: alles, was laut Ableitung (deriveUnlocks mit Trainings-Fortschritt)
+   * am Training hängt und jetzt erfüllt ist, freischalten — auch vor Phase 3 (PENDING_UNLOCKS gilt
+   * nur für die automatische Ableitung; Admin darf alles, wie "Alles freischalten").
+   */
+  private grantTraining(): void {
+    const t = this.training;
+    if (!t) return;
+    const best = (id: string): number | null => this.best.get(id);
+    for (const id of deriveUnlocks(this.levels, best, t)) {
+      if (!unlockDef(id).requires.some((r) => r.kind === 'training')) continue;
+      if (!this.unlocks.has(id)) this.unlocks.set(id, true);
+    }
   }
 
   /**
@@ -963,16 +1406,21 @@ export class Menu {
     hand.anchorRight = 0.3;
     hand.anchorBottom = compact ? 0.36 : 0.33;
     const inp = makeHandInput();
-    const all: readonly { readonly name: string; readonly speed: number; readonly jumpEvery: number }[] = [
+    // Plan 007: zusätzlich Surf (Surf-Zustände der Gegenstände) und Checkpoint (vorn, dann zurück).
+    const all: readonly { readonly name: string; readonly speed: number; readonly jumpEvery: number; readonly surf?: boolean; readonly checkpoint?: boolean }[] = [
       { name: 'Stand', speed: 0, jumpEvery: 0 },
       { name: 'Lauf · 420 u/s', speed: 420, jumpEvery: 1.5 },
       { name: 'Flow · 650 u/s', speed: 650, jumpEvery: 1.2 },
       { name: 'Overdrive · 950 u/s', speed: 950, jumpEvery: 1.0 },
+      { name: 'Surf · 800 u/s', speed: 800, jumpEvery: 0, surf: true },
+      { name: 'Checkpoint', speed: 420, jumpEvery: 0, checkpoint: true },
     ];
     const phases = compact ? all.slice(0, 1) : all;
     const PHASE = 6;
     let t = 0;
     let phase = -1;
+    let phaseStart = 0;
+    let cps = 0;
     let nextJump = 0;
     let air = 0;
     let chain = 0;
@@ -995,14 +1443,24 @@ export class Menu {
       const p = Math.floor(t / PHASE) % phases.length;
       const ph = phases[p];
       if (p !== phase) {
+        if (phase >= 0 && phases[phase].surf) emit({ type: 'surfEnd' });
         phase = p;
+        phaseStart = t;
+        cps = 0;
         nextJump = t + 0.6;
         chain = 0;
         label.textContent = ph.name;
+        if (ph.surf) emit({ type: 'surfStart' });
+      }
+      // Checkpoint-Phase: erst vor der Bestzeit (−0.30), dann dahinter (+0.40).
+      if (ph.checkpoint && cps < 2 && t - phaseStart >= (cps === 0 ? 0.8 : 3.4)) {
+        emit({ type: 'checkpoint', index: cps + 1, total: 3, time: 10 + cps * 6, split: cps === 0 ? -0.3 : 0.4 });
+        label.textContent = cps === 0 ? 'Checkpoint · vorn' : 'Checkpoint · zurück';
+        cps++;
       }
       if (ph.jumpEvery > 0 && t >= nextJump && air <= 0) {
         chain++;
-        emit({ type: 'jump', speed: ph.speed, gain: 8, perfect: chain > 1, chain, sync: 0.9, crouched: false, coyote: false });
+        emit({ type: 'jump', speed: ph.speed, gain: 8, perfect: chain > 1, clean: chain > 1, chain, sync: 0.9, crouched: false, coyote: false });
         air = 0.62;
         nextJump = t + ph.jumpEvery;
       }
@@ -1010,16 +1468,18 @@ export class Menu {
       air = Math.max(0, air - dt);
       if (wasAir && air <= 0) emit({ type: 'land', impact: 300, speed: ph.speed, airTime: 0.62, jumpQueued: true });
       inp.speed = ph.speed;
-      inp.onGround = air <= 0;
-      inp.surfing = false;
-      inp.airTime = 0.62 - air;
+      inp.onGround = air <= 0 && !ph.surf;
+      inp.surfing = ph.surf === true;
+      inp.airTime = ph.surf ? 0 : 0.62 - air;
       inp.stridePhase = (t * 1.6) % 1;
       inp.yawDelta = 0;
       inp.pitchDelta = 0;
       inp.side = 0;
-      inp.surfSide = 0;
+      inp.surfSide = ph.surf ? 0.6 * Math.sin(t * 1.3) : 0;
       hand.update(dt, inp);
-      preview.render(hand.output(true), t);
+      // Synthetischer Takt (132 BPM) für Skin-Effekte im Takt (Roboter-LED) — im Spiel kommt er aus der Musik.
+      const kick = Math.exp(-((t * 132) / 60 - Math.floor((t * 132) / 60)) * 7);
+      preview.render(hand.output(true), t, kick);
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
@@ -1068,8 +1528,9 @@ export class Menu {
       [[...labels(b.jump), 'Mausrad'], 'Springen — Mausrad in beide Richtungen, Taste halten = Auto-Hop'],
       [labels(b.sprint), s.autoSprint ? 'Langsamer laufen (Auto-Sprint: sonst immer volles Tempo)' : 'Sprint am Boden'],
       [labels(b.crouch), 'Ducken — in der Luft geduckt = 18 u höhere Kanten'],
-      [['R'], 'Neustart'],
-      [['F'], ['Zurück zum letzten ', mono('CP'), ' (Timer läuft weiter)']],
+      [['R'], 'Neustart (im Training: Lektion neu)'],
+      [['F'], ['Zurück zum letzten ', mono('CP'), ' (Timer läuft weiter; im Training: Start der Stufe)']],
+      [labels(b.demo), 'Training: Vorführung der Stufe — jede Taste übernimmt wieder'],
       [['Esc'], 'Pause'],
       [['F1'], 'Tuning-Panel (Movement live einstellen)'],
       [['M'], 'Ton an/aus'],
@@ -1178,6 +1639,8 @@ export class Menu {
       h('div', 'vel-setting-hint', 'Am Boden immer volles Tempo (320). ', mono('Shift'), ' = langsamer (250). Aus: ', mono('Shift'), ' halten = Sprint.'),
       this.toggle('Strafe-Assist', (v) => v.strafeAssist, (v) => ({ strafeAssist: v })),
       h('div', 'vel-setting-hint', mono('W'), ' zählt in der Luft nicht, solange ', mono('A'), '/', mono('D'), ' gehalten wird — für Half-Sideways ausschalten.'),
+      this.toggle('Luftlenkung mit W', (v) => v.airControl, (v) => ({ airControl: v })),
+      h('div', 'vel-setting-hint', 'Nur ', mono('W'), ' in der Luft dreht den Flug sanft zur Blickrichtung, ohne Tempo zu gewinnen. Beschleunigen bleibt ', mono('A'), '/', mono('D'), ' + Maus.'),
       this.segmented<MovementPresetId>(
         'Preset',
         [
@@ -1185,11 +1648,11 @@ export class Menu {
           { value: 'cs2', label: 'CS2 Klassik' },
         ],
         (v) => v.movementPreset,
-        // Strafe-Assist folgt dem Preset (CS2: aus) — die Regel lebt in SettingsStore.update,
+        // Strafe-Assist und Luftlenkung folgen dem Preset (CS2: aus) — die Regel lebt in SettingsStore.update,
         // damit Menü und F1-Panel gleich handeln. Danach frei umschaltbar.
         (v) => ({ movementPreset: v }),
       ),
-      h('div', 'vel-setting-hint', mono('CS2'), ': 64 Tick, airaccelerate 12, kein Puffer, Strafe-Assist aus — viel härter.'),
+      h('div', 'vel-setting-hint', mono('CS2'), ': 64 Tick, airaccelerate 12, kein Puffer, Strafe-Assist und Luftlenkung aus — viel härter.'),
     );
 
     const audio = h(
@@ -1229,6 +1692,7 @@ export class Menu {
       this.bindRow('jump', () => 'Springen'),
       this.bindRow('crouch', () => 'Ducken'),
       this.bindRow('sprint', (v) => (v.autoSprint ? 'Langsamer' : 'Sprint')),
+      this.bindRow('demo', () => 'Vorführung'),
       h('div', 'vel-setting-hint', 'Feld anklicken, dann Taste oder Maustaste drücken. ', mono('Esc'), ' bricht ab, ', mono('Entf'), ' leert. Mausrad springt immer.'),
       this.toggle('Vollbild beim Start', (v) => v.fullscreenOnStart, (v) => ({ fullscreenOnStart: v })),
       h('div', 'vel-setting-hint', 'Mit Vollbild duckt ', mono('Strg'), ' sofort, und ', mono('Strg'), '+', mono('W'), ' schließt nicht den Tab.'),
@@ -1411,6 +1875,17 @@ function row(label: string, control: HTMLElement, value: HTMLElement | null): HT
   return r;
 }
 
+/** Level-Kürzel für Kacheln: level3 → L3; eine lückenlose Folge ab 3 Leveln als "L1–L4", sonst "L1 + L2". */
+function levelRange(ids: readonly string[]): string {
+  const nums = ids.map((id) => {
+    const m = /^level(\d+)$/.exec(id);
+    return m ? Number(m[1]) : Number.NaN;
+  });
+  const shorts = ids.map((id, i) => (Number.isNaN(nums[i]) ? id : `L${nums[i]}`));
+  const run = ids.length > 2 && nums.every((n, i) => !Number.isNaN(n) && (i === 0 || n === nums[i - 1] + 1));
+  return run ? `${shorts[0]}–${shorts[shorts.length - 1]}` : shorts.join(' + ');
+}
+
 /** Medaille als kleines Abzeichen; VELOCITY schimmert (CSS), die Metalle sind flach. */
 function medalBadge(m: MedalId): HTMLElement {
   return h('small', 'vel-medal vel-medal--' + m, MEDAL_NAMES[m]);
@@ -1465,5 +1940,43 @@ function mono(text: string): HTMLElement {
 }
 
 function isMenuEvent(k: string): k is keyof MenuEvents {
-  return k === 'play' || k === 'resume' || k === 'restart' || k === 'toTitle' || k === 'nextLevel' || k === 'fullscreen' || k === 'adminBest';
+  return (
+    k === 'play' ||
+    k === 'resume' ||
+    k === 'restart' ||
+    k === 'toTitle' ||
+    k === 'nextLevel' ||
+    k === 'fullscreen' ||
+    k === 'adminBest' ||
+    k === 'demo' ||
+    k === 'skipStage'
+  );
+}
+
+/**
+ * " (bald)", solange die Ableitung eine Freischaltung noch zurückhält (Unlocks.PENDING_UNLOCKS bis Phase 3) —
+ * die Liste soll nichts versprechen, was ein bestandener Lauf heute nicht vergibt. Leert Phase 3 die Menge,
+ * verschwindet der Zusatz von selbst.
+ */
+function soon(id: UnlockId): string {
+  return PENDING_UNLOCKS.has(id) ? ' (bald)' : '';
+}
+
+/** Index der empfohlenen Lektion: die erste ohne Stern (−1 = alle bestanden oder keine). */
+function recommendedIndex(t: TrainingProgressView): number {
+  return t.lessons().findIndex((l) => t.stars(l.id) === 0);
+}
+
+/** "3/8" bestandene Lektionen (Titel-Knopf). */
+function trainingCount(t: TrainingProgressView): string {
+  const lessons = t.lessons();
+  if (lessons.length === 0) return '';
+  const passed = lessons.filter((l) => t.stars(l.id) > 0).length;
+  return `${passed}/${lessons.length}`;
+}
+
+/** Lektionsname ohne vorangestelltes Kürzel ("T3 AIR-STRAFE" → "AIR-STRAFE"; die Liste zeigt es eigen). */
+function lessonName(lv: TrainingIndexEntry): string {
+  const n = lv.name.startsWith(lv.short) ? lv.name.slice(lv.short.length).replace(/^[\s·:.-]+/, '') : lv.name;
+  return n.length > 0 ? n : lv.name;
 }

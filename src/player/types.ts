@@ -64,6 +64,11 @@ export interface PlayerSnapshot {
   readonly surfing: boolean;
   /** Normale der zuletzt berührten Surf-Fläche; (0,0,0), wenn nicht surfend. Wird nicht interpoliert. */
   readonly surfNormal: Vector3;
+  /**
+   * Rutscht gerade (Plan 007, MovementConfig.slideMinSpeed). Diskret, wird nicht interpoliert
+   * (Interpolation übernimmt den neueren Snapshot). Bis Phase 1 immer false.
+   */
+  readonly sliding: boolean;
 }
 
 /** Ereignisse, die die Bewegung pro Tick meldet. */
@@ -76,6 +81,12 @@ export type MovementEvent =
       readonly gain: number;
       /** 0 Boden-Ticks zwischen Landung und Sprung (keine Friction angewandt). */
       readonly perfect: boolean;
+      /**
+       * Verlustfreier Hop (Plan 007): perfect ODER innerhalb der Lande-Gnade
+       * (MovementConfig.landGraceTime). HUD/Audio/Kamera loben hiermit; `perfect` bleibt tick-genau.
+       * Ohne Lande-Gnade (CS2, Phase 0) = perfect.
+       */
+      readonly clean: boolean;
       readonly chain: number;
       /** Sync des gerade beendeten Luftabschnitts der Kette, 0..1 (0, wenn keine Kette lief). */
       readonly sync: number;
@@ -99,7 +110,16 @@ export type MovementEvent =
   | { readonly type: 'footstep'; readonly speed: number; readonly left: boolean }
   | { readonly type: 'duck'; readonly down: boolean }
   | { readonly type: 'surfStart' }
-  | { readonly type: 'surfEnd' };
+  | { readonly type: 'surfEnd' }
+  /** Rutschen beginnt (Plan 007). speed = Horizontal-Tempo nach dem Eintritt, boost = Schub gab es. */
+  | { readonly type: 'slideStart'; readonly speed: number; readonly boost: boolean }
+  /** Rutschen endet (zu langsam, aufgestanden, abgesprungen, Kante). speed = Tempo beim Ende. */
+  | { readonly type: 'slideEnd'; readonly speed: number }
+  /**
+   * Kanten-Assist (Plan 007): step = Lip-Step in der Luft (≤ ledgeStep), vault = Landung auf der
+   * Kante nach einem frontalen Anprall. speed = Tempo danach, dy = Höhenversatz (u) für die Kamera.
+   */
+  | { readonly type: 'ledge'; readonly kind: 'step' | 'vault'; readonly speed: number; readonly dy: number };
 
 /** Beschreibbare Variante von PlayerSnapshot — für PlayerMovement, Interpolation und Snapshot-Puffer. */
 export type MutablePlayerSnapshot = { -readonly [K in keyof PlayerSnapshot]: PlayerSnapshot[K] };

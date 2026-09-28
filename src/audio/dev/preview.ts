@@ -226,7 +226,7 @@ function emit(e: GameEvent): void {
 
 function jumpEvent(): GameEvent {
   chain++;
-  return { type: 'jump', speed: state.speed, gain: chain > 1 ? 12 : 0, perfect: true, chain, sync: state.strafeSync, crouched: false, coyote: false };
+  return { type: 'jump', speed: state.speed, gain: chain > 1 ? 12 : 0, perfect: true, clean: true, chain, sync: state.strafeSync, crouched: false, coyote: false };
 }
 
 function buildUi(): void {

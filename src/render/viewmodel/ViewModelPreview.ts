@@ -40,6 +40,8 @@ export class ViewModelPreview {
   private readonly bgCam = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private readonly bgMat: ShaderMaterial;
   private disposed = false;
+  private vmCalls = 0;
+  private vmTriangles = 0;
 
   constructor(
     readonly canvas: HTMLCanvasElement,
@@ -102,19 +104,37 @@ export class ViewModelPreview {
     this.vm.prewarm(this.renderer, item, glove);
   }
 
-  render(frame: ViewModelFrame, time: number): void {
+  /**
+   * Ein Bild. `kick` 0..1 = Kick-Hüllkurve für Skin-Effekte (Roboter-LED); das Menü spielt
+   * einen synthetischen Takt, die Dev-Seite eine feste Phase.
+   */
+  render(frame: ViewModelFrame, time: number, kick = 0): void {
     if (this.disposed) return;
     const r = this.renderer;
     this.vm.setTime(time);
+    this.vm.setKick(kick);
     r.setRenderTarget(this.target);
     r.render(this.bg, this.bgCam);
+    this.vmCalls = 0;
+    this.vmTriangles = 0;
     if (frame.visible) {
       this.vm.apply(frame);
       this.vm.render(r);
+      this.vmCalls = r.info.render.calls;
+      this.vmTriangles = r.info.render.triangles;
     }
     r.setRenderTarget(null);
     this.post.update({ time, speed01: 0, kick: 0, flash: 0, flashColor: [1, 1, 1], fade: 0 });
     r.render(this.post.scene, this.post.camera);
+  }
+
+  /** Draw Calls / Dreiecke des Viewmodel-Passes im letzten render() (Budget: ≤ 50 / ≤ 12 000). */
+  get lastCalls(): number {
+    return this.vmCalls;
+  }
+
+  get lastTriangles(): number {
+    return this.vmTriangles;
   }
 
   dispose(): void {

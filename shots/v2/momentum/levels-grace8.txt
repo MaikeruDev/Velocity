@@ -1,0 +1,77 @@
+[momentum patch] aktiv: {"slope":false,"slopeK":1,"grace":true,"graceTicks":8,"graceAir":0.1,"graceClamp":true,"kicker":false,"kickK":1,"kickJump":false,"kickJumpK":1,"surfW":false,"surfWDive":0}
+
+✓ level1.json — 01 GRUNDKURS · Lauf. Spring. Strafe.  (1.7 s)
+    Bodenmarkierungen: 17, alle liegen auf
+    Kill-Zonen: 26 (kill-start, kill-row, kill-curve, kill-slalom, kill-chute-l1, kill-chute-r1, kill-chute-l2, kill-chute-r2, kill-chute-l3, kill-chute-r3, kill-chute-l4, kill-chute-r4, kill-chute-l5, kill-chute-r5, kill-chute-l6, kill-chute-r6, kill-chute-l7, kill-chute-r7, kill-chute-l8, kill-chute-r8, kill-chute-l9, kill-chute-r9, kill-chute-l10, kill-chute-r10, kill-chute-l11, kill-chute-r11)
+    Sprünge: 26, knappste Reserve 22 % bei Route 15→16 (); Überschieß-Band 1.2×: jede Landung hält
+    Bot-Durchlauf sync 1.0: 8/8 Seeds im Ziel, Median 24.3 s (24.3–24.3, max 1089 u/s)
+    Bot-Durchlauf sync 0.8: 8/8 Seeds im Ziel, Median 32.8 s (26.8–41.2, max 1060 u/s)
+    Bot-Durchlauf Hand 2°: 8/8 Seeds im Ziel, Median 32.5 s (29.0–36.1, max 860 u/s)
+    Bot-Durchlauf Hand 3°: 8/8 Seeds im Ziel, Median 37.6 s (35.4–40.4, max 831 u/s)
+    Bot-Durchlauf sync 0.7: 8/8 Seeds im Ziel, Median 34.7 s (29.0–42.4, max 930 u/s)
+    Bot-Durchlauf Hand 1°: 8/8 Seeds im Ziel, Median 28.5 s (26.8–30.4, max 982 u/s)
+    Bot-Durchlauf Hand 1.5°: 8/8 Seeds im Ziel, Median 31.1 s (27.5–35.8, max 982 u/s)
+    Abschnitt × Bot (aus dem Stand):   sync 1.0  sync 0.8   Hand 2°   Hand 3°  sync 0.7  sync 0.9   Hand 1° Hand 1.5°
+      Start→CP1     4.3 s     4.5 s     4.6 s     5.0 s     4.7 s     4.5 s     4.4 s     4.6 s
+      CP1→CP2       6.5 s     7.6 s     7.7 s     9.1 s     8.4 s     7.7 s     6.7 s     7.4 s
+      CP2→CP3       7.9 s     9.3 s     8.9 s     9.9 s     8.5 s     8.1 s     8.5 s     9.1 s
+      CP3→Ziel     11.4 s    16.7 s    15.9 s    15.2 s    15.2 s    14.2 s    13.2 s    12.4 s
+    Surf-Raster chutea → Ziel: 90/90 Läufe, 0 Nahtstopps, Tempo am Ziel 808–1613 u/s
+    Deko frei von der Flugbahn (4 Bot-Läufe, 17109 Ticks, Oberkörper+Kopf gegen 117 Deko-Brushes)
+    Design: Erstkontakt ohne Tod — 270 Läufe (W, Leertaste ab 0.2–1.5 s gehalten, ±96, mit/ohne Shift) bis CP1 in 6.33–8.16 s; 201 Läufe über eine Auffangmulde, Verlust je Mulde ≤ 0.16 s
+    Design: Grundkurs — unter allen 10 Lücken bis zur Crouch-Kante liegt Boden ≤ 50 u tief (Ausstieg ohne Respawn)
+    Design: Slalom braucht Lenkung — 115 Geradeaus-Läufe (Versatz ±176, 509–1049 u/s) scheitern alle
+    Design: Crouch-Kante hat bei 320–913 u/s überall eine Absprungzone ≥ 48 u, Plan-Knoten trägt 550–913; Fehlversuche landen auf H7 (720 Läufe)
+    Design: Surf-Rutsche fängt jeden — 250 Läufe ab der letzten Insel (320–1300 u/s, ±96, geradeaus ohne Surfen und W-Halter) im Ziel, langsamster W-Halter 5.2 s
+    Brushes 192 (Kollision 75, Deko 117), Flächen 1144 (begehbar 72, Surf 6, 60–60°)
+    Bounds (-5140, -2000, -8770) … (3350, 2570, 3864), Größe (8490, 4570, 12634)
+    Trigger: Start 1, Checkpoints 3, Ziel 1; killY -1700, voidY -1900
+    Route 39 Knoten, 19188 u, Bot sync 1.0 24.3 s, Hand 3° 37.6 s (Median), mit Spiel-Uhr 33.8 s, Par 37 s, Medaillen 36.2/30.4/24.5/23.4/22.25 s
+  ! Bot-Durchlauf sync 0.9: 7/8 Seeds im Ziel, Median 30.5 s (25.0–33.4, max 1096 u/s) — Seed 5: kill bei (-2673, -253, -1444) vor Knoten 31
+  ! Design: Könner-Inseln lohnen nicht (Soll ≥ 5/6, ≥ 1 s): Hand 1° über die Inseln 2/6 durch (x 27.5 27.5 x x x s), Ersparnis Ø 0.12 s (2 Paare); perfekter Bot -0.83 s schneller
+
+✓ level2.json — 02 SCHLEIFE · Speed ist eine Entscheidung.  (1.3 s)
+    Bodenmarkierungen: 20, alle liegen auf
+    Kill-Zonen: 34 (kill-ring, kill-ring-n, kill-runway, kill-s1, kill-s2, kill-s3, kill-side-w-surf1, kill-side-e-surf1, kill-side-w-surf2.1, kill-side-e-surf2.1, kill-side-w-surf2.2, kill-side-e-surf2.2, kill-side-w-surf2.3, kill-side-e-surf2.3, kill-side-w-surf3.1, kill-side-e-surf3.1, kill-side-w-surf3.2, kill-side-e-surf3.2, kill-side-w-surf3.3, kill-side-e-surf3.3, kill-side-w-surf4a, kill-side-e-surf4a, kill-side-w-surf4b.1, kill-side-e-surf4b.1, kill-side-w-surf4b.2, kill-side-e-surf4b.2, kill-side-w-surf4c, kill-side-e-surf4c, kill-side-w-surf4d, kill-side-e-surf4d, kill-side-w-surf4e, kill-side-e-surf4e, kill-final, kill-gap)
+    Sprünge: 15, knappste Reserve 13 % bei Route 31→32 (Launch); Überschieß-Band 1.2×: jede Landung hält
+    Bot-Durchlauf sync 1.0: 8/8 Seeds im Ziel, Median 17.2 s (17.2–17.2, max 1049 u/s)
+    Bot-Durchlauf sync 0.8: 8/8 Seeds im Ziel, Median 18.9 s (18.3–20.4, max 1010 u/s)
+    Bot-Durchlauf Hand 2°: 8/8 Seeds im Ziel, Median 19.1 s (18.6–20.1, max 970 u/s)
+    Bot-Durchlauf Hand 3°: 8/8 Seeds im Ziel, Median 21.7 s (20.5–25.2, max 899 u/s)
+    Bot-Durchlauf sync 0.7: 8/8 Seeds im Ziel, Median 20.9 s (19.4–23.6, max 976 u/s)
+    Bot-Durchlauf sync 0.9: 8/8 Seeds im Ziel, Median 17.7 s (17.4–19.3, max 1050 u/s)
+    Bot-Durchlauf Hand 1°: 8/8 Seeds im Ziel, Median 17.3 s (16.6–18.5, max 1052 u/s)
+    Bot-Durchlauf Hand 1.5°: 8/8 Seeds im Ziel, Median 18.3 s (17.9–19.6, max 989 u/s)
+    Abschnitt × Bot (aus dem Stand):   sync 1.0  sync 0.8   Hand 2°   Hand 3°  sync 0.7  sync 0.9   Hand 1° Hand 1.5°
+      Start→CP1     4.0 s     4.0 s     4.0 s     4.4 s     4.1 s     3.9 s     4.0 s     3.9 s
+      CP1→CP2       5.9 s     6.3 s     6.6 s     7.6 s     6.7 s     6.2 s     6.1 s     6.3 s
+      CP2→CP3       5.0 s     5.2 s     5.0 s     5.5 s     5.3 s     5.3 s     4.9 s     4.9 s
+      CP3→CP4       2.6 s     2.5 s     2.5 s     2.4 s     3.1 s     2.8 s     2.5 s     2.4 s
+      CP4→Ziel      4.9 s     5.3 s     5.3 s     5.8 s     5.8 s     5.0 s     5.2 s     5.1 s
+    Grundtechnik-Surfer aus dem Stand (Blick 0°/2°, Tempo am nächsten Checkpoint): CP2 684 u/s / 556 u/s; CP3 474 u/s / 428 u/s; CP4 812 u/s / 503 u/s
+    Surf-Raster surf0b → CP3: 108/108 Läufe, 0 Nahtstopps, Tempo am Ziel 548–1465 u/s
+    Surf-Raster surf2 → CP3: 108/108 Läufe, 0 Nahtstopps, Tempo am Ziel 505–1419 u/s
+    Surf-Raster surf3 → CP4: 90/90 Läufe, 0 Nahtstopps, Tempo am Ziel 506–1400 u/s
+    Surf-Raster surf4a → Ziel: 90/90 Läufe, 0 Nahtstopps, Tempo am Ziel 736–1318 u/s
+    Deko frei von der Flugbahn (4 Bot-Läufe, 10975 Ticks, Oberkörper+Kopf gegen 114 Deko-Brushes)
+    Design: Erstkontakt ohne Tod — 270 Läufe (W, Leertaste ab 0.2–1.5 s gehalten, ±96, mit/ohne Shift) bis CP1 in 5.80–7.35 s; 253 Läufe über eine Auffangmulde, Verlust je Mulde ≤ 0.25 s
+    Design: Ausfahrt ohne Todesstreifen mit Auto-Hop (600 Läufe ab Ring und T0, 320–1500 u/s, seitlich ±96)
+    Design: Ausfahrt-Linien ab T0 (geradeaus, Auto-Hop): apron→exit1→surf0b ab 320, apron→exit1→surf1 ab 540, apron→surf0b ab 600, apron→surf1 ab 840, apron→surf2 ab 1040, apron ab 1300 u/s
+    Design: S0 fängt Nicht-Surfer — 12 W-Halter ab CP2 (Blick ±30° / auf Knoten, mit und ohne Leertaste) 12 s ohne Tod
+    Design: Rückweg von der S0-Fläche aufs Vorfeld begehbar (W / W + Leertaste, ≤ 6.9 s)
+    Design: Finale aus dem Stand (CP4) landet mit -1°: 197 %, 0°: 190 %, 2°: 73 % Weitenreserve (Lücke 488 u)
+    Brushes 338 (Kollision 224, Deko 114), Flächen 2026 (begehbar 216, Surf 20, 60–61°)
+    Bounds (-4350, -4500, -9027) … (4550, 4260, 2730), Größe (8900, 8760, 11757)
+    Trigger: Start 1, Checkpoints 4, Ziel 1; killY -3700, voidY -4400
+    Route 33 Knoten, 12084 u, Bot sync 1.0 17.2 s, Hand 3° 21.7 s (Median), mit Spiel-Uhr 20.3 s, Par 22 s, Medaillen 21.4/18.7/17.5/16.7/15.86 s
+
+✓ sandbox.json — SANDBOX · Testgelände für Entwickler  (0.0 s)
+    Kill-Zonen: 1 (?)
+    keine Route
+    Brushes 22 (Kollision 22, Deko 0), Flächen 131 (begehbar 21, Surf 2, 57–57°)
+    Bounds (-3000, -640, -3000) … (3000, 128, 3000), Größe (6000, 768, 6000)
+    Trigger: Start 1, Checkpoints 1, Ziel 1; killY -1500, voidY -2400
+
+✓ Selbsttest: 25/25 eingebaute Fehler erkannt
+
+✓ 3 Level, 0 Fehler, 2 Warnungen

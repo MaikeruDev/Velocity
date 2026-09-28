@@ -1,0 +1,7 @@
+Gratsprung (Ziellinie rechts, Tiefe 120): {"sync":1} 0/4 | {"sync":0.8} 0/4 | {"aimNoiseDeg":2} 0/4 | {"aimNoiseDeg":3} 0/4
+Gratsprung (Ziellinie rechts, Tiefe 220): {"sync":1} 0/4 | {"sync":0.8} 0/4 | {"aimNoiseDeg":2} 0/4 | {"aimNoiseDeg":3} 0/4
+Gratsprung (Ziellinie rechts, Tiefe 320): {"sync":1} 4/4 | {"sync":0.8} 4/4 | {"aimNoiseDeg":2} 4/4 | {"aimNoiseDeg":3} 4/4
+Gabel-Drop 256 u auf einen Grat unter der Linie: links 10/12 | rechts 11/12
+Gabel-Drop 384 u auf einen Grat unter der Linie: links 12/12 | rechts 9/12
+Gabel-Drop 448 u auf einen Grat unter der Linie: links 12/12 | rechts 9/12
+Gabel-Drop 512 u auf einen Grat unter der Linie: links 12/12 | rechts 9/12

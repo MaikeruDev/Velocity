@@ -1,0 +1,132 @@
+[
+  {
+    "name": "Original",
+    "level": "level1",
+    "errors": [],
+    "warnings": [
+      "Design: Könner-Inseln lohnen nicht (Soll ≥ 5/6, ≥ 1 s): Hand 1° über die Inseln 2/6 durch (x 29.0 27.5 x x x s), Ersparnis Ø -0.77 s (2 Paare); perfekter Bot 0.00 s schneller"
+    ],
+    "fresh": [],
+    "med": {
+      "velocity": 22.2421875,
+      "silver": 28.9375,
+      "bronze": 34.453125
+    }
+  },
+  {
+    "name": "Original",
+    "level": "level2",
+    "errors": [],
+    "warnings": [],
+    "fresh": [],
+    "med": {
+      "velocity": 15.8515625,
+      "silver": 17.796875,
+      "bronze": 20.3359375
+    }
+  },
+  {
+    "name": "Slide",
+    "level": "level1",
+    "errors": [],
+    "warnings": [
+      "Design: Könner-Inseln lohnen nicht (Soll ≥ 5/6, ≥ 1 s): Hand 1° über die Inseln 2/6 durch (x 29.0 27.5 x x x s), Ersparnis Ø -0.77 s (2 Paare); perfekter Bot 0.00 s schneller"
+    ],
+    "fresh": [],
+    "med": {
+      "velocity": 22.2421875,
+      "silver": 28.9375,
+      "bronze": 34.453125
+    }
+  },
+  {
+    "name": "Slide",
+    "level": "level2",
+    "errors": [],
+    "warnings": [],
+    "fresh": [],
+    "med": {
+      "velocity": 15.8515625,
+      "silver": 17.796875,
+      "bronze": 20.3359375
+    }
+  },
+  {
+    "name": "Kanten-Assist",
+    "level": "level1",
+    "errors": [],
+    "warnings": [
+      "Design: Könner-Inseln lohnen nicht (Soll ≥ 5/6, ≥ 1 s): Hand 1° über die Inseln 2/6 durch (x 29.0 27.5 x x x s), Ersparnis Ø -0.77 s (2 Paare); perfekter Bot 0.00 s schneller"
+    ],
+    "fresh": [],
+    "med": {
+      "velocity": 22.2421875,
+      "silver": 28.9375,
+      "bronze": 33.75
+    }
+  },
+  {
+    "name": "Kanten-Assist",
+    "level": "level2",
+    "errors": [],
+    "warnings": [],
+    "fresh": [],
+    "med": {
+      "velocity": 15.8515625,
+      "silver": 17.796875,
+      "bronze": 20.3359375
+    }
+  },
+  {
+    "name": "Luftkontrolle",
+    "level": "level1",
+    "errors": [],
+    "warnings": [
+      "Design: Könner-Inseln lohnen nicht (Soll ≥ 5/6, ≥ 1 s): Hand 1° über die Inseln 2/6 durch (x 29.0 27.5 x x x s), Ersparnis Ø -0.77 s (2 Paare); perfekter Bot 0.00 s schneller"
+    ],
+    "fresh": [],
+    "med": {
+      "velocity": 22.2421875,
+      "silver": 28.9375,
+      "bronze": 34.453125
+    }
+  },
+  {
+    "name": "Luftkontrolle",
+    "level": "level2",
+    "errors": [],
+    "warnings": [],
+    "fresh": [],
+    "med": {
+      "velocity": 15.8515625,
+      "silver": 17.796875,
+      "bronze": 20.3359375
+    }
+  },
+  {
+    "name": "Alle drei",
+    "level": "level1",
+    "errors": [],
+    "warnings": [
+      "Design: Könner-Inseln lohnen nicht (Soll ≥ 5/6, ≥ 1 s): Hand 1° über die Inseln 2/6 durch (x 29.0 27.5 x x x s), Ersparnis Ø -0.77 s (2 Paare); perfekter Bot 0.00 s schneller"
+    ],
+    "fresh": [],
+    "med": {
+      "velocity": 22.2421875,
+      "silver": 28.9375,
+      "bronze": 33.75
+    }
+  },
+  {
+    "name": "Alle drei",
+    "level": "level2",
+    "errors": [],
+    "warnings": [],
+    "fresh": [],
+    "med": {
+      "velocity": 15.8515625,
+      "silver": 17.796875,
+      "bronze": 20.3359375
+    }
+  }
+]

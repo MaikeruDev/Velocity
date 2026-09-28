@@ -1,0 +1,468 @@
+{
+ "t8": [
+  {
+   "name": "Grundtechnik (Blick ±3°, 0.3 s Reaktion)",
+   "passed": 20,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "v800",
+     "median": 6.09375,
+     "share": 1,
+     "max": 7.3671875
+    },
+    {
+     "stage": "v1000",
+     "median": 8.171875,
+     "share": 1,
+     "max": 9.34375
+    }
+   ],
+   "verdicts": {}
+  },
+  {
+   "name": "Grundtechnik (Blick ±6°, 0.6 s Reaktion)",
+   "passed": 6,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "v800",
+     "median": 7.6953125,
+     "share": 0.85,
+     "max": 10.4453125
+    },
+    {
+     "stage": "v1000",
+     "median": 9.1953125,
+     "share": 0.3,
+     "max": 11.6640625
+    }
+   ],
+   "verdicts": {
+    "noMouse": 1
+   }
+  },
+  {
+   "name": "Fehler: nur W",
+   "passed": 0,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "v800",
+     "median": null,
+     "share": 0,
+     "max": null
+    },
+    {
+     "stage": "v1000",
+     "median": null,
+     "share": 0,
+     "max": null
+    }
+   ],
+   "verdicts": {}
+  },
+  {
+   "name": "Fehler: nichts drücken",
+   "passed": 0,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "v800",
+     "median": null,
+     "share": 0,
+     "max": null
+    },
+    {
+     "stage": "v1000",
+     "median": null,
+     "share": 0,
+     "max": null
+    }
+   ],
+   "verdicts": {}
+  }
+ ],
+ "t7": [
+  {
+   "slope": 3,
+   "name": "3°: Grundtechnik (Blick ±3°, 0.3 s Reaktion)",
+   "passed": 20,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "halten3",
+     "median": 5.3984375,
+     "share": 1,
+     "max": 5.3984375
+    },
+    {
+     "stage": "halten6",
+     "median": 11.3984375,
+     "share": 1,
+     "max": 11.3984375
+    }
+   ],
+   "verdicts": {}
+  },
+  {
+   "slope": 3,
+   "name": "3°: Grundtechnik (Blick ±6°, 0.6 s Reaktion)",
+   "passed": 20,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "halten3",
+     "median": 5.3984375,
+     "share": 1,
+     "max": 5.3984375
+    },
+    {
+     "stage": "halten6",
+     "median": 11.3984375,
+     "share": 1,
+     "max": 11.3984375
+    }
+   ],
+   "verdicts": {}
+  },
+  {
+   "slope": 3,
+   "name": "3°: W + D (Strafe-Assist)",
+   "passed": 20,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "halten3",
+     "median": 5.3984375,
+     "share": 1,
+     "max": 5.3984375
+    },
+    {
+     "stage": "halten6",
+     "median": 11.3984375,
+     "share": 1,
+     "max": 11.3984375
+    }
+   ],
+   "verdicts": {}
+  },
+  {
+   "slope": 3,
+   "name": "3°: Fehler: nur W",
+   "passed": 0,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "halten3",
+     "median": null,
+     "share": 0,
+     "max": null
+    },
+    {
+     "stage": "halten6",
+     "median": null,
+     "share": 0,
+     "max": null
+    }
+   ],
+   "verdicts": {}
+  },
+  {
+   "slope": 3,
+   "name": "3°: Fehler: nichts drücken",
+   "passed": 0,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "halten3",
+     "median": null,
+     "share": 0,
+     "max": null
+    },
+    {
+     "stage": "halten6",
+     "median": null,
+     "share": 0,
+     "max": null
+    }
+   ],
+   "verdicts": {}
+  },
+  {
+   "slope": 3,
+   "name": "3°: Fehler: Taste von der Rampe weg",
+   "passed": 0,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "halten3",
+     "median": null,
+     "share": 0,
+     "max": null
+    },
+    {
+     "stage": "halten6",
+     "median": null,
+     "share": 0,
+     "max": null
+    }
+   ],
+   "verdicts": {}
+  },
+  {
+   "slope": 0,
+   "name": "0°: Grundtechnik (Blick ±3°, 0.3 s Reaktion)",
+   "passed": 20,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "halten3",
+     "median": 5.375,
+     "share": 1,
+     "max": 5.375
+    },
+    {
+     "stage": "halten6",
+     "median": 11.375,
+     "share": 1,
+     "max": 11.375
+    }
+   ],
+   "verdicts": {}
+  },
+  {
+   "slope": 0,
+   "name": "0°: Grundtechnik (Blick ±6°, 0.6 s Reaktion)",
+   "passed": 20,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "halten3",
+     "median": 5.375,
+     "share": 1,
+     "max": 5.375
+    },
+    {
+     "stage": "halten6",
+     "median": 11.375,
+     "share": 1,
+     "max": 11.375
+    }
+   ],
+   "verdicts": {}
+  },
+  {
+   "slope": 0,
+   "name": "0°: W + D (Strafe-Assist)",
+   "passed": 20,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "halten3",
+     "median": 5.375,
+     "share": 1,
+     "max": 5.375
+    },
+    {
+     "stage": "halten6",
+     "median": 11.375,
+     "share": 1,
+     "max": 11.375
+    }
+   ],
+   "verdicts": {}
+  },
+  {
+   "slope": 0,
+   "name": "0°: Fehler: nur W",
+   "passed": 0,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "halten3",
+     "median": null,
+     "share": 0,
+     "max": null
+    },
+    {
+     "stage": "halten6",
+     "median": null,
+     "share": 0,
+     "max": null
+    }
+   ],
+   "verdicts": {}
+  },
+  {
+   "slope": 0,
+   "name": "0°: Fehler: nichts drücken",
+   "passed": 0,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "halten3",
+     "median": null,
+     "share": 0,
+     "max": null
+    },
+    {
+     "stage": "halten6",
+     "median": null,
+     "share": 0,
+     "max": null
+    }
+   ],
+   "verdicts": {}
+  },
+  {
+   "slope": 0,
+   "name": "0°: Fehler: Taste von der Rampe weg",
+   "passed": 0,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "halten3",
+     "median": null,
+     "share": 0,
+     "max": null
+    },
+    {
+     "stage": "halten6",
+     "median": null,
+     "share": 0,
+     "max": null
+    }
+   ],
+   "verdicts": {}
+  },
+  {
+   "slope": 10,
+   "name": "10°: Grundtechnik (Blick ±3°, 0.3 s Reaktion)",
+   "passed": 0,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "halten3",
+     "median": 5.453125,
+     "share": 1,
+     "max": 5.453125
+    },
+    {
+     "stage": "halten6",
+     "median": null,
+     "share": 0,
+     "max": null
+    }
+   ],
+   "verdicts": {}
+  },
+  {
+   "slope": 10,
+   "name": "10°: Grundtechnik (Blick ±6°, 0.6 s Reaktion)",
+   "passed": 8,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "halten3",
+     "median": 5.453125,
+     "share": 1,
+     "max": 5.453125
+    },
+    {
+     "stage": "halten6",
+     "median": 11.453125,
+     "share": 0.4,
+     "max": 11.453125
+    }
+   ],
+   "verdicts": {
+    "noMouse": 1
+   }
+  },
+  {
+   "slope": 10,
+   "name": "10°: W + D (Strafe-Assist)",
+   "passed": 0,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "halten3",
+     "median": 5.453125,
+     "share": 1,
+     "max": 5.453125
+    },
+    {
+     "stage": "halten6",
+     "median": null,
+     "share": 0,
+     "max": null
+    }
+   ],
+   "verdicts": {}
+  },
+  {
+   "slope": 10,
+   "name": "10°: Fehler: nur W",
+   "passed": 0,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "halten3",
+     "median": null,
+     "share": 0,
+     "max": null
+    },
+    {
+     "stage": "halten6",
+     "median": null,
+     "share": 0,
+     "max": null
+    }
+   ],
+   "verdicts": {}
+  },
+  {
+   "slope": 10,
+   "name": "10°: Fehler: nichts drücken",
+   "passed": 0,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "halten3",
+     "median": null,
+     "share": 0,
+     "max": null
+    },
+    {
+     "stage": "halten6",
+     "median": null,
+     "share": 0,
+     "max": null
+    }
+   ],
+   "verdicts": {}
+  },
+  {
+   "slope": 10,
+   "name": "10°: Fehler: Taste von der Rampe weg",
+   "passed": 0,
+   "of": 20,
+   "perStage": [
+    {
+     "stage": "halten3",
+     "median": null,
+     "share": 0,
+     "max": null
+    },
+    {
+     "stage": "halten6",
+     "median": null,
+     "share": 0,
+     "max": null
+    }
+   ],
+   "verdicts": {}
+  }
+ ]
+}

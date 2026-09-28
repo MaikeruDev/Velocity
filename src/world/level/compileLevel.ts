@@ -3,7 +3,7 @@ import { computeHull } from '../geometry/convexHull';
 import { BrushWorld } from '../collision/BrushWorld';
 import type { BrushFace, CompiledBrush, Plane } from '../collision/types';
 import { MIN_GROUND_NORMAL_Y } from '../collision/types';
-import type { BrushDef, LevelFile, TriggerDef, TriggerKind, Vec3Tuple } from './LevelFormat';
+import type { BrushDef, GateDef, LevelFile, TrainingZoneDef, TriggerDef, TriggerKind, Vec3Tuple } from './LevelFormat';
 
 export interface CompiledTrigger {
   readonly kind: TriggerKind;
@@ -27,6 +27,20 @@ export interface LevelBrush extends CompiledBrush {
   readonly underTrim: boolean;
 }
 
+/**
+ * Tor einer Lektion (Plan 007, TrainingDef.gates): kollidiert, bis es offen ist. Liegt NICHT in
+ * `world` — die GatedWorld (Phase 2) traced `brush` zusätzlich, solange das Tor zu ist.
+ * Die Reihenfolge in CompiledLevel.gates ist der Index für Render (RenderFx.gateOpen) und Kollision.
+ */
+export interface CompiledGate {
+  readonly id: string;
+  /** Box-Brush des Tors; index = brushes.length + Tor-Index (eindeutig in TraceResult.brushIndex). */
+  readonly brush: LevelBrush;
+  readonly bounds: Box3;
+  /** GateDef.tint, null = Trim-Farbe des Levels. */
+  readonly tint: string | null;
+}
+
 export interface CompiledLevel {
   readonly def: LevelFile;
   readonly brushes: readonly LevelBrush[];
@@ -35,6 +49,10 @@ export interface CompiledLevel {
   readonly bounds: Box3;
   readonly spawnPos: Vector3;
   readonly spawnYaw: number;
+  /** Tore der Lektion (leer ohne LevelFile.training). */
+  readonly gates: readonly CompiledGate[];
+  /** Zonen der Lektion nach id (leer ohne LevelFile.training). */
+  readonly zones: ReadonlyMap<string, Box3>;
 }
 
 const WALKABLE = MIN_GROUND_NORMAL_Y;
@@ -236,12 +254,39 @@ function compileTrigger(t: TriggerDef): CompiledTrigger {
   };
 }
 
+function compileGate(g: GateDef, index: number): CompiledGate {
+  // Tore sind Wände ohne eigene Optik im Brush-Renderer (gateVisuals zeichnet sie) und ohne Trims.
+  const brush = compileBrush({ type: 'box', min: g.min, max: g.max, mat: 'wall', trim: false, tag: `gate:${g.id}` }, index);
+  return { id: g.id, brush, bounds: brush.bounds.clone(), tint: g.tint ?? null };
+}
+
+function zoneBox(z: TrainingZoneDef): Box3 {
+  assertOrdered(z.min, z.max, `zone:${z.id}`);
+  return new Box3(new Vector3(...z.min), new Vector3(...z.max));
+}
+
+/** ids einer Lektion eindeutig — eine Map würde Doppelte still überschreiben. */
+function assertUnique(ids: readonly string[], what: string): void {
+  const seen = new Set<string>();
+  for (const id of ids) {
+    if (seen.has(id)) throw new Error(`${what} "${id}" doppelt`);
+    seen.add(id);
+  }
+}
+
 export function compileLevel(def: LevelFile): CompiledLevel {
   if (def.version !== 1) throw new Error(`Unbekannte Level-Version ${String(def.version)}`);
   const brushes = def.brushes.map((b, i) => compileBrush(b, i));
   const triggers = def.triggers.map(compileTrigger).sort((a, b) => a.order - b.order);
   const bounds = new Box3();
   for (const b of brushes) bounds.union(b.bounds);
+  const gateDefs = def.training?.gates ?? [];
+  const zoneDefs = def.training?.zones ?? [];
+  assertUnique(gateDefs.map((g) => g.id), 'Tor');
+  assertUnique(zoneDefs.map((z) => z.id), 'Zone');
+  const gates = gateDefs.map((g, i) => compileGate(g, brushes.length + i));
+  const zones = new Map<string, Box3>();
+  for (const z of zoneDefs) zones.set(z.id, zoneBox(z));
   return {
     def,
     brushes,
@@ -250,6 +295,8 @@ export function compileLevel(def: LevelFile): CompiledLevel {
     bounds,
     spawnPos: new Vector3(...def.spawn.pos),
     spawnYaw: def.spawn.yaw,
+    gates,
+    zones,
   };
 }
 

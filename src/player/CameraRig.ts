@@ -12,10 +12,12 @@ import type { PlayerSnapshot } from './types';
  *   motionFx    → Bewegungs-Feedback: Lande-Dip, Sprung-Kick, Carve-Roll,
  *                 Surf-Lean, Perfekt-Hop-Pop und Sync-Surge (die beiden FOV-
  *                 Signale zusätzlich × fovKick), Surf-Rumpeln (× screenShake)
- *   screenShake → Rumpeln harter Landungen — nur Translation (+ etwas Roll)
+ *   screenShake → Rumpeln harter Landungen — nur Translation (+ etwas Roll); Surf- und
+ *                 Rutsch-Rumpeln hängen zusätzlich an motionFx
  *   fovKick     → FOV-Kick mit Speed (Log-Kurve: jede Verdopplung gleich viel,
  *                 ab 800 u/s weich gesättigt, gesamt ≤ 11° = 116.5° bei 16:9)
- * Stufen- und Duck-Glättung sind keine Effekte, sondern Ruck-Schutz — immer an.
+ * Stufen-, Lip-Step- und Duck-Glättung sind keine Effekte, sondern Ruck-Schutz — immer an.
+ * Rutschen (Plan 007): kein Head-Bob (keine Schritte), Carve-Roll aus dem Lenken, Rumpeln.
  *
  * Vokabular: Tempo = FOV (log), Timing = Pop (perfekter Hop, statt Dip),
  * Strafe-Qualität = Surge (FOV öffnet sich, solange der Strafe sitzt),
@@ -53,6 +55,13 @@ export interface CameraView {
   readonly sprinting: boolean;
   /** -1..1 (A = -1, D = +1). Nur Information — der Roll kommt aus der Bewegung, nicht aus der Taste. */
   readonly strafeInput: number;
+  /** Rutscht (Snapshot.sliding): kein Head-Bob, Rutsch-Rumpeln, Carve-Roll aus dem Lenken. */
+  readonly sliding: boolean;
+  /**
+   * Interpolationsanteil des neuesten Ticks (0..1), 1 = ohne Interpolation. Der Lip-Step-Versatz
+   * gleicht damit genau den Teil der Stufe aus, den die Interpolation schon zeigt.
+   */
+  readonly tickAlpha: number;
 }
 
 export type MutableCameraView = { -readonly [K in keyof CameraView]: CameraView[K] };
@@ -75,6 +84,10 @@ export interface CameraFxState {
   readonly shake: number;
   /** Surf-Rumpeln: Amplitude in u. */
   readonly rumble: number;
+  /** Rutsch-Rumpeln: Amplitude in u (× screenShake × motionFx). */
+  readonly slideRumble: number;
+  /** Lip-Step-Versatz in u (≤ 0, Ruck-Schutz — immer an). */
+  readonly ledgeOffset: number;
   /** Querbeschleunigung u/s² (+ = Rechtskurve) und Speed-Gewinnrate u/s² (geglättet). */
   readonly aLat: number;
   readonly gain: number;
@@ -177,6 +190,15 @@ const RUMBLE_MAX = 0.8;
 const RUMBLE_REF_SPEED = 500;
 /** Seitlicher Anteil: mit 0.8 u entlang der Normale bleibt der Versatz ≤ 0.85 u → Ziel in 500 u < 0.1°. */
 const RUMBLE_LATERAL = 0.35;
+// Rutsch-Rumpeln (Plan 007, nur Translation): 0.15 u beim Eintritt (280 u/s), 0.5 u ab 900 u/s.
+// Leiser als das Surf-Rumpeln — der Boden ist fest, das Kratzen trägt der Ton.
+const SLIDE_RUMBLE_MIN = 0.15;
+const SLIDE_RUMBLE_MAX = 0.5;
+const SLIDE_RUMBLE_FROM = 280;
+const SLIDE_RUMBLE_TO = 900;
+const SLIDE_FADE_TAU = 0.06;
+/** Lip-Step (Kanten-Assist): Versatz linear in dieser Zeit abbauen (wie eine einzelne Stufe). */
+const LEDGE_STEP_TIME = 0.1;
 
 // Duck-Glättung am Boden: Anteil f als smoothstep(f) — stetige Ableitung an den Enden.
 const DUCK_AIR_TAU = 0.04;
@@ -242,11 +264,13 @@ export function makeCameraView(): MutableCameraView {
     surfNormal: new Vector3(),
     sprinting: false,
     strafeInput: 0,
+    sliding: false,
+    tickAlpha: 1,
   };
 }
 
-/** CameraView aus einem (interpolierten) Snapshot füllen. */
-export function cameraViewFromSnapshot(snap: PlayerSnapshot, sprinting: boolean, strafeInput: number, out: MutableCameraView): MutableCameraView {
+/** CameraView aus einem (interpolierten) Snapshot füllen. `tickAlpha` = Interpolationsanteil des neuesten Ticks. */
+export function cameraViewFromSnapshot(snap: PlayerSnapshot, sprinting: boolean, strafeInput: number, out: MutableCameraView, tickAlpha = 1): MutableCameraView {
   out.eyePos.set(snap.pos.x, snap.pos.y + snap.eyeHeight, snap.pos.z);
   out.eyeHeight = snap.eyeHeight;
   out.groundNormal.copy(snap.groundNormal);
@@ -259,6 +283,8 @@ export function cameraViewFromSnapshot(snap: PlayerSnapshot, sprinting: boolean,
   out.surfNormal.copy(snap.surfNormal);
   out.sprinting = sprinting;
   out.strafeInput = strafeInput;
+  out.sliding = snap.sliding;
+  out.tickAlpha = tickAlpha;
   return out;
 }
 
@@ -307,6 +333,8 @@ export class CameraRig {
   private prevVz = 0;
   private prevSpeed = 0;
   private prevAir = false;
+  /** Vorheriger Frame zählte für den Carve-Roll (Luft ohne Surf, oder Rutschen). */
+  private prevCarve = false;
   /** Querbeschleunigung u/s², + = Rechtskurve (geglättet). */
   private aLat = 0;
   private gainRaw = 0;
@@ -320,9 +348,19 @@ export class CameraRig {
   private surfW = 0;
   private surfLean = 0;
   private readonly surfN = new Vector3();
+  private slideW = 0;
+  // Lip-Step-Versatz: Rest (u), zuletzt dazugekommener Anteil, dessen Tick, Abbaurate (u/s).
+  private ledgeRemain = 0;
+  private ledgeDy = 0;
+  private ledgeTick = 0;
+  private ledgeRate = 0;
+  /** Zählt Physik-Ticks (onTick) — trennt "Stufe im neuesten Tick" von "schon ganz sichtbar". */
+  private tickSerial = 0;
   // Duck-Glättung
   private duckOffset = 0;
-  private readonly fxOut: MutableFxState = { speedKick: 0, pop: 0, surge: 0, fovOffset: 0, roll: 0, dip: 0, shake: 0, rumble: 0, aLat: 0, gain: 0 };
+  private readonly fxOut: MutableFxState = {
+    speedKick: 0, pop: 0, surge: 0, fovOffset: 0, roll: 0, dip: 0, shake: 0, rumble: 0, slideRumble: 0, ledgeOffset: 0, aLat: 0, gain: 0,
+  };
   // Stufen-Glättung
   private stepOffset = 0;
   private readonly prevFeet = new Vector3();
@@ -377,8 +415,26 @@ export class CameraRig {
     this.applyFov(this.fovKickCur * this.settings.fovKick);
   }
 
+  /**
+   * Einmal pro Physik-Tick (vor dessen Events). Nur der Lip-Step-Versatz braucht es: liegt die Stufe
+   * im neuesten Tick, zeigt die Interpolation erst tickAlpha davon.
+   */
+  onTick(): void {
+    this.tickSerial++;
+  }
+
   onEvent(e: GameEvent): void {
     switch (e.type) {
+      case 'ledge':
+        // Lip-Step: die Füße springen in einem Tick bis ledgeStep hoch — wie eine Stufe glätten
+        // (Versatz linear in 0.1 s), nie Yaw/Pitch. Der Vault (Tempo zurück) hat keinen Höhensprung.
+        if (e.kind === 'step' && e.dy > 0) {
+          this.ledgeRemain += e.dy;
+          this.ledgeDy = e.dy;
+          this.ledgeTick = this.tickSerial;
+          this.ledgeRate = Math.max(this.ledgeRate, this.ledgeRemain / LEDGE_STEP_TIME);
+        }
+        break;
       case 'land': {
         // Jede Landung wartet einen Tick: folgt der perfekte Hop, findet sie für die
         // Kamera nie statt. Nicht nur bei jumpQueued — wer exakt im Folgetick frisch
@@ -392,8 +448,9 @@ export class CameraRig {
         break;
       }
       case 'jump':
-        if (e.perfect) {
-          // Perfekter Hop: Kamera bleibt leicht (kein Dip, kein Nicken), dafür der Pop.
+        // Verlustfrei (clean = perfekt oder in der Lande-Gnade, Plan 007) lobt wie der perfekte Hop.
+        if (e.clean) {
+          // Guter Hop: Kamera bleibt leicht (kein Dip, kein Nicken), dafür der Pop.
           if (this.pendingLand) this.clearPending();
           // Rückfall (Landung schon nachgeholt, z. B. Framezeit-Schätzung daneben): ohne Positionssprung auslaufen lassen.
           else if (this.dip.v < 0 || this.dip.x < 0) this.dip.v = -DIP_OMEGA * this.dip.x;
@@ -433,6 +490,11 @@ export class CameraRig {
     this.surfW = 0;
     this.surfLean = 0;
     this.surfN.set(0, 0, 0);
+    this.slideW = 0;
+    this.ledgeRemain = 0;
+    this.ledgeDy = 0;
+    this.ledgeRate = 0;
+    this.prevCarve = false;
     this.duckOffset = 0;
     this.stepOffset = 0;
     this.hasPrev = false;
@@ -454,8 +516,8 @@ export class CameraRig {
     this.updateDuckSmoothing(dt, view);
     this.updatePending(dt);
 
-    // --- Head-Bob
-    this.bobWeight = expApproach(this.bobWeight, view.onGround ? 1 : 0, BOB_FADE_TAU, dt);
+    // --- Head-Bob (Rutschen hat keine Schritte: ausblenden, sonst stünde der Bob auf einer festen Phase)
+    this.bobWeight = expApproach(this.bobWeight, view.onGround && !view.sliding ? 1 : 0, BOB_FADE_TAU, dt);
     const speedFactor = MathUtils.clamp(view.speed / BOB_REF_SPEED, 0, BOB_MAX_FACTOR);
     const bobAmp = this.bobWeight * speedFactor * (view.ducked ? 0.5 : 1);
     const phase = view.stridePhase * Math.PI * 2;
@@ -500,6 +562,18 @@ export class CameraRig {
     const ru = rumbleAmp * rumble(t, 0);
     const rl = RUMBLE_LATERAL * rumbleAmp * rumble(t, 1);
 
+    // --- Rutsch-Rumpeln (nur Translation: senkrecht + etwas seitlich), wächst mit dem Tempo
+    this.slideW = expApproach(this.slideW, view.sliding ? 1 : 0, SLIDE_FADE_TAU, dt);
+    const slideAmp =
+      this.slideW > 1e-4
+        ? this.slideW * (SLIDE_RUMBLE_MIN + (SLIDE_RUMBLE_MAX - SLIDE_RUMBLE_MIN) * smoothstep(SLIDE_RUMBLE_FROM, SLIDE_RUMBLE_TO, view.speed)) * fx * s.screenShake
+        : 0;
+    const su = slideAmp * rumble(t, 2);
+    const sl = RUMBLE_LATERAL * slideAmp * rumble(t, 3);
+
+    // --- Lip-Step: Versatz = −(bereits sichtbarer Teil der Stufe), linear abgebaut.
+    const ledge = this.updateLedge(dt, view.tickAlpha);
+
     // --- Screenshake (nur Translation + etwas Roll; Yaw/Pitch bleiben exakt der Blick)
     this.trauma = Math.max(0, this.trauma - SHAKE_DECAY * dt);
     const shake = this.trauma * s.screenShake;
@@ -527,20 +601,40 @@ export class CameraRig {
     o.dip = dip * fx;
     o.shake = shake * SHAKE_POS;
     o.rumble = rumbleAmp;
+    o.slideRumble = slideAmp;
+    o.ledgeOffset = ledge;
     o.aLat = this.aLat;
     o.gain = this.gain;
 
     // --- Anwenden: Blick 1:1, Effekte additiv und skaliert
     const hb = s.headBob;
-    const lat = bobL * hb + shX + rl;
+    const lat = bobL * hb + shX + rl + sl;
     const cam = this.camera;
     cam.position.set(
       view.eyePos.x + rx * lat + n.x * ru,
-      view.eyePos.y + bobV * hb + dip * fx + shY + n.y * ru + this.stepOffset + this.duckOffset,
+      view.eyePos.y + bobV * hb + dip * fx + shY + n.y * ru + su + this.stepOffset + this.duckOffset + ledge,
       view.eyePos.z + rz * lat + n.z * ru,
     );
     cam.rotation.order = 'YXZ';
     cam.rotation.set(pitch + bobPitch * hb + nod * fx, yaw, -(this.roll * DEG * fx + shRoll), 'YXZ');
+  }
+
+  /**
+   * Lip-Step-Versatz (≤ 0). Liegt die Stufe im neuesten Tick, zeigt die Interpolation erst
+   * tickAlpha·dy davon — genau so viel wird ausgeglichen, danach linear in 0.1 s abgebaut.
+   */
+  private updateLedge(dt: number, tickAlpha: number): number {
+    if (this.ledgeRemain <= 0) return 0;
+    this.ledgeRemain = Math.max(0, this.ledgeRemain - this.ledgeRate * dt);
+    if (this.ledgeRemain <= 0) {
+      this.ledgeDy = 0;
+      this.ledgeRate = 0;
+      return 0;
+    }
+    const newest = this.tickSerial === this.ledgeTick;
+    const a = MathUtils.clamp(Number.isFinite(tickAlpha) ? tickAlpha : 1, 0, 1);
+    const visible = newest ? this.ledgeRemain - this.ledgeDy + a * this.ledgeDy : this.ledgeRemain;
+    return -Math.min(this.ledgeRemain, Math.max(0, visible));
   }
 
   private applyDip(depth: number): void {
@@ -593,6 +687,8 @@ export class CameraRig {
     const vz = view.vel.z;
     const sp = view.speed;
     const air = !view.onGround;
+    // Carve-Roll: Luft ohne Surf, dazu das Lenken beim Rutschen (Bodenkontakt, aber keine Schritte).
+    const carve = (air && !view.surfing) || view.sliding;
     let lat = 0;
     let feedGain = false;
     let inst = 0;
@@ -606,7 +702,7 @@ export class CameraRig {
       this.groundHold += dt;
       if (this.groundHold > GAIN_GROUND_HOLD) feedGain = true; // inst = 0 → abbauen
     }
-    if (air && this.motionValid && this.prevAir) {
+    if (carve && this.motionValid && this.prevCarve) {
       const h = Math.hypot(vx, vz);
       // Vorzeichen: + = Rechtskurve (von oben im Uhrzeigersinn, yaw nimmt ab).
       if (h > LAT_MIN_SPEED) lat = (this.prevVx * vz - this.prevVz * vx) / h / dt;
@@ -629,6 +725,7 @@ export class CameraRig {
     this.prevVz = vz;
     this.prevSpeed = sp;
     this.prevAir = air && !view.surfing;
+    this.prevCarve = carve;
     this.motionValid = true;
   }
 

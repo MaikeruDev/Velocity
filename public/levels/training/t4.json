@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "id": "t4",
+  "name": "SPEED",
+  "subtitle": "Tempo aufbauen und halten.",
+  "spawn": {
+    "pos": [1450,0,1800],
+    "yaw": 0
+  },
+  "killY": -600,
+  "music": {
+    "bpm": 132
+  },
+  "environment": {
+    "skyTop": "#060a24",
+    "skyHorizon": "#1d3f7a",
+    "skyBottom": "#070b1f",
+    "fogColor": "#16305e",
+    "fogNear": 1800,
+    "fogFar": 9000,
+    "sunDir": [0.35,0.55,-0.75],
+    "sunColor": "#d6ecff",
+    "ambientSky": "#4a6ad0",
+    "ambientGround": "#141a3a",
+    "trimColor": "#33f0ff",
+    "trimColorAlt": "#ff3fd0",
+    "voidY": -1400
+  },
+  "brushes": [
+    {"type":"box","min":[-2200,-64,-3600],"max":[2200,0,3600],"mat":"floor","tag":"bahn"},
+    {"type":"box","min":[-700,0,-2000],"max":[700,192,2000],"mat":"wall","tag":"insel"},
+    {"type":"box","min":[-2264,0,-3664],"max":[2264,192,-3600],"mat":"wall","tag":"bande-n"},
+    {"type":"box","min":[-2264,0,3600],"max":[2264,192,3664],"mat":"wall","tag":"bande-s"},
+    {"type":"box","min":[-2264,0,-3600],"max":[-2200,192,3600],"mat":"wall","tag":"bande-w"},
+    {"type":"box","min":[2200,0,-3600],"max":[2264,192,-192],"mat":"wall","tag":"bande-o1"},
+    {"type":"box","min":[2200,0,192],"max":[2264,192,3600],"mat":"wall","tag":"bande-o2"},
+    {"type":"box","min":[2200,-64,-192],"max":[2840,0,192],"mat":"floor","tag":"nische"},
+    {"type":"box","min":[2264,0,-256],"max":[2840,192,-192],"mat":"wall","tag":"nische-n"},
+    {"type":"box","min":[2264,0,192],"max":[2840,192,256],"mat":"wall","tag":"nische-s"},
+    {"type":"box","min":[2840,0,-256],"max":[2904,192,256],"mat":"wall","tag":"nische-o"},
+    {"type":"box","min":[2808,0,-192],"max":[2840,256,192],"mat":"light","tint":"#9dff5c","collide":false,"trim":false},
+    {"type":"hull","points":[[1450,0,-42.941],[1450,-4,-42.941],[1382.118,0,24.941],[1382.118,-4,24.941],[1382.118,0,42.941],[1382.118,-4,42.941],[1450,0,-24.941],[1450,-4,-24.941]],"mat":"marking","tint":"#33f0ff","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[1450,0,-42.941],[1450,-4,-42.941],[1517.882,0,24.941],[1517.882,-4,24.941],[1517.882,0,42.941],[1517.882,-4,42.941],[1450,0,-24.941],[1450,-4,-24.941]],"mat":"marking","tint":"#33f0ff","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[-1450,0,42.941],[-1450,-4,42.941],[-1382.118,0,-24.941],[-1382.118,-4,-24.941],[-1382.118,0,-42.941],[-1382.118,-4,-42.941],[-1450,0,24.941],[-1450,-4,24.941]],"mat":"marking","tint":"#33f0ff","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[-1450,0,42.941],[-1450,-4,42.941],[-1517.882,0,-24.941],[-1517.882,-4,-24.941],[-1517.882,0,-42.941],[-1517.882,-4,-42.941],[-1450,0,24.941],[-1450,-4,24.941]],"mat":"marking","tint":"#33f0ff","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[-42.941,0,-2800],[-42.941,-4,-2800],[24.941,0,-2732.118],[24.941,-4,-2732.118],[42.941,0,-2732.118],[42.941,-4,-2732.118],[-24.941,0,-2800],[-24.941,-4,-2800]],"mat":"marking","tint":"#33f0ff","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[-42.941,0,-2800],[-42.941,-4,-2800],[24.941,0,-2867.882],[24.941,-4,-2867.882],[42.941,0,-2867.882],[42.941,-4,-2867.882],[-24.941,0,-2800],[-24.941,-4,-2800]],"mat":"marking","tint":"#33f0ff","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[42.941,0,2800],[42.941,-4,2800],[-24.941,0,2732.118],[-24.941,-4,2732.118],[-42.941,0,2732.118],[-42.941,-4,2732.118],[24.941,0,2800],[24.941,-4,2800]],"mat":"marking","tint":"#33f0ff","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[42.941,0,2800],[42.941,-4,2800],[-24.941,0,2867.882],[-24.941,-4,2867.882],[-42.941,0,2867.882],[-42.941,-4,2867.882],[24.941,0,2800],[24.941,-4,2800]],"mat":"marking","tint":"#33f0ff","collide":false,"tag":"chevron","trim":false}
+  ],
+  "triggers": [
+    {"kind":"finish","min":[2640,0,-192],"max":[2840,200,192],"tag":"finish"}
+  ],
+  "training": {
+    "lesson": 4,
+    "short": "T4",
+    "group": "basics",
+    "gates": [{"id":"ausgang","min":[2200,0,-192],"max":[2224,192,192],"tint":"#ffb347"}],
+    "stages": [{"id":"v400","title":"TEMPO 400","text":"HÜPFEN UND STRAFEN BIS 400\nIN DEN KURVEN IMMER DIESELBE SEITE","task":{"kind":"speed","min":400},"spawn":{"pos":[1450,0,1800],"yaw":0},"demo":{"kind":"hand","rateDeg":120,"pattern":"circle","side":"left","seconds":15}},{"id":"halten","title":"HALTEN","text":"LANDE 5-MAL IN FOLGE\nSCHNELLER ALS 400","task":{"kind":"speed","min":400,"holdHops":5},"opens":["ausgang"],"demo":{"kind":"hand","rateDeg":120,"pattern":"circle","side":"left","seconds":15},"tips":[{"on":"stuck","after":15,"text":"NICHT AUF DEM BODEN BLEIBEN:\nLEERTASTE GEDRÜCKT HALTEN"}]},{"id":"v500","title":"BONUS 500","text":"BONUS: ERREICHE 500","task":{"kind":"speed","min":500},"rank":"bonus","demo":{"kind":"hand","rateDeg":120,"pattern":"circle","side":"left","seconds":15}},{"id":"prestrafe","title":"PRESTRAFE","text":"AM BODEN W + A HALTEN, MAUS LINKS\nOHNE SPRUNG ÜBER 350","task":{"kind":"speed","min":350,"ground":true},"rank":"bonus","tips":[{"on":"stuck","after":12,"text":"LEERTASTE LOSLASSEN, W + A HALTEN\nMAUS GANZ LANGSAM NACH LINKS"}]},{"id":"v600","title":"MEISTER 600","text":"MEISTER: ERREICHE 600","task":{"kind":"speed","min":600},"rank":"master","demo":{"kind":"hand","rateDeg":120,"pattern":"circle","side":"left","seconds":15}}],
+    "hud": {"forceKeys":true,"turnBand":true}
+  }
+}

@@ -101,7 +101,7 @@ function hops(t0: number, t1: number, period: number, speedAt: (t: number) => nu
     chain++;
     out.push({
       time: t + 0.008,
-      event: { type: 'jump', speed: sp, gain: chain > 1 ? sp - prev : 0, perfect: true, chain, sync: 0.8, crouched: false, coyote: false },
+      event: { type: 'jump', speed: sp, gain: chain > 1 ? sp - prev : 0, perfect: true, clean: true, chain, sync: 0.8, crouched: false, coyote: false },
     });
     prev = sp;
   }
@@ -155,7 +155,7 @@ function sfxDemo(): OfflineRenderOptions {
   for (let i = 0; i < 8; i++) {
     events.push({ time: 1 + i * 0.38, event: { type: 'footstep', speed: 250, left: i % 2 === 0 } });
   }
-  events.push({ time: 4, event: { type: 'jump', speed: 250, gain: 0, perfect: false, chain: 1, sync: 0, crouched: false, coyote: false } });
+  events.push({ time: 4, event: { type: 'jump', speed: 250, gain: 0, perfect: false, clean: false, chain: 1, sync: 0, crouched: false, coyote: false } });
   events.push(...hops(4.72, 12.2, 0.72, (t) => at(t).speed, 1));
   events.push(
     { time: 7, event: { type: 'speedMilestone', speed: 500 } },

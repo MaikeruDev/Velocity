@@ -1,26 +1,32 @@
+import type { MovementConfig } from '../player/MovementConfig';
 import type { PlayerInput, PlayerSnapshot } from '../player/types';
 import type { RouteNode } from '../world/level/LevelFormat';
 import type { GameEvent } from './events';
+import { StrafeJudge, VERDICT_TEXT } from './strafeJudge';
+import { VERDICTS } from './trainingTypes';
+import type { Verdict } from './trainingTypes';
 
 /**
- * Hinweise im Moment (Plan 003, U1): erkennt die drei Stellen, an denen Neulinge
- * ohne Erklärung scheitern, und meldet einen Hinweis — jeder nur, bis die
- * Handlung einmal gelingt (pro Sitzung, also pro Coach-Instanz).
+ * Hinweise im Moment (Plan 003, U1; Strafe-Teil seit Plan 007 über den StrafeJudge): erkennt die
+ * drei Stellen, an denen Neulinge ohne Erklärung scheitern, und meldet einen Hinweis — jeder nur,
+ * bis die Handlung einmal gelingt (pro Sitzung, also pro Coach-Instanz).
  *
- * - crouch: zwei Stirnwand-Bonks nahe einer Crouch-Kante (Route-Knoten mit
- *   `crouch`) ohne Ducken → "in der Luft ducken". Gelernt: Landung oben.
- * - surf: auf der Rampe W gehalten ohne A/D (> 0.3 s) oder Tod nach Surf-Kontakt
- *   → "W los, A/D in die Rampe". Gelernt: Checkpoint/Ziel nach Surf-Kontakt.
- * - strafe: drei Sprünge in Folge mit A/D, aber Sync < 0.3 und ohne Gewinn in der
- *   Luft → "Maus und A/D in dieselbe Richtung". Gelernt: ein Sprung mit Sync ≥ 0.6 und Gewinn.
+ * - crouch: zwei Stirnwand-Bonks nahe einer Crouch-Kante (Route-Knoten mit `crouch`) ohne Ducken
+ *   → "in der Luft ducken". Gelernt: Landung oben.
+ * - surf: auf der Rampe W gehalten ohne A/D (> 0.3 s) oder Tod nach Surf-Kontakt → "W los, A/D in
+ *   die Rampe". Gelernt: Checkpoint/Ziel nach Surf-Kontakt.
+ * - strafe: der StrafeJudge bewertet jeden Luftabschnitt; dreimal dasselbe Fehlurteil seit dem
+ *   letzten guten Hop → Hinweis mit dem Text genau dieses Fehlers (Maus steht → "Maus mitziehen").
+ *   Nur unter 600 u/s Absprungtempo: darüber sind Fehlurteile verrauschter Hände meist Zielfehler,
+ *   keine Technik (Plan 007 §4.3: 30–50 % weak/tooFast bei 600–1000 u/s). 'wOnly'/'noSide' zählen
+ *   nicht — das ist kein Strafe-Versuch, sondern W + Leertaste (mit Luftlenkung gewollt).
+ *   Gelernt: ein guter Hop.
  *
- * Der Strafe-Teil misst jeden Luftabschnitt selbst (Tempo Absprung → Landung,
- * Anteil der A/D-Ticks mit Gewinn) statt der 'jump'-Events: wer gegen die Maus
- * strafet, verliert Tempo, landet unter dem Smart-Auto-Hop-Tempo und die Kette
- * reißt — die Events tragen dann chain 1 und sync 0, der Fehler bliebe unsichtbar.
+ * In Lektionen (lesson = true) ist der Coach stumm: die Lektion lehrt selbst (Karte, Urteile, eigene
+ * Tipps über TrainingSession.tip).
  *
- * DOM-frei und allokationsfrei im Tick (läuft in Game.onTick nach movement.tick
- * und nach den Events dieses Ticks).
+ * DOM-frei und allokationsfrei im Tick (läuft in Game.onTick nach movement.tick und nach den Events
+ * dieses Ticks).
  */
 
 export type HintId = 'crouch' | 'surf' | 'strafe';
@@ -41,36 +47,48 @@ const BONK_FROM_SPEED = 100;
 /** Toleranz für "oben angekommen" (Füße relativ zur Kante), u. */
 const LEDGE_TOL = 8;
 const SURF_W_HOLD = 0.3;
-/** Nur echte Sprünge bewerten (kein Stufen-Hüpfer), s Luftzeit. */
-const STRAFE_MIN_AIR = 0.35;
-/** Anteil der Luft-Ticks mit A/D, ab dem ein Sprung als Strafe-Versuch gilt. */
-const STRAFE_SIDE_SHARE = 0.25;
-const STRAFE_BAD_SYNC = 0.3;
-/**
- * "Kein Gewinn" statt nur "Verlust" (Plan: gain < 0): Die Zickzack-Hand mit
- * Taste gegen die Maus (60 °/s) verliert 37–109 u/s pro Sprung, wer A/D ohne
- * Mausbewegung wechselt, bekommt aber exakt +0.0 — auch das ist der Fehler
- * (gemessen mit PlayerMovement, tests/coach.test.ts).
- */
-const STRAFE_BAD_GAIN = 3;
-const STRAFE_BAD_HOPS = 3;
-const STRAFE_GOOD_SYNC = 0.6;
-const STRAFE_GOOD_GAIN = 8;
-/** Gewinn-Tick: Tempo nach dem Tick höher als davor (Rauschen darunter zählt nicht). */
-const GAIN_EPS = 1e-3;
+/** Judge-Hinweise nur unter diesem Absprungtempo (u/s). */
+export const JUDGE_MAX_SPEED = 600;
+/** So oft dasselbe Fehlurteil seit dem letzten guten Hop → Hinweis. */
+export const JUDGE_SAME = 3;
 /** Derselbe Hinweis frühestens wieder nach … s (die Anzeige steht ~5 s). */
 const COOLDOWN = 6;
+
+/** Fehlurteile, die kein Strafe-Versuch sind (nur W / gar nichts) — zählen weder für noch gegen. */
+function isStrafeAttempt(v: Verdict): boolean {
+  return v !== 'wOnly' && v !== 'noSide';
+}
+
+/** Allgemeiner Strafe-Hinweis (ohne Urteil, z. B. 'good' oder unbekannt). */
+const STRAFE_GENERIC = 'MAUS UND A/D IN DIESELBE RICHTUNG\nA + MAUS LINKS · D + MAUS RECHTS';
+
+/**
+ * Text des Hinweises fürs Coach-Band (≤ 2 Zeilen). Strafe: der Coach-Text des StrafeJudge zum
+ * Fehlurteil (eine Quelle für Lektion und Coach). crouchKey = Kurzname der Duck-Taste.
+ */
+export function hintText(id: HintId, verdict: Verdict | null, crouchKey: string): string {
+  if (id === 'crouch') return `IN DER LUFT DUCKEN [${crouchKey}]\nZIEHT DIE FÜSSE 18 u HÖHER`;
+  if (id === 'surf') return 'W LOS · A/D IN DIE RAMPE · MAUS ENTLANG';
+  const long = verdict !== null ? VERDICT_TEXT[verdict].long : '';
+  return long !== '' ? long : STRAFE_GENERIC;
+}
 
 export class Coach {
   /** Einstellung showHints. Aus = nichts erkennen, nichts melden. */
   enabled = true;
-  /** Wird bei jedem Hinweis gerufen (Game zeigt den Text im HUD). */
-  onHint: (id: HintId) => void = () => undefined;
+  /** Lektion läuft: keine eigenen Hinweise (Karte, Urteile und die Tipps der Lektion lehren). */
+  lesson = false;
+  /** Wird bei jedem Hinweis gerufen; verdict = Fehlurteil beim Strafe-Hinweis, sonst null. */
+  onHint: (id: HintId, verdict: Verdict | null) => void = () => undefined;
 
   private time = 0;
   private readonly learnedMap: Record<HintId, boolean> = { crouch: false, surf: false, strafe: false };
   private readonly shownMap: Record<HintId, number> = { crouch: 0, surf: 0, strafe: 0 };
   private readonly lastShown: Record<HintId, number> = { crouch: -Infinity, surf: -Infinity, strafe: -Infinity };
+  private readonly judge: StrafeJudge;
+  /** Fehlurteile je Art seit dem letzten guten Hop (Index = VERDICTS). */
+  private readonly verdictCounts = new Int32Array(VERDICTS.length);
+  private lastVerdict: Verdict | null = null;
 
   // Crouch-Kanten: je 6 Werte (Knoten A xyz, Knoten B xyz), B = Oberkante.
   private segs = new Float64Array(0);
@@ -79,15 +97,9 @@ export class Coach {
   // Laufender Luftabschnitt
   private inAir = false;
   private airStartY = 0;
-  private airStartSpeed = 0;
-  private airEndSpeed = 0;
   private airNear = -1;
   private airDucked = false;
   private airStopped = false;
-  private airSurfed = false;
-  private airTicks = 0;
-  private airSideTicks = 0;
-  private airGainTicks = 0;
   private lastBonk = -Infinity;
 
   // Surf
@@ -95,16 +107,31 @@ export class Coach {
   private surfWHold = 0;
   private surfShownThisContact = false;
 
-  // Strafe
-  private badHops = 0;
+  /**
+   * cfg ist Pflicht: der Judge urteilt 'wHeld' nur ohne Strafe-Assist. Ein Default (Assist an) ließ Game mit
+   * gespeichertem "Assist aus" falsch diagnostizieren, bis sich die Config zum ersten Mal änderte.
+   */
+  constructor(cfg: Pick<MovementConfig, 'strafeAssist'>) {
+    this.judge = new StrafeJudge(cfg);
+  }
 
   /** Wie oft jeder Hinweis gezeigt wurde (Tests, Debug-Handle). */
   get shown(): Readonly<Record<HintId, number>> {
     return this.shownMap;
   }
 
+  /** Letztes gemeldetes Fehlurteil des Strafe-Hinweises (Tests/Debug), null = keins. */
+  get hintVerdict(): Verdict | null {
+    return this.lastVerdict;
+  }
+
   isLearned(id: HintId): boolean {
     return this.learnedMap[id];
+  }
+
+  /** Strafe-Assist folgt der Einstellung ('wHeld' hängt daran). */
+  setConfig(cfg: Pick<MovementConfig, 'strafeAssist'>): void {
+    this.judge.setConfig(cfg);
   }
 
   /** Route des neuen Levels: Crouch-Kanten merken, Zustand des Laufs verwerfen. */
@@ -127,7 +154,7 @@ export class Coach {
     switch (e.type) {
       case 'respawn':
         // Tod nach Surf-Kontakt: sofort erklären (Respawn-Schleife an der Rampe).
-        if ((e.reason === 'fall' || e.reason === 'kill') && this.surfContact) this.show('surf', true);
+        if ((e.reason === 'fall' || e.reason === 'kill') && this.surfContact) this.show('surf', true, null);
         this.resetRun();
         break;
       case 'checkpoint':
@@ -145,28 +172,20 @@ export class Coach {
   /** Nach jedem Physik-Tick: prev = Zustand davor, cur = danach, cmd = Eingabe dieses Ticks. */
   tick(dt: number, prev: PlayerSnapshot, cur: PlayerSnapshot, cmd: PlayerInput): void {
     this.time += dt;
-    if (!this.enabled) return;
+    if (!this.enabled || this.lesson) return;
+    if (this.judge.tick(dt, prev, cur, cmd)) {
+      const r = this.judge.last;
+      this.judged(r.verdict, r.takeoffSpeed);
+    }
     const air = !cur.onGround;
     if (air && !this.inAir) {
       this.inAir = true;
       this.airStartY = prev.pos.y;
-      this.airStartSpeed = cur.speed;
       this.airNear = -1;
       this.airDucked = false;
       this.airStopped = false;
-      this.airSurfed = false;
-      this.airTicks = 0;
-      this.airSideTicks = 0;
-      this.airGainTicks = 0;
     }
     if (air) {
-      this.airTicks++;
-      this.airEndSpeed = cur.speed;
-      if (cur.surfing) this.airSurfed = true;
-      if (cmd.side !== 0) {
-        this.airSideTicks++;
-        if (cur.speed > prev.speed + GAIN_EPS) this.airGainTicks++;
-      }
       if (cur.ducked) this.airDucked = true;
       if (this.segCount > 0) {
         const near = this.nearCrouch(cur.pos.x, cur.pos.y, cur.pos.z);
@@ -176,7 +195,6 @@ export class Coach {
     } else if (this.inAir) {
       this.inAir = false;
       if (this.airNear >= 0) this.crouchLanding(cur.pos.y);
-      this.strafeLanding(dt);
     }
 
     if (cur.surfing) {
@@ -185,12 +203,31 @@ export class Coach {
         this.surfWHold += dt;
         if (this.surfWHold > SURF_W_HOLD && !this.surfShownThisContact) {
           this.surfShownThisContact = true;
-          this.show('surf', false);
+          this.show('surf', false, null);
         }
       } else this.surfWHold = 0;
     } else {
       this.surfWHold = 0;
     }
+  }
+
+  /**
+   * Ein Urteil des StrafeJudge (tick ruft das selbst; öffentlich für Tests). Guter Hop = gelernt;
+   * dreimal dasselbe Fehlurteil unter 600 u/s → Hinweis mit dem Text dieses Fehlers.
+   */
+  judged(verdict: Verdict, takeoffSpeed: number): void {
+    if (!this.enabled || this.lesson) return;
+    const counts = this.verdictCounts;
+    if (verdict === 'good') {
+      this.learn('strafe');
+      counts.fill(0);
+      return;
+    }
+    if (!isStrafeAttempt(verdict) || takeoffSpeed >= JUDGE_MAX_SPEED) return;
+    const i = VERDICTS.indexOf(verdict);
+    if (++counts[i] < JUDGE_SAME) return;
+    counts.fill(0);
+    this.show('strafe', false, verdict);
   }
 
   // ---------------------------------------------------------------- intern
@@ -205,32 +242,9 @@ export class Coach {
     if (!this.airStopped || this.airDucked) return;
     if (this.time - this.lastBonk <= BONK_WINDOW) {
       this.lastBonk = -Infinity;
-      this.show('crouch', false);
+      this.show('crouch', false, null);
     } else {
       this.lastBonk = this.time;
-    }
-  }
-
-  /** Einen beendeten Luftabschnitt als Strafe-Versuch bewerten. */
-  private strafeLanding(dt: number): void {
-    if (this.airSurfed || this.airTicks * dt < STRAFE_MIN_AIR) return;
-    if (this.airSideTicks < this.airTicks * STRAFE_SIDE_SHARE) {
-      // Kein Strafe-Versuch (nur W/nichts): zählt weder für noch gegen.
-      this.badHops = 0;
-      return;
-    }
-    const sync = this.airGainTicks / this.airSideTicks;
-    const gain = this.airEndSpeed - this.airStartSpeed;
-    if (sync >= STRAFE_GOOD_SYNC && gain >= STRAFE_GOOD_GAIN) {
-      this.learn('strafe');
-      this.badHops = 0;
-    } else if (sync < STRAFE_BAD_SYNC && gain < STRAFE_BAD_GAIN) {
-      if (++this.badHops >= STRAFE_BAD_HOPS) {
-        this.badHops = 0;
-        this.show('strafe', false);
-      }
-    } else {
-      this.badHops = 0;
     }
   }
 
@@ -258,12 +272,13 @@ export class Coach {
     return -1;
   }
 
-  private show(id: HintId, force: boolean): void {
-    if (!this.enabled || this.learnedMap[id]) return;
+  private show(id: HintId, force: boolean, verdict: Verdict | null): void {
+    if (!this.enabled || this.lesson || this.learnedMap[id]) return;
     if (!force && this.time - this.lastShown[id] < COOLDOWN) return;
     this.lastShown[id] = this.time;
     this.shownMap[id]++;
-    this.onHint(id);
+    if (verdict !== null) this.lastVerdict = verdict;
+    this.onHint(id, verdict);
   }
 
   private learn(id: HintId): void {
@@ -279,6 +294,8 @@ export class Coach {
     this.surfContact = false;
     this.surfWHold = 0;
     this.surfShownThisContact = false;
-    this.badHops = 0;
+    this.judge.reset();
+    this.verdictCounts.fill(0);
   }
 }
+

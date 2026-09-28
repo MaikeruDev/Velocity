@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest';
+import { Vector3 } from 'three';
 import type { GameEvent } from '../src/engine/events';
+import { compileLevel } from '../src/world/level/compileLevel';
+import { VELOCITY_DEFAULT } from '../src/player/MovementConfig';
+import { PlayerMovement } from '../src/player/PlayerMovement';
+import { flatLevel } from '../tools/sim/levels';
+import { makeInput } from '../tools/sim/harness';
 import { HAND_LIMITS, HandMotion, makeHandInput, type HandFrameInput } from '../src/ui/hand/handMotion';
 import { ViewHand } from '../src/ui/hand/ViewHand';
 import { HAND_POSES, POSE, POSE_JOINTS } from '../src/ui/hand/poses';
 import { VM_JOINT_COUNT } from '../src/render/types';
 import { SAFE_ASPECT } from '../src/ui/safeFrame';
 
-const JUMP = (chain = 1, perfect = false): GameEvent => ({ type: 'jump', speed: 300, gain: 10, perfect, chain, sync: 1, crouched: false, coyote: false });
+const JUMP = (chain = 1, perfect = false): GameEvent => ({ type: 'jump', speed: 300, gain: 10, perfect, clean: perfect, chain, sync: 1, crouched: false, coyote: false });
 const LAND = (impact: number, jumpQueued = false): GameEvent => ({ type: 'land', impact, speed: 300, airTime: 0.7, jumpQueued });
 
 interface Sample {
@@ -19,11 +25,13 @@ interface Sample {
 }
 
 /**
- * Fester Ablauf bei beliebiger Framerate: Stehen, Laufen, Sprung bei 1.0 s mit Mausdrehung
- * in der Luft, Landung bei 2.0 s, danach Laufen mit Strafe. Ereigniszeiten liegen auf allen
- * getesteten Frame-Rastern (30/60/144/240 Hz), damit nur die Integration verglichen wird.
+ * Fester Ablauf bei beliebiger Framerate: Stehen, Laufen ab 0.5 s, Sprung bei 1.0 s mit Mausdrehung
+ * in der Luft, harte Landung bei 2.0 s, Strafe ab 2.5 s. Alle Wechsel liegen auf allen getesteten
+ * Frame-Rastern (30/60/144/240/1200 Hz). Abgetastet wie im Spiel: der Zustand am Frame-Ende enthält
+ * einen Wechsel in genau diesem Moment (Snapshot nach dem Tick), das Blick-Delta ist die Drehung
+ * im Frame-Intervall. Ergebnis: jeder Frame (Zeit t) als Sample.
  */
-function scenario(fps: number, sampleAt: readonly number[], motionFx = 1): Sample[] {
+function scenario(fps: number, motionFx = 1): Sample[] {
   const a = new HandMotion();
   a.motionFx = motionFx;
   a.reset();
@@ -31,42 +39,48 @@ function scenario(fps: number, sampleAt: readonly number[], motionFx = 1): Sampl
   const dt = 1 / fps;
   const out: Sample[] = [];
   const total = Math.round(3 * fps);
-  let air = 0;
+  const f1 = Math.round(1 * fps);
+  const f2 = Math.round(2 * fps);
   for (let f = 1; f <= total; f++) {
     const t = f * dt;
-    if (f === Math.round(1 * fps)) a.onEvent(JUMP());
-    if (f === Math.round(2 * fps)) a.onEvent(LAND(420));
-    const inAir = t > 1 && t <= 2;
-    air = inAir ? air + dt : 0;
+    if (f === f1) a.onEvent(JUMP());
+    if (f === f2) a.onEvent(LAND(420));
+    const inAir = f >= f1 && f < f2;
+    // Drehung im Intervall (t − dt, t] ∩ Luftzeit [1, 2).
+    const turning = f > f1 && f <= f2;
     inp.onGround = !inAir;
-    inp.speed = t < 0.5 ? 0 : 310;
+    inp.speed = f >= Math.round(0.5 * fps) ? 310 : 0;
     inp.stridePhase = (t * 1.3) % 1;
-    inp.airTime = air;
-    inp.yawDelta = inAir ? 2.5 * dt : 0;
-    inp.pitchDelta = inAir ? -0.8 * dt : 0;
-    inp.side = t > 2.3 ? 1 : 0;
+    inp.airTime = inAir ? (f - f1) * dt : 0;
+    inp.yawDelta = turning ? 2.5 * dt : 0;
+    inp.pitchDelta = turning ? -0.8 * dt : 0;
+    inp.side = f >= Math.round(2.5 * fps) ? 1 : 0;
     a.update(dt, inp);
-    for (const s of sampleAt) if (f === Math.round(s * fps)) out.push({ x: a.x, y: a.y, tilt: a.tilt, squash: a.squash, yaw: a.yaw, pitch: a.pitch });
+    out.push({ x: a.x, y: a.y, tilt: a.tilt, squash: a.squash, yaw: a.yaw, pitch: a.pitch });
   }
   return out;
 }
 
 describe('View-Hand: Bewegung (Plan 004/006)', () => {
-  it('ist framerate-unabhängig (30/60/144/240 Hz gegen 1200 Hz)', () => {
-    const at = [0.5, 1.5, 2.5, 3];
-    const ref = scenario(1200, at);
+  it('ist framerate-unabhängig: JEDER Frame bei 30/60/144/240 Hz gegen 1200 Hz (Events am Frame-Ende, #77)', () => {
+    const REF = 1200;
+    const ref = scenario(REF);
+    const worst = { x: 0, y: 0, tilt: 0, squash: 0, yaw: 0, pitch: 0 };
     for (const fps of [30, 60, 144, 240]) {
-      const got = scenario(fps, at);
-      expect(got.length).toBe(at.length);
-      for (let i = 0; i < at.length; i++) {
-        expect(Math.abs(got[i].x - ref[i].x), `x @${at[i]} s, ${fps} Hz`).toBeLessThan(0.004);
-        expect(Math.abs(got[i].y - ref[i].y), `y @${at[i]} s, ${fps} Hz`).toBeLessThan(0.004);
-        expect(Math.abs(got[i].tilt - ref[i].tilt), `tilt @${at[i]} s, ${fps} Hz`).toBeLessThan(0.4);
-        expect(Math.abs(got[i].squash - ref[i].squash), `squash @${at[i]} s, ${fps} Hz`).toBeLessThan(0.01);
-        expect(Math.abs(got[i].yaw - ref[i].yaw), `yaw @${at[i]} s, ${fps} Hz`).toBeLessThan(0.01);
-        expect(Math.abs(got[i].pitch - ref[i].pitch), `pitch @${at[i]} s, ${fps} Hz`).toBeLessThan(0.01);
+      const got = scenario(fps);
+      for (let i = 0; i < got.length; i++) {
+        const j = Math.round(((i + 1) * REF) / fps) - 1;
+        for (const k of ['x', 'y', 'tilt', 'squash', 'yaw', 'pitch'] as const) worst[k] = Math.max(worst[k], Math.abs(got[i][k] - ref[j][k]));
       }
     }
+    // Vorher (Impulse am Frame-Anfang, Zustände über den ganzen Frame): y 0.023 (6.3 px), Squash 0.05,
+    // Pitch 0.036, Neigung 0.57°. Jetzt: y 0.0004, Squash 0.0007, Pitch 0.0004, Neigung 0.006°.
+    expect(worst.x).toBeLessThan(0.001);
+    expect(worst.y).toBeLessThan(0.001);
+    expect(worst.tilt).toBeLessThan(0.05);
+    expect(worst.squash).toBeLessThan(0.002);
+    expect(worst.yaw).toBeLessThan(0.001);
+    expect(worst.pitch).toBeLessThan(0.001);
   });
 
   it('bleibt bei wilden Eingaben in den Grenzen, endlich und ohne NaN', () => {
@@ -305,5 +319,287 @@ describe('View-Hand: Anker im Safe-Frame', () => {
     expect(a.output(true).visible).toBe(false);
     a.enabled = true;
     expect(a.output(false).visible).toBe(false);
+  });
+});
+
+const FAST_JUMP: GameEvent = { type: 'jump', speed: 950, gain: 10, perfect: true, clean: true, chain: 3, sync: 1, crouched: false, coyote: false };
+
+describe('View-Hand: Reaktionen auf Movement-Events (Plan 007 K8)', () => {
+  const SLIDE_START: GameEvent = { type: 'slideStart', speed: 420, boost: true };
+  const SLIDE_END: GameEvent = { type: 'slideEnd', speed: 150 };
+
+  /** Hand am Boden mit Tempo einschwingen. */
+  function groundHand(motionFx = 1): { h: ViewHand; inp: HandFrameInput } {
+    const h = new ViewHand();
+    h.motionFx = motionFx;
+    const inp = makeHandInput();
+    inp.speed = 400;
+    for (let k = 0; k < 120; k++) h.update(1 / 120, inp);
+    return { h, inp };
+  }
+
+  it('Rutschen: Pose flach binnen 0.1 s, Hand tief und außen; nach slideEnd zurück', () => {
+    const { h, inp } = groundHand();
+    expect(h.state().pose).toBe('run');
+    const y0 = h.motion.y;
+    const x0 = h.motion.x;
+    h.onEvent(SLIDE_START);
+    let t = 0;
+    while (h.state().pose !== 'flat' && t < 0.2) {
+      h.update(1 / 120, inp);
+      t += 1 / 120;
+    }
+    expect(t).toBeLessThanOrEqual(0.1);
+    for (let k = 0; k < 60; k++) h.update(1 / 120, inp);
+    expect(h.state().sliding).toBe(true);
+    expect(h.motion.y - y0).toBeGreaterThan(0.03);
+    expect(h.motion.x - x0).toBeGreaterThan(0.015);
+    // Gelenke nähern sich der flachen Hand (Überblenden, kein Sprung).
+    const flat = POSE_JOINTS[POSE.flat];
+    const idx = 7 + 4 + 1;
+    expect(Math.abs(h.frame.joints[idx] - flat[idx])).toBeLessThan(0.05);
+    h.onEvent(SLIDE_END);
+    for (let k = 0; k < 24; k++) h.update(1 / 120, inp);
+    expect(h.state().pose).toBe('run');
+    expect(h.state().sliding).toBe(false);
+  });
+
+  it('motionFx 0: Pose wechselt trotzdem, aber kein Versatz (statisch)', () => {
+    const { h, inp } = groundHand(0);
+    h.onEvent(SLIDE_START);
+    for (let k = 0; k < 30; k++) {
+      h.update(1 / 120, inp);
+      expect(h.motion.x).toBe(0);
+      expect(h.motion.y).toBe(0);
+      expect(h.motion.tilt).toBe(0);
+    }
+    expect(h.state().pose).toBe('flat');
+  });
+
+  it('mit Gegenstand: beim Rutschen keine Trick-Starts (Meilenstein, Leerlauf, Checkpoint); danach wieder', () => {
+    for (const item of ['can', 'card', 'knife', 'spinner'] as const) {
+      const h = new ViewHand();
+      h.setItem(item);
+      const inp = makeHandInput();
+      inp.speed = 0;
+      h.onEvent(SLIDE_START);
+      for (let k = 0; k < 60 * 20; k++) {
+        if (k % 90 === 45) h.onEvent({ type: 'speedMilestone', speed: 1000 });
+        if (k % 90 === 60) h.onEvent({ type: 'checkpoint', index: 1, total: 3, time: 5, split: -0.2 });
+        h.update(1 / 60, inp);
+        expect(h.state().trick, `${item} @${k}`).toBe('none');
+      }
+      h.onEvent(SLIDE_END);
+      h.update(1 / 60, inp);
+      h.onEvent(FAST_JUMP);
+      expect(h.state().trick, item).not.toBe('none');
+    }
+  });
+
+  it('Slide-Hop: ein Sprung beendet die Rutsche — die Physik schickt [jump, slideEnd], der Trick startet trotzdem', () => {
+    for (const item of ['can', 'card', 'knife', 'spinner'] as const) {
+      const h = new ViewHand();
+      h.setItem(item);
+      const inp = makeHandInput();
+      inp.speed = 420;
+      h.onEvent(SLIDE_START);
+      for (let k = 0; k < 30; k++) h.update(1 / 60, inp);
+      expect(h.state().sliding).toBe(true);
+      // Reihenfolge wie PlayerMovement im Sprung-Tick: jump (Stufe 1) vor slideEnd.
+      h.onEvent({ ...FAST_JUMP, speed: 420, chain: 1 });
+      h.onEvent(SLIDE_END);
+      expect(h.state().sliding, item).toBe(false);
+      expect(h.state().trick, item).not.toBe('none');
+    }
+  });
+
+  it('Slide-Hop mit der echten PlayerMovement: Events im Sprung-Tick [jump, slideEnd], Trick startet', () => {
+    const level = compileLevel(flatLevel(8192));
+    for (const item of ['knife', 'spinner'] as const) {
+      const pm = new PlayerMovement(level.world, VELOCITY_DEFAULT);
+      pm.teleport(new Vector3(0, 0, 0));
+      const h = new ViewHand();
+      h.setItem(item);
+      const inp = makeHandInput();
+      const dt = 1 / VELOCITY_DEFAULT.tickRate;
+      const run = (n: number, patch: Parameters<typeof makeInput>[0]): string[] => {
+        const seen: string[] = [];
+        for (let i = 0; i < n; i++) {
+          for (const e of pm.tick(makeInput(patch))) {
+            seen.push(e.type);
+            h.onEvent(e);
+          }
+          inp.speed = pm.state.speed;
+          h.update(dt, inp);
+        }
+        return seen;
+      };
+      run(64, { forward: 1, sprint: true });
+      expect(run(40, { forward: 1, sprint: true, crouch: true })).toContain('slideStart');
+      expect(h.state().sliding).toBe(true);
+      expect(h.state().trick).toBe('none');
+      const jumpTick = run(1, { forward: 1, sprint: true, crouch: true, jumpPressed: true, jumpHeld: true });
+      expect(jumpTick).toEqual(['jump', 'slideEnd']);
+      expect(h.state().trick, item).not.toBe('none');
+    }
+  });
+
+  it('ein laufender Trick wird beim Rutschen nicht abgebrochen', () => {
+    const h = new ViewHand();
+    h.setItem('knife');
+    h.onEvent(FAST_JUMP);
+    const trick = h.state().trick;
+    expect(trick).not.toBe('none');
+    h.onEvent(SLIDE_START);
+    h.update(1 / 60, makeHandInput());
+    expect(h.state().trick).toBe(trick);
+  });
+
+  it('Kanten-Assist: Lip-Step = kurzer Griff, Vault = flache Hand (Abdrücken); mit Gegenstand hält sie fest', () => {
+    const { h, inp } = groundHand();
+    h.onEvent({ type: 'ledge', kind: 'step', speed: 400, dy: 4 });
+    h.update(1 / 120, inp);
+    expect(h.state().pose).toBe('grip');
+    for (let k = 0; k < 40; k++) h.update(1 / 120, inp);
+    expect(h.state().pose).toBe('run');
+    const yBefore = h.motion.y;
+    h.onEvent({ type: 'ledge', kind: 'vault', speed: 400, dy: 30 });
+    let maxY = yBefore;
+    for (let k = 0; k < 20; k++) {
+      h.update(1 / 120, inp);
+      maxY = Math.max(maxY, h.motion.y);
+      if (k === 0) expect(h.state().pose).toBe('flat');
+    }
+    expect(maxY - yBefore).toBeGreaterThan(0.02);
+    const c = new ViewHand();
+    c.setItem('can');
+    c.onEvent({ type: 'ledge', kind: 'vault', speed: 400, dy: 30 });
+    c.update(1 / 120, makeHandInput());
+    expect(c.state().pose).toBe('grip');
+  });
+
+  it('Rutsch-Zustand fällt ohne slideEnd nach 0.25 s Luft weg (Absicherung) und beim Respawn', () => {
+    const { h, inp } = groundHand();
+    h.onEvent(SLIDE_START);
+    inp.onGround = false;
+    for (let k = 0; k < 40; k++) {
+      inp.airTime = k / 120;
+      h.update(1 / 120, inp);
+    }
+    expect(h.state().sliding).toBe(false);
+    h.onEvent(SLIDE_START);
+    h.onEvent({ type: 'respawn', reason: 'fall' });
+    expect(h.state().sliding).toBe(false);
+  });
+});
+
+describe('View-Hand: Reaktion aufs Training (Plan 007 KI9)', () => {
+  const STAGE = (lessonDone: boolean): GameEvent => ({ type: 'lessonStage', index: 1, total: 4, rank: 'required', lessonDone });
+  const HOP = (counted: boolean): GameEvent => ({ type: 'lessonHop', verdict: 'good', gain: 12, counted, count: 2, goal: 5 });
+
+  function standing(motionFx = 1, item: 'none' | 'spinner' | 'coin' | 'phone' = 'none'): { h: ViewHand; inp: HandFrameInput } {
+    const h = new ViewHand();
+    h.motionFx = motionFx;
+    h.setItem(item);
+    const inp = makeHandInput();
+    for (let k = 0; k < 120; k++) h.update(1 / 120, inp);
+    return { h, inp };
+  }
+
+  /** Zeit (s) bis die Pose `pose` erscheint und wie lange sie hält (120 Hz). */
+  function poseTiming(h: ViewHand, inp: HandFrameInput, pose: string): { after: number; held: number } {
+    let after = -1;
+    let held = 0;
+    for (let k = 1; k <= 120 * 4; k++) {
+      h.update(1 / 120, inp);
+      if (h.state().pose === pose) {
+        if (after < 0) after = k / 120;
+        held += 1 / 120;
+      } else if (after >= 0) break;
+    }
+    return { after, held };
+  }
+
+  it('Stufe geschafft → Faust binnen 0.1 s für ~0.6 s; Lektion fertig → Daumen hoch binnen 0.1 s für ~2.4 s', () => {
+    for (const fps of [30, 60, 144]) {
+      const { h, inp } = standing();
+      h.onEvent(STAGE(false));
+      let t = 0;
+      while (h.state().pose !== 'fist' && t < 0.3) {
+        h.update(1 / fps, inp);
+        t += 1 / fps;
+      }
+      expect(t, `${fps} Hz`).toBeLessThanOrEqual(0.1);
+    }
+    const a = standing();
+    a.h.onEvent(STAGE(false));
+    const fist = poseTiming(a.h, a.inp, 'fist');
+    expect(fist.after).toBeLessThanOrEqual(0.1);
+    expect(fist.held).toBeGreaterThan(0.5);
+    expect(fist.held).toBeLessThan(0.7);
+    const b = standing();
+    b.h.onEvent(STAGE(true));
+    const up = poseTiming(b.h, b.inp, 'thumbsUp');
+    expect(up.after).toBeLessThanOrEqual(0.1);
+    expect(up.held).toBeGreaterThan(2.3);
+    expect(up.held).toBeLessThan(2.5);
+  });
+
+  it('gezählter Hop = kleiner Ruck (ungezählter keiner); Stufe = Ruck wie am Checkpoint', () => {
+    // Gegen eine Hand ohne Event (die Ruhe-Hand atmet leicht): größte Abweichung in y.
+    const drop = (e: GameEvent): number => {
+      const a = standing();
+      const b = standing();
+      a.h.onEvent(e);
+      let d = 0;
+      for (let k = 0; k < 60; k++) {
+        a.h.update(1 / 120, a.inp);
+        b.h.update(1 / 120, b.inp);
+        d = Math.max(d, Math.abs(a.h.motion.y - b.h.motion.y));
+      }
+      return d;
+    };
+    const counted = drop(HOP(true));
+    const notCounted = drop(HOP(false));
+    const stage = drop(STAGE(false));
+    expect(counted).toBeGreaterThan(0.002);
+    expect(notCounted).toBeLessThan(1e-6);
+    // Klein: deutlich schwächer als der Stufen-Ruck.
+    expect(counted).toBeLessThan(stage);
+  });
+
+  it('mit Gegenstand: Stufe/Abschluss = Checkpoint ohne Referenz (Spinner schnippt, Münze Kopf, Handy vibriert — kein Foto)', () => {
+    const sp = standing(1, 'spinner');
+    sp.h.onEvent(STAGE(false));
+    expect(sp.h.state().trick).not.toBe('none');
+    expect(sp.h.state().pose).not.toBe('fist');
+    const coin = standing(1, 'coin');
+    coin.h.onEvent(STAGE(true));
+    expect(coin.h.state().trick).toBe('call');
+    for (let k = 0; k < 240; k++) coin.h.update(1 / 120, coin.inp);
+    expect(coin.h.frame.propParam[0]).toBe(0);
+    const ph = standing(1, 'phone');
+    ph.h.onEvent(STAGE(true));
+    expect(ph.h.state().trick).toBe('buzz');
+    for (let k = 0; k < 360; k++) ph.h.update(1 / 120, ph.inp);
+    expect(ph.h.takeShutter()).toBe(false);
+  });
+
+  it('motionFx 0: nur die Pose wechselt, keine Bewegung (kein Ruck, kein Versatz)', () => {
+    const { h, inp } = standing(0);
+    h.onEvent(STAGE(false));
+    h.onEvent(HOP(true));
+    for (let k = 0; k < 12; k++) {
+      h.update(1 / 120, inp);
+      expect(h.motion.x).toBe(0);
+      expect(h.motion.y).toBe(0);
+      expect(h.motion.tilt).toBe(0);
+      expect(h.motion.squash).toBe(1);
+    }
+    expect(h.state().pose).toBe('fist');
+    h.onEvent(STAGE(true));
+    h.update(1 / 120, inp);
+    expect(h.state().pose).toBe('thumbsUp');
+    expect(h.motion.y).toBe(0);
   });
 });

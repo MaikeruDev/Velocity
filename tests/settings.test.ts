@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { BEST_KEY, BestTimes, SETTINGS_KEY, SettingsStore, movementConfigFor, sanitizeSettings } from '../src/engine/Settings';
-import { CS2_CLASSIC } from '../src/player/MovementConfig';
+import { CS2_CLASSIC, VELOCITY_DEFAULT } from '../src/player/MovementConfig';
 import type { StorageLike } from '../src/engine/Settings';
-import { DEFAULT_SETTINGS } from '../src/engine/settingsTypes';
+import { DEFAULT_SETTINGS, GLOVE_IDS, HELD_ITEM_IDS } from '../src/engine/settingsTypes';
 import type { GameSettings } from '../src/engine/settingsTypes';
 
 class MemoryStorage implements StorageLike {
@@ -134,7 +134,7 @@ describe('Neue Einstellungen (Plan 003, U6)', () => {
     expect(s.showHints).toBe(true);
     expect(s.fullscreenOnStart).toBe(true);
     expect(s.motionFx).toBe(1);
-    expect(s.keybinds).toEqual({ jump: ['Space'], crouch: ['KeyC', 'ControlLeft'], sprint: ['ShiftLeft'] });
+    expect(s.keybinds).toEqual({ jump: ['Space'], crouch: ['KeyC', 'ControlLeft'], sprint: ['ShiftLeft'], demo: ['KeyH'] });
   });
 
   it('alter gespeicherter Stand ohne die neuen Felder lädt ohne Fehler und behält seine Werte', () => {
@@ -302,5 +302,87 @@ describe('View-Hand (Plan 004)', () => {
     // Kaputter Wert fällt auf den bisherigen zurück.
     mem.setItem(SETTINGS_KEY, JSON.stringify({ showHand: 'ja' }));
     expect(new SettingsStore(mem).get().showHand).toBe(true);
+  });
+});
+
+describe('Plan 007: Luftlenkung, Vorführungs-Taste, Kosmetik v2', () => {
+  it('Defaults: Luftlenkung an, Vorführung auf H', () => {
+    expect(DEFAULT_SETTINGS.airControl).toBe(true);
+    expect(DEFAULT_SETTINGS.keybinds.demo).toEqual(['KeyH']);
+  });
+
+  it('alter Stand (vor Plan 007, ohne airControl und ohne demo-Belegung) lädt mit an und H, behält alles andere', () => {
+    const mem = new MemoryStorage();
+    const old = {
+      sensitivity: 2.4,
+      autoHop: true,
+      strafeAssist: true,
+      movementPreset: 'velocity',
+      showHand: false,
+      glove: 'neon',
+      heldItem: 'knife',
+      keybinds: { jump: ['Space', 'Mouse4'], crouch: ['KeyC'], sprint: ['ShiftLeft'] },
+    };
+    mem.setItem(SETTINGS_KEY, JSON.stringify(old));
+    const s = new SettingsStore(mem).get();
+    expect(s.airControl).toBe(true);
+    expect(s.keybinds.demo).toEqual(['KeyH']);
+    expect(s.keybinds.jump).toEqual(['Space', 'Mouse4']);
+    expect(s.sensitivity).toBe(2.4);
+    expect(s.showHand).toBe(false);
+    expect(s.glove).toBe('neon');
+    expect(s.heldItem).toBe('knife');
+  });
+
+  it('H schon anders belegt: Vorführung bekommt H nicht dazu (ein Code, eine Aktion)', () => {
+    const s = sanitizeSettings({ keybinds: { jump: ['Space', 'KeyH'] } }, DEFAULT_SETTINGS);
+    expect(s.keybinds.jump).toEqual(['Space', 'KeyH']);
+    expect(s.keybinds.demo).toEqual([]);
+    const own = sanitizeSettings({ keybinds: { demo: ['KeyG', 'Mouse5'] } }, DEFAULT_SETTINGS);
+    expect(own.keybinds.demo).toEqual(['KeyG', 'Mouse5']);
+  });
+
+  it('CS2-Preset schaltet Luftlenkung aus, velocity wieder an; ausdrücklicher Wert gewinnt; alter CS2-Stand lädt aus', () => {
+    const store = new SettingsStore(new MemoryStorage());
+    store.update({ movementPreset: 'cs2' });
+    expect(store.get().airControl).toBe(false);
+    expect(movementConfigFor(store.get()).airControl).toBe(0);
+    store.update({ movementPreset: 'velocity' });
+    expect(store.get().airControl).toBe(true);
+    store.update({ movementPreset: 'cs2', airControl: true });
+    expect(store.get().airControl).toBe(true);
+    const mem = new MemoryStorage();
+    mem.setItem(SETTINGS_KEY, JSON.stringify({ movementPreset: 'cs2' }));
+    expect(new SettingsStore(mem).get().airControl).toBe(false);
+    mem.setItem(SETTINGS_KEY, JSON.stringify({ movementPreset: 'velocity', airControl: false }));
+    expect(new SettingsStore(mem).get().airControl).toBe(false);
+  });
+
+  it('movementConfigFor: Einstellung aus → airControl 0, an → Wert des Presets (CS2 hat keine)', () => {
+    expect(movementConfigFor(DEFAULT_SETTINGS).airControl).toBe(VELOCITY_DEFAULT.airControl);
+    expect(VELOCITY_DEFAULT.airControl).toBeGreaterThan(0);
+    expect(movementConfigFor({ ...DEFAULT_SETTINGS, airControl: false }).airControl).toBe(0);
+    expect(movementConfigFor({ ...DEFAULT_SETTINGS, movementPreset: 'cs2', airControl: true }).airControl).toBe(0);
+    // Sonst unverändert gegenüber dem Preset (Phase 0: nur das neue Feld).
+    const { airControl: _a, ...rest } = movementConfigFor({ ...DEFAULT_SETTINGS, airControl: false });
+    const { airControl: _b, ...base } = VELOCITY_DEFAULT;
+    expect(rest).toEqual(base);
+  });
+
+  it('Round-Trip aller 6 Hände × 10 Gegenstände; unbekannte fallen auf den Standard', () => {
+    expect(GLOVE_IDS).toHaveLength(6);
+    expect(HELD_ITEM_IDS).toHaveLength(10);
+    for (const glove of GLOVE_IDS) {
+      for (const heldItem of HELD_ITEM_IDS) {
+        const mem = new MemoryStorage();
+        new SettingsStore(mem).update({ glove, heldItem });
+        const s = new SettingsStore(mem).get();
+        expect([s.glove, s.heldItem]).toEqual([glove, heldItem]);
+      }
+    }
+    const mem = new MemoryStorage();
+    mem.setItem(SETTINGS_KEY, JSON.stringify({ glove: 'pfote', heldItem: 'bumerang' }));
+    const s = new SettingsStore(mem).get();
+    expect([s.glove, s.heldItem]).toEqual(['classic', 'none']);
   });
 });

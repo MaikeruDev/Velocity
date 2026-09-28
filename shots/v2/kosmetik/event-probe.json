@@ -1,0 +1,311 @@
+{
+  "level1 · sync1.0 (VELOCITY-Niveau)": {
+    "runs": 3,
+    "finishes": 3,
+    "deaths": 0,
+    "seconds": 70.7,
+    "Zeit je Stufe (0/1/2/3)": "1 % / 9 % / 45 % / 45 %",
+    "airShare": "94 %",
+    "surfShare": "5 %",
+    "Sprünge/min je Stufe (0/1/2/3)": "0 / 5.1 / 33.1 / 30.6",
+    "perfectPerMin": 53.5,
+    "milestonesPerMin": 7.6,
+    "checkpointsPerMin": 7.6,
+    "props": {
+      "can": {
+        "busyShare": "39 %",
+        "busyShareByTier": "0 % / 31 % / 38 % / 41 %",
+        "tricksPerMin": 28,
+        "starts": {
+          "flip": 6,
+          "highFlip": 10,
+          "twirl": 5,
+          "doubleFlip": 6,
+          "behindThrow": 6
+        },
+        "Sprünge (Stufe ≥1) mit Trick": "30 %",
+        "perfekte Hops mit Trick": "19 %",
+        "mit 1-Platz-Puffer 0.25 s: Sprünge": "30 %",
+        "mit Puffer: perfekte Hops": "24 %"
+      },
+      "card": {
+        "busyShare": "42 %",
+        "busyShareByTier": "0 % / 34 % / 39 % / 48 %",
+        "tricksPerMin": 25.5,
+        "starts": {
+          "spin": 4,
+          "tossSpin": 12,
+          "turn": 5,
+          "vanish": 9
+        },
+        "Sprünge (Stufe ≥1) mit Trick": "23 %",
+        "perfekte Hops mit Trick": "16 %",
+        "mit 1-Platz-Puffer 0.25 s: Sprünge": "28 %",
+        "mit Puffer: perfekte Hops": "27 %"
+      },
+      "knife": {
+        "busyShare": "38 %",
+        "busyShareByTier": "0 % / 23 % / 33 % / 48 %",
+        "tricksPerMin": 30.6,
+        "starts": {
+          "open": 6,
+          "rollover": 9,
+          "close": 5,
+          "doubleAerial": 13,
+          "aerial": 3
+        },
+        "Sprünge (Stufe ≥1) mit Trick": "36 %",
+        "perfekte Hops mit Trick": "29 %",
+        "mit 1-Platz-Puffer 0.25 s: Sprünge": "44 %",
+        "mit Puffer: perfekte Hops": "38 %"
+      },
+      "yoyo (Prototyp)": {
+        "busyShare": "51 %",
+        "busyShareByTier": "0 % / 41 % / 60 % / 45 %",
+        "tricksPerMin": 26.3,
+        "starts": {
+          "pass": 6,
+          "breakaway": 13,
+          "snap": 2,
+          "aroundDouble": 6,
+          "around": 1,
+          "cradle": 3
+        },
+        "Sprünge (Stufe ≥1) mit Trick": "21 %",
+        "perfekte Hops mit Trick": "16 %",
+        "mit 1-Platz-Puffer 0.25 s: Sprünge": "26 %",
+        "mit Puffer: perfekte Hops": "25 %"
+      }
+    }
+  },
+  "level1 · Hand 1.5° (guter Mensch)": {
+    "runs": 3,
+    "finishes": 3,
+    "deaths": 0,
+    "seconds": 85,
+    "Zeit je Stufe (0/1/2/3)": "1 % / 18 % / 66 % / 15 %",
+    "airShare": "92 %",
+    "surfShare": "9 %",
+    "Sprünge/min je Stufe (0/1/2/3)": "0 / 11.3 / 45.9 / 7.8",
+    "perfectPerMin": 51.5,
+    "milestonesPerMin": 8.5,
+    "checkpointsPerMin": 6.4,
+    "props": {
+      "can": {
+        "busyShare": "36 %",
+        "busyShareByTier": "43 % / 28 % / 39 % / 30 %",
+        "tricksPerMin": 26.8,
+        "starts": {
+          "flip": 8,
+          "highFlip": 16,
+          "twirl": 8,
+          "behindThrow": 4,
+          "doubleFlip": 2
+        },
+        "Sprünge (Stufe ≥1) mit Trick": "29 %",
+        "perfekte Hops mit Trick": "23 %",
+        "mit 1-Platz-Puffer 0.25 s: Sprünge": "30 %",
+        "mit Puffer: perfekte Hops": "21 %"
+      },
+      "card": {
+        "busyShare": "39 %",
+        "busyShareByTier": "43 % / 37 % / 41 % / 32 %",
+        "tricksPerMin": 27.5,
+        "starts": {
+          "spin": 12,
+          "tossSpin": 13,
+          "turn": 10,
+          "vanish": 4
+        },
+        "Sprünge (Stufe ≥1) mit Trick": "28 %",
+        "perfekte Hops mit Trick": "21 %",
+        "mit 1-Platz-Puffer 0.25 s: Sprünge": "36 %",
+        "mit Puffer: perfekte Hops": "32 %"
+      },
+      "knife": {
+        "busyShare": "33 %",
+        "busyShareByTier": "43 % / 26 % / 35 % / 36 %",
+        "tricksPerMin": 31.8,
+        "starts": {
+          "open": 13,
+          "rollover": 15,
+          "close": 11,
+          "doubleAerial": 5,
+          "aerial": 1
+        },
+        "Sprünge (Stufe ≥1) mit Trick": "38 %",
+        "perfekte Hops mit Trick": "30 %",
+        "mit 1-Platz-Puffer 0.25 s: Sprünge": "49 %",
+        "mit Puffer: perfekte Hops": "42 %"
+      },
+      "yoyo (Prototyp)": {
+        "busyShare": "53 %",
+        "busyShareByTier": "43 % / 36 % / 58 % / 53 %",
+        "tricksPerMin": 27.5,
+        "starts": {
+          "pass": 11,
+          "breakaway": 17,
+          "snap": 5,
+          "cradle": 2,
+          "aroundDouble": 4
+        },
+        "Sprünge (Stufe ≥1) mit Trick": "26 %",
+        "perfekte Hops mit Trick": "23 %",
+        "mit 1-Platz-Puffer 0.25 s: Sprünge": "32 %",
+        "mit Puffer: perfekte Hops": "30 %"
+      }
+    }
+  },
+  "level2 · sync1.0 (VELOCITY-Niveau)": {
+    "runs": 3,
+    "finishes": 3,
+    "deaths": 0,
+    "seconds": 50.6,
+    "Zeit je Stufe (0/1/2/3)": "1 % / 14 % / 59 % / 26 %",
+    "airShare": "94 %",
+    "surfShare": "26 %",
+    "Sprünge/min je Stufe (0/1/2/3)": "0 / 7.1 / 28.5 / 7.1",
+    "perfectPerMin": 35.6,
+    "milestonesPerMin": 10.7,
+    "checkpointsPerMin": 14.2,
+    "props": {
+      "can": {
+        "busyShare": "30 %",
+        "busyShareByTier": "0 % / 48 % / 33 % / 14 %",
+        "tricksPerMin": 21.3,
+        "starts": {
+          "flip": 3,
+          "highFlip": 6,
+          "twirl": 3,
+          "doubleFlip": 2,
+          "behindThrow": 4
+        },
+        "Sprünge (Stufe ≥1) mit Trick": "33 %",
+        "perfekte Hops mit Trick": "30 %",
+        "mit 1-Platz-Puffer 0.25 s: Sprünge": "33 %",
+        "mit Puffer: perfekte Hops": "30 %"
+      },
+      "card": {
+        "busyShare": "30 %",
+        "busyShareByTier": "0 % / 56 % / 31 % / 14 %",
+        "tricksPerMin": 21.3,
+        "starts": {
+          "spin": 5,
+          "tossSpin": 8,
+          "turn": 2,
+          "vanish": 3
+        },
+        "Sprünge (Stufe ≥1) mit Trick": "33 %",
+        "perfekte Hops mit Trick": "30 %",
+        "mit 1-Platz-Puffer 0.25 s: Sprünge": "36 %",
+        "mit Puffer: perfekte Hops": "30 %"
+      },
+      "knife": {
+        "busyShare": "29 %",
+        "busyShareByTier": "0 % / 40 % / 31 % / 20 %",
+        "tricksPerMin": 23.7,
+        "starts": {
+          "open": 4,
+          "rollover": 7,
+          "close": 3,
+          "doubleAerial": 6
+        },
+        "Sprünge (Stufe ≥1) mit Trick": "33 %",
+        "perfekte Hops mit Trick": "30 %",
+        "mit 1-Platz-Puffer 0.25 s: Sprünge": "50 %",
+        "mit Puffer: perfekte Hops": "50 %"
+      },
+      "yoyo (Prototyp)": {
+        "busyShare": "65 %",
+        "busyShareByTier": "0 % / 57 % / 69 % / 62 %",
+        "tricksPerMin": 21.3,
+        "starts": {
+          "pass": 4,
+          "breakaway": 7,
+          "aroundDouble": 3,
+          "cradle": 3,
+          "snap": 1
+        },
+        "Sprünge (Stufe ≥1) mit Trick": "25 %",
+        "perfekte Hops mit Trick": "20 %",
+        "mit 1-Platz-Puffer 0.25 s: Sprünge": "25 %",
+        "mit Puffer: perfekte Hops": "20 %"
+      }
+    }
+  },
+  "level2 · Hand 1.5° (guter Mensch)": {
+    "runs": 3,
+    "finishes": 3,
+    "deaths": 0,
+    "seconds": 54.6,
+    "Zeit je Stufe (0/1/2/3)": "1 % / 15 % / 76 % / 8 %",
+    "airShare": "95 %",
+    "surfShare": "29 %",
+    "Sprünge/min je Stufe (0/1/2/3)": "0 / 7.7 / 31.8 / 0",
+    "perfectPerMin": 34,
+    "milestonesPerMin": 6.6,
+    "checkpointsPerMin": 13.2,
+    "props": {
+      "can": {
+        "busyShare": "25 %",
+        "busyShareByTier": "0 % / 25 % / 27 % / 14 %",
+        "tricksPerMin": 20.9,
+        "starts": {
+          "flip": 3,
+          "highFlip": 9,
+          "twirl": 4,
+          "behindThrow": 3
+        },
+        "Sprünge (Stufe ≥1) mit Trick": "31 %",
+        "perfekte Hops mit Trick": "26 %",
+        "mit 1-Platz-Puffer 0.25 s: Sprünge": "31 %",
+        "mit Puffer: perfekte Hops": "23 %"
+      },
+      "card": {
+        "busyShare": "27 %",
+        "busyShareByTier": "0 % / 28 % / 29 % / 13 %",
+        "tricksPerMin": 22,
+        "starts": {
+          "spin": 4,
+          "tossSpin": 8,
+          "turn": 5,
+          "vanish": 3
+        },
+        "Sprünge (Stufe ≥1) mit Trick": "31 %",
+        "perfekte Hops mit Trick": "23 %",
+        "mit 1-Platz-Puffer 0.25 s: Sprünge": "39 %",
+        "mit Puffer: perfekte Hops": "32 %"
+      },
+      "knife": {
+        "busyShare": "22 %",
+        "busyShareByTier": "0 % / 20 % / 23 % / 19 %",
+        "tricksPerMin": 24.2,
+        "starts": {
+          "open": 7,
+          "rollover": 7,
+          "close": 5,
+          "doubleAerial": 3
+        },
+        "Sprünge (Stufe ≥1) mit Trick": "44 %",
+        "perfekte Hops mit Trick": "42 %",
+        "mit 1-Platz-Puffer 0.25 s: Sprünge": "58 %",
+        "mit Puffer: perfekte Hops": "58 %"
+      },
+      "yoyo (Prototyp)": {
+        "busyShare": "70 %",
+        "busyShareByTier": "0 % / 46 % / 73 % / 89 %",
+        "tricksPerMin": 23.1,
+        "starts": {
+          "pass": 5,
+          "breakaway": 12,
+          "cradle": 3,
+          "snap": 1
+        },
+        "Sprünge (Stufe ≥1) mit Trick": "22 %",
+        "perfekte Hops mit Trick": "10 %",
+        "mit 1-Platz-Puffer 0.25 s: Sprünge": "28 %",
+        "mit Puffer: perfekte Hops": "23 %"
+      }
+    }
+  }
+}

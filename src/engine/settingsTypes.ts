@@ -2,10 +2,13 @@ import type { RenderSettings } from '../render/types';
 import { DEFAULT_RENDER_SETTINGS } from '../render/types';
 import type { MovementPresetId } from '../player/MovementConfig';
 
-/** Frei belegbare Aktionen. WASD bleiben fest (physische Codes, AZERTY bekommt ZQSD von selbst). */
-export type BindAction = 'jump' | 'crouch' | 'sprint';
+/**
+ * Frei belegbare Aktionen. WASD bleiben fest (physische Codes, AZERTY bekommt ZQSD von selbst).
+ * 'demo' (Plan 007) = Vorführung im Training (Taste H): ein Druck, kein gehaltener Knopf.
+ */
+export type BindAction = 'jump' | 'crouch' | 'sprint' | 'demo';
 
-export const BIND_ACTIONS: readonly BindAction[] = ['jump', 'crouch', 'sprint'];
+export const BIND_ACTIONS: readonly BindAction[] = ['jump', 'crouch', 'sprint', 'demo'];
 
 /** Höchstens so viele Tasten je Aktion (Primär + Zweitbelegung). */
 export const MAX_BINDS_PER_ACTION = 2;
@@ -21,15 +24,22 @@ export const DEFAULT_KEYBINDS: KeyBinds = {
   jump: ['Space'],
   crouch: ['KeyC', 'ControlLeft'],
   sprint: ['ShiftLeft'],
+  demo: ['KeyH'],
 };
 
-/** Handschuh der View-Hand (Kosmetik, Plan 005). 'neon' wird über engine/Unlocks freigeschaltet. */
-export type GloveId = 'classic' | 'neon';
-export const GLOVE_IDS: readonly GloveId[] = ['classic', 'neon'];
+/**
+ * Handschuh/Hand-Skin der View-Hand (Kosmetik, Plan 005/007). Alles außer 'classic' wird über
+ * engine/Unlocks freigeschaltet. Skins ohne Umsetzung zeichnet der Renderer als 'classic'.
+ */
+export type GloveId = 'classic' | 'neon' | 'gold' | 'robot' | 'skeleton' | 'cat';
+export const GLOVE_IDS: readonly GloveId[] = ['classic', 'neon', 'gold', 'robot', 'skeleton', 'cat'];
 
-/** Gegenstand in der View-Hand (Kosmetik, Plan 005/006). Alles außer 'none' über engine/Unlocks. */
-export type HeldItemId = 'none' | 'card' | 'can' | 'knife';
-export const HELD_ITEM_IDS: readonly HeldItemId[] = ['none', 'card', 'can', 'knife'];
+/**
+ * Gegenstand in der View-Hand (Kosmetik, Plan 005/006/007). Alles außer 'none' über engine/Unlocks.
+ * Gegenstände ohne Umsetzung verhalten sich wie 'none' (leere Hand).
+ */
+export type HeldItemId = 'none' | 'card' | 'can' | 'knife' | 'yoyo' | 'spinner' | 'coin' | 'lighter' | 'kendama' | 'phone';
+export const HELD_ITEM_IDS: readonly HeldItemId[] = ['none', 'card', 'can', 'knife', 'yoyo', 'spinner', 'coin', 'lighter', 'kendama', 'phone'];
 
 /**
  * Spieler-Einstellungen (persistiert in localStorage durch engine/Settings.ts).
@@ -53,6 +63,11 @@ export interface GameSettings {
   readonly autoSprint: boolean;
   /** In der Luft zählt W nicht, solange A/D gedrückt ist (MovementConfig.strafeAssist, Verdrahtung in Game). */
   readonly strafeAssist: boolean;
+  /**
+   * "Luftlenkung mit W" (Plan 007): aus → MovementConfig.airControl = 0 (movementConfigFor).
+   * Default an; das CS2-Preset schaltet sie aus wie den Strafe-Assist.
+   */
+  readonly airControl: boolean;
   readonly movementPreset: MovementPresetId;
   /** 0..1 Stärke der Kamera-Effekte. headBob = nur Laufen (Bob), motionFx = Landung, Pop, Roll, Surge, Surf-Lean. */
   readonly headBob: number;
@@ -94,6 +109,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   autoHop: true,
   autoSprint: true,
   strafeAssist: true,
+  airControl: true,
   movementPreset: 'velocity',
   headBob: 1,
   motionFx: 1,

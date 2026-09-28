@@ -1,0 +1,55 @@
+
+## A Crouch-Kante L1 (64 u) OHNE Ducken: W, Sprung an jeder Stelle von H7, 5 Tempi — Erfolge
+
+- Original               0/200
+- Lip 4                  0/200
+- Lip 6                  0/200
+- Lip 8                  12/200
+- Lip 12                 20/200
+- Lip 18 (Q3-AirStep)    27/200
+- Gedächtnis 0.2 s       0/200
+- Gedächtnis + Lip 5     0/200
+
+## B Crouch-Kante MIT Ducken (sofort nach Absprung): längste Absprungzone je Tempo (u) — wird sie breiter?
+
+- Original               320: 168 u (21/40, 12 gekrochen) · 450: 240 u (30/40, 13 gekrochen) · 600: 320 u (40/40, 15 gekrochen) · 761: 320 u (40/40, 20 gekrochen) · 900: 320 u (40/40, 23 gekrochen)
+- Gedächtnis + Lip 5     320: 184 u (23/40, 14 gekrochen) · 450: 256 u (32/40, 15 gekrochen) · 600: 320 u (40/40, 1 gekrochen) · 761: 320 u (40/40, 1 gekrochen) · 900: 320 u (40/40, 1 gekrochen)
+
+## C Zu spät geduckt: Ducken erst X ms NACH dem Stirnwand-Anprall — Erfolge (alle Startpunkte × 5 Tempi)
+
+| Variante | +0 ms | +16 ms | +31 ms | +63 ms | +102 ms | +148 ms |
+|---|---|---|---|---|---|---|
+| Original | 171/200, Ø 15 % Tempo, 171× < 50 % | 169/200, Ø 15 % Tempo, 169× < 50 % | 167/200, Ø 15 % Tempo, 167× < 50 % | 162/200, Ø 15 % Tempo, 162× < 50 % | 155/200, Ø 14 % Tempo, 155× < 50 % | 145/200, Ø 14 % Tempo, 145× < 50 % |
+| Gedächtnis + Lip 5 | 171/200, Ø 77 % Tempo, 28× < 50 % | 169/200, Ø 78 % Tempo, 26× < 50 % | 167/200, Ø 78 % Tempo, 26× < 50 % | 162/200, Ø 80 % Tempo, 23× < 50 % | 155/200, Ø 82 % Tempo, 19× < 50 % | 145/200, Ø 86 % Tempo, 15× < 50 % |
+
+## D Sprung über 128-u-Lücke auf höhere Plattform (senkrechte Stirn), W gehalten, kein Strafen, kein Ducken
+Raster: Tempo 250…800 (Δ50) × Absprung 0…420 u vor der Kante (Δ4). "Reichweite" = weitester Absprung, der noch oben ankommt.
+
+| Variante | +0: ok / Δ-Reichweite Ø | +32: ok / Δ-Reichweite Ø | +48: ok / Δ-Reichweite Ø | +56: ok / Δ-Reichweite Ø |
+|---|---|---|---|---|
+| Original | 794/1272 / 0.0 u | 610/1272 / 0.0 u | 452/1272 / 0.0 u | 301/1272 / 0.0 u |
+| Lip 4 | 807/1272 / 5.3 u | 621/1272 / 6.3 u | 486/1272 / 14.3 u | 384/1272 / 33.5 u |
+| Lip 6 | 811/1272 / 6.7 u | 633/1272 / 13.3 u | 507/1272 / 22.3 u | 412/1272 / 45.1 u |
+| Lip 8 | 818/1272 / 9.3 u | 643/1272 / 17.0 u | 526/1272 / 29.3 u | 435/1272 / 54.2 u |
+| Lip 12 | 832/1272 / 20.7 u | 670/1272 / 28.7 u | 560/1272 / 41.3 u | 475/1272 / 69.5 u |
+| Lip 18 (Q3-AirStep) | 850/1272 / 31.3 u | 702/1272 / 39.3 u | 598/1272 / 55.7 u | 533/1272 / 92.0 u |
+| Gedächtnis 0.2 s | 794/1272 / 0.0 u | 610/1272 / 0.0 u | 452/1272 / 0.0 u | 301/1272 / 0.0 u |
+| Gedächtnis + Lip 5 | 810/1272 / 6.3 u | 628/1272 / 11.3 u | 498/1272 / 19.3 u | 398/1272 / 38.5 u |
+
+## E L1 Hop-Reihe ab Knoten "Hop-Reihe": W + Leertaste gehalten (320–800 × 20 Startpunkte) und 3°-Hand ohne Zielen (8 Seeds × 3 Tempi): bis H7 / tot
+
+- Original               W+Space: 260/260 bis H7, 0 in den Graben | 3°-Hand: 24/24
+- Gedächtnis + Lip 5     W+Space: 260/260 bis H7, 0 in den Graben | 3°-Hand: 24/24
+
+## F L2 Surf ab CP2, Grundtechnik-Surfer mit Blickversatz — Ankunft (u/s @ s)
+
+- Original               -2°: 1404.55@8.42s · 0°: 1236.51@9.24s · 2°: 1032.70@10.65s · 3°: 667.48@12.19s · 5°: 548.92@18.81s
+- Gedächtnis + Lip 5     -2°: 1404.55@8.42s · 0°: 1236.51@9.24s · 2°: 1032.70@10.65s · 3°: 667.48@12.19s · 5°: 548.92@18.81s
+
+## H designProbes (Validator) mit global installiertem Assist (Gedächtnis + Lip 5)
+
+- level1: Original Fehler 0 / Warnungen 1 → Assist Fehler 0 / Warnungen 1
+- level2: Original Fehler 0 / Warnungen 0 → Assist Fehler 0 / Warnungen 0
+
+→ shots/v2/arcade-mechanics/ledge.json
+exit 0

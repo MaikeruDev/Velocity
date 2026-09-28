@@ -1,0 +1,8 @@
+- 1.6→0.8, Surf-Pause 0        level1: neu 0
+- 1.6→0.8, Surf-Pause 0        level2: neu 1 — Design: S0 fängt Nicht-Surfer nicht: 1/12 W-Halter ab CP2 tot (Blick auf Knoten + Leertaste: kill nach 5.0 s bei 1606,-1161,-2622)
+- 1.6→0.8, Surf-Pause 0.5 s    level1: neu 0
+- 1.6→0.8, Surf-Pause 0.5 s    level2: neu 0
+- 1.6→0.8, Surf-Pause 1.0 s    level1: neu 0
+- 1.6→0.8, Surf-Pause 1.0 s    level2: neu 0
+- 1.0→0.5, Surf-Pause 0.5 s    level1: neu 0
+- 1.0→0.5, Surf-Pause 0.5 s    level2: neu 0

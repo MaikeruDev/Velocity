@@ -66,15 +66,19 @@ function play(level: CompiledLevel, start: Vector3, driver: Driver, hz: number, 
     while (acc >= tickDt) {
       pm.copySnapshot(prev);
       last = driver(pm.state);
-      for (const e of pm.tick(last)) {
+      const ev = pm.tick(last);
+      // Wie Game: Tick-Grenze vor den Events (Lip-Step-Versatz gegen die Interpolation).
+      rig.onTick();
+      for (const e of ev) {
         rig.onEvent(e);
-        if (e.type === 'jump' && e.perfect) perfectJump = true;
+        if (e.type === 'jump' && e.clean) perfectJump = true;
       }
       pm.copySnapshot(curr);
       acc -= tickDt;
     }
-    lerpSnapshot(prev, curr, acc / tickDt, interp);
-    cameraViewFromSnapshot(interp, last.sprint, last.side, v);
+    const alpha = acc / tickDt;
+    lerpSnapshot(prev, curr, alpha, interp);
+    cameraViewFromSnapshot(interp, last.sprint, last.side, v, alpha);
     rig.update(1 / hz, v, last.yaw, 0);
     const fx = rig.fxState;
     out.push({

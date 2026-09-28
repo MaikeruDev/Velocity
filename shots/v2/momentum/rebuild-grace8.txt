@@ -1,0 +1,31 @@
+Physik: airSpeedCapLow 32, FadeFrom 350, FadeTo 700, MOM=grace
+  level1 Planung:
+    Hop-Reihe: Plan-Tempo 450 → 525 → 582 → 622 → 662 → 699 → 730 → 761 u/s; Lücken 203 / 188 / 229 / 234 / 230 / 104 / 231 u; Tiefen 192 / 176 / 192 / 224 / 256 / 528 u
+    Hop-Reihe braucht ab Plattformmitte (mit Reserve): 391 / 439 / 457 / 475 / 315 u/s
+    Kehre: Radius 1332 u, Plan-Tempo 710 / 736 / 761 / 787 / 813 / 836 / 854; Slalom 874 u/s (Inseln 576 u)
+    Abkürzung: 5 Inseln, Sprünge à 490 u, braucht 573 u/s
+    Rutsche: 2924 u, 439 u Gefälle bis zum Kicker; Launch (unteres Band) 727 u/s; Ziel auf y=-1104
+
+### level1 (neu gebaut, 192 Brushes)
+  Voll-Lauf sync 1.0: 8/8 im Ziel, Median 24.3 s, max 1089 u/s
+  Voll-Lauf sync 0.8: 8/8 im Ziel, Median 32.8 s, max 1060 u/s
+  Voll-Lauf Hand 2° : 8/8 im Ziel, Median 32.5 s, max 860 u/s
+  Voll-Lauf Hand 3° : 8/8 im Ziel, Median 37.6 s, max 831 u/s
+  Voll-Lauf sync 0.7: 8/8 im Ziel, Median 34.7 s, max 930 u/s
+  Spiel-Uhr 3°-Hand (Bronze÷1.05): 33.83 s
+  Spiel-Uhr sync 1.0 (Autor): 21.74 s
+  ! Design: Könner-Inseln lohnen nicht (Soll ≥ 5/6, ≥ 1 s): Hand 1° über die Inseln 2/6 durch (x 27.5 27.5 x x x s), Ersparnis Ø 0.12 s (2 Paare); perfekter Bot -0.83 s schneller
+  Design: 0 Fehler, 1 Warnungen, 5 ok
+  level2 Planung:
+    Ausfahrt: Vorfeld schließt die Lücke Ring → E1 (Sprint-Sprung von T0 trägt 334 u); Stufe 3 (über S1 auf S2): ab 1187 u/s, mit Reserve 1306
+    Launch braucht 345 u/s (ohne Reserve); Lücke 480 u; Ziel auf y=-2479, Strecke 8963 u nach Norden
+
+### level2 (neu gebaut, 338 Brushes)
+  Voll-Lauf sync 1.0: 8/8 im Ziel, Median 17.2 s, max 1049 u/s
+  Voll-Lauf sync 0.8: 8/8 im Ziel, Median 18.9 s, max 1010 u/s
+  Voll-Lauf Hand 2° : 8/8 im Ziel, Median 19.1 s, max 970 u/s
+  Voll-Lauf Hand 3° : 8/8 im Ziel, Median 21.7 s, max 899 u/s
+  Voll-Lauf sync 0.7: 8/8 im Ziel, Median 20.9 s, max 976 u/s
+  Spiel-Uhr 3°-Hand (Bronze÷1.05): 20.34 s
+  Spiel-Uhr sync 1.0 (Autor): 15.85 s
+  Design: 0 Fehler, 0 Warnungen, 6 ok

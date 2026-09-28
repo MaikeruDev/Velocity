@@ -14,10 +14,24 @@
  *    Checkpoint-Spawn aus dem Stand bis zum nächsten Checkpoint (Bot, und bei
  *    Surf-Abschnitten zusätzlich ein Grundtechnik-Surfer); Surf-Raster über
  *    Einstiegstempo, Tiefe und Blickfehler mit Nahtstopp-Erkennung; die
- *    Design-Proben der Level (tools/levels/designProbes.ts).
+ *    Design-Proben der Level (tools/levels/designProbes.ts); Crouch-Kanten ohne
+ *    Ducken (Fehler) und ihre Reserve zur Reichweite der Config (Warnung); der
+ *    perfekte Bot über 49 Start-Jitter — zerfällt er in zwei Zweige, ist der
+ *    Medaillen-Median von build.ts nicht belastbar (Warnung).
  *
  * Zum Schluss prüft der Selbsttest (tools/levels/selftest.ts), dass der
  * Validator eingebaute Fehler findet.
+ *
+ * Gabeln (Plan 007, `LevelFile.safeRoute`): beide Linien laufen durch Route- und
+ * Physik-Stufe (Berichtszeilen mit [route] / [safeRoute]). Surf-Raster, Surf-Übergang
+ * bei 320 u/s und Respawn-Surfer sind auf safeRoute Fehler, auf route nur Warnung —
+ * die schnelle Linie darf riskant sein. RouteFollower sync 1.0/0.8 bleiben auf beiden
+ * Pflicht. Par/Bronze kommen von der sicheren Linie. Ohne safeRoute ist der Bericht
+ * zeilengleich zu vorher.
+ *
+ * Lektionen (Plan 007, `LevelFile.training`, public/levels/training/): statt Start/Ziel
+ * und Medaillen prüft der Validator den Lektions-Vertrag (IDs, Referenzen, Textlängen,
+ * Stufen-Spawns) und ruft für die Physik tools/levels/training/check.ts.
  *
  * Route-Flags (LevelFormat.RouteNode, siehe .docs/research/level-design.md):
  * - `jump`: an diesem Knoten abspringen, Flug bis zum nächsten Knoten.
@@ -29,23 +43,48 @@
  *   ausgenommen (zu schnell → bremsen ist dort gewollt).
  * `note` ist reiner Freitext für Reports.
  *
+ * Filter `levels:check -- <id>|<datei>|training …`: jedes Argument muss ein Level oder eine Lektion
+ * treffen (auch ohne Index-Eintrag, wie `levels:build -- <id>` sie schreibt), sonst Fehler.
+ *
  * Exit-Code 1 bei Fehlern, Warnungen allein lassen den Check grün.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { Vector3 } from 'three';
-import { VELOCITY_DEFAULT } from '../src/player/MovementConfig';
-import { runRoute } from '../src/player/bots';
+import { VERDICTS } from '../src/engine/trainingTypes';
+import { VELOCITY_DEFAULT, type MovementConfig } from '../src/player/MovementConfig';
+import { PlayerMovement } from '../src/player/PlayerMovement';
+import { makeBotInput, runRoute } from '../src/player/bots';
 import { BrushWorld } from '../src/world/collision/BrushWorld';
-import { compileLevel } from '../src/world/level/compileLevel';
+import { compileBrush, compileLevel } from '../src/world/level/compileLevel';
 import type { CompiledLevel } from '../src/world/level/compileLevel';
-import type { LevelFile, LevelIndexEntry, RouteNode } from '../src/world/level/LevelFormat';
+import type { LevelFile, LevelIndexEntry, RouteNode, TaskDef, TrainingIndexEntry } from '../src/world/level/LevelFormat';
 import type { BrushFace, CollisionWorld } from '../src/world/collision/types';
+import type { MutablePlayerInput } from '../src/player/types';
+import { hasGlyph } from '../src/ui/glyphs';
 import { MIN_GROUND_NORMAL_Y } from '../src/world/collision/types';
 import { OVERSHOOT, PHYS, RESERVE, airTime } from './levels/ballistics';
-import { designProbes } from './levels/designProbes';
+import { designProbes, type DesignReport } from './levels/designProbes';
+import { checkTrainingLevel } from './levels/training/check';
 import { isParallelogram } from '../src/render/trims';
-import { SURF_GRID, isAirNode, isSurfNode, recordRoute, resumeIndex, respawnRun, respawnSurf, sectionFromStart, surfGrid, timedMedian, type StrafeModel } from './levels/physics';
+import {
+  SURF_GRID,
+  configKey,
+  describeBranches,
+  isAirNode,
+  isSurfNode,
+  nodeInTrigger,
+  recordRoute,
+  resumeIndex,
+  respawnRun,
+  respawnSurf,
+  sectionFromStart,
+  jitterMedian,
+  surfGrid,
+  timedMedian,
+  withRoute,
+  type StrafeModel,
+} from './levels/physics';
 
 const LEVEL_DIR = 'public/levels';
 const DEFAULT_SPEED = 250;
@@ -75,7 +114,27 @@ export interface Report {
 export interface ValidateOptions {
   /** Physik-Stufe (Bot-Durchläufe, Respawns, Surf-Raster, Design-Proben). Default true. */
   readonly physics?: boolean;
+  /**
+   * Zusätzliche Design-Proben (nach designProbes, nur mit Physik) — für Levels, deren Proben nicht
+   * über die id laufen: Selbsttest-Attrappen, Prototypen, die ein Strang vor dem Einbau misst.
+   */
+  readonly probes?: (level: CompiledLevel, cfg: MovementConfig) => DesignReport;
 }
+
+/**
+ * Welche Bot-Linie gerade geprüft wird. Ohne safeRoute gibt es nur MAIN_LINE (ohne Präfix,
+ * Surf-Prüfungen sind Fehler) — der Bericht bleibt zeilengleich zu vor Plan 007.
+ */
+interface LineMode {
+  /** Präfix jeder Berichtszeile dieser Linie ('' ohne Gabel). */
+  readonly tag: string;
+  /** Surf-Raster, Surf-Übergang bei 320 u/s, Respawn-Surfer: Fehler (true) oder Warnung. */
+  readonly surfErrors: boolean;
+  /** Level-weite Proben (designProbes, Zusatz-Proben) nur einmal, mit der Hauptlinie. */
+  readonly main: boolean;
+}
+
+const MAIN_LINE: LineMode = { tag: '', surfErrors: true, main: true };
 
 function fmt(n: number, d = 0): string {
   return n.toFixed(d);
@@ -256,6 +315,10 @@ function checkKillZones(level: CompiledLevel, r: Report): void {
     for (const [i, n] of (level.def.route ?? []).entries()) {
       const p = new Vector3(...n.pos);
       if (kb.containsPoint(p) || kb.containsPoint(p.clone().setY(p.y + PHYS.standHeight))) r.errors.push(`${name} enthält Route-Knoten ${i} ${fmtV(p)}`);
+    }
+    for (const [i, n] of (level.def.safeRoute ?? []).entries()) {
+      const p = new Vector3(...n.pos);
+      if (kb.containsPoint(p) || kb.containsPoint(p.clone().setY(p.y + PHYS.standHeight))) r.errors.push(`${name} enthält safeRoute-Knoten ${i} ${fmtV(p)}`);
     }
     const spawns = [level.spawnPos, ...level.triggers.filter((t) => t.kind === 'checkpoint').map((t) => t.spawnPos)];
     for (const s of spawns) if (kb.containsPoint(s)) r.errors.push(`${name} enthält einen Spawn ${fmtV(s)}`);
@@ -533,7 +596,7 @@ function checkJumpPair(level: CompiledLevel, i: number, A: RouteNode, B: RouteNo
  * dem Flankengefälle des Absprungs. Eine Stirn-/Seitenfläche im Weg ist ein
  * Fehler; wie weit man danach auf der Folgerampe trägt, prüft die Physik-Stufe.
  */
-function checkSurfPair(level: CompiledLevel, i: number, A: RouteNode, B: RouteNode, r: Report): void {
+function checkSurfPair(level: CompiledLevel, i: number, A: RouteNode, B: RouteNode, r: Report, mode: LineMode): void {
   const world = level.world;
   const a = new Vector3(...A.pos);
   const b = new Vector3(...B.pos);
@@ -541,16 +604,17 @@ function checkSurfPair(level: CompiledLevel, i: number, A: RouteNode, B: RouteNo
   const d = dir.length();
   if (d < 1) return;
   dir.divideScalar(d);
-  for (const v of [A.minSpeed ?? DEFAULT_SPEED, 320]) {
+  [A.minSpeed ?? DEFAULT_SPEED, 320].forEach((v, k) => {
     const vy0 = v * surfSlopeAlong(world, a, dir);
     const T = d / v;
     const res = traceArc(world, a, dir, v, vy0, T, false, true, true);
+    // Der Übergang bei 320 u/s (Einstieg aus dem Stand) ist auf der schnellen Linie einer Gabel nur eine Warnung.
     if (res.kind === 'block')
-      r.errors.push(
+      (k === 1 && !mode.surfErrors ? r.warnings : r.errors).push(
         `Route ${i}→${i + 1} (Surf-Übergang, ${v} u/s): stößt bei t=${fmt(res.t, 2)} s an ${brushName(level, res.brush)} ${fmtV(res.pos)} ` +
           `(Normale ${fmtV(res.normal.clone().multiplyScalar(100))}/100)`,
       );
-  }
+  });
 }
 
 function checkWalk(level: CompiledLevel, i: number, A: RouteNode, B: RouteNode, r: Report): void {
@@ -592,7 +656,7 @@ function segmentHitsBox(p: Vector3, q: Vector3, min: Vector3, max: Vector3): boo
   return true;
 }
 
-function checkRoute(level: CompiledLevel, r: Report): { length: number; time: number } {
+function checkRoute(level: CompiledLevel, r: Report, mode: LineMode = MAIN_LINE): { length: number; time: number } {
   const route = level.def.route ?? [];
   if (route.length === 0) {
     r.info.push('keine Route');
@@ -625,7 +689,7 @@ function checkRoute(level: CompiledLevel, r: Report): { length: number; time: nu
     } else if (aAir && !bAir) {
       checkJumpPair(level, i, A, B, r, stats);
     } else if (aAir && bAir) {
-      checkSurfPair(level, i, A, B, r);
+      checkSurfPair(level, i, A, B, r, mode);
     } else if (!aAir && !bAir) {
       checkWalk(level, i, A, B, r);
     }
@@ -769,10 +833,12 @@ interface BotTimes {
   readonly hand3Timed: number | null;
 }
 
-function checkPhysics(level: CompiledLevel, r: Report): BotTimes {
+function checkPhysics(level: CompiledLevel, r: Report, mode: LineMode = MAIN_LINE, opts: ValidateOptions = {}): BotTimes {
   const cfg = VELOCITY_DEFAULT;
   const route = level.def.route ?? [];
   const cps = level.triggers.filter((t) => t.kind === 'checkpoint').sort((a, b) => a.order - b.order);
+  // Surf-Prüfungen: auf der schnellen Linie einer Gabel Warnung, sonst Fehler.
+  const surfSink = mode.surfErrors ? r.errors : r.warnings;
 
   // 1) + 2) Durchlauf von Start bis Ziel (mehrere Seeds) und jeder Abschnitt aus dem Stand, je Bot-Modell.
   const table = sectionTable(level, cfg);
@@ -802,9 +868,9 @@ function checkPhysics(level: CompiledLevel, r: Report): BotTimes {
     const parts: string[] = [];
     for (const look of [0, 2]) {
       const res = respawnSurf(level, cp, (look * Math.PI) / 180, cfg);
-      if (!res.ok) r.errors.push(`Respawn CP${cp.order} (Surfer, Blick ${look}°): ${res.reason} bei ${fmtV(res.end)}`);
+      if (!res.ok) surfSink.push(`Respawn CP${cp.order} (Surfer, Blick ${look}°): ${res.reason} bei ${fmtV(res.end)}`);
       else parts.push(`${fmt(res.goalSpeed)} u/s`);
-      if (res.seam) r.errors.push(`Respawn CP${cp.order} (Surfer): Nahtstopp bei ${fmtV(res.seam.pos)} (${fmt(res.seam.before)} → ${fmt(res.seam.after)} u/s)`);
+      if (res.seam) surfSink.push(`Respawn CP${cp.order} (Surfer): Nahtstopp bei ${fmtV(res.seam.pos)} (${fmt(res.seam.before)} → ${fmt(res.seam.after)} u/s)`);
     }
     lines.push(`CP${cp.order} ${parts.join(' / ')}`);
   }
@@ -813,12 +879,12 @@ function checkPhysics(level: CompiledLevel, r: Report): BotTimes {
   // 3) Surf-Raster.
   for (const g of surfGrid(level, { ...SURF_GRID, cfg })) {
     for (const f of g.failures.slice(0, 4))
-      r.errors.push(
+      surfSink.push(
         `Surf ${g.note} → ${g.goal}: Einstieg ${f.speed} u/s, Versatz ${f.lateral}, Blick ${f.lookDeg}° scheitert (${f.outcome.reason} bei ${fmtV(f.outcome.end)})`,
       );
-    if (g.failures.length > 4) r.errors.push(`Surf ${g.note} → ${g.goal}: … ${g.failures.length - 4} weitere Fehlschläge`);
+    if (g.failures.length > 4) surfSink.push(`Surf ${g.note} → ${g.goal}: … ${g.failures.length - 4} weitere Fehlschläge`);
     for (const s of g.seams.slice(0, 3))
-      r.errors.push(`Surf ${g.note}: Nahtstopp bei ${fmtV(s.seam.pos)} (${fmt(s.seam.before)} → ${fmt(s.seam.after)} u/s; Einstieg ${s.speed}/${s.lateral}/${s.lookDeg}°)`);
+      surfSink.push(`Surf ${g.note}: Nahtstopp bei ${fmtV(s.seam.pos)} (${fmt(s.seam.before)} → ${fmt(s.seam.after)} u/s; Einstieg ${s.speed}/${s.lateral}/${s.lookDeg}°)`);
     r.info.push(
       `Surf-Raster ${g.note} → ${g.goal}: ${g.runs - g.failures.length}/${g.runs} Läufe, ${g.seams.length} Nahtstopps, Tempo am Ziel ${fmt(g.goalSpeed[0])}–${fmt(g.goalSpeed[1])} u/s`,
     );
@@ -827,11 +893,30 @@ function checkPhysics(level: CompiledLevel, r: Report): BotTimes {
   // 4) Deko auf der geflogenen Linie.
   checkDecoOnPath(level, r);
 
-  // 5) Design-Proben des Levels.
-  const d = designProbes(level, cfg);
-  r.errors.push(...d.errors);
-  r.warnings.push(...d.warnings);
-  r.info.push(...d.info);
+  // 4b) Crouch-Kanten dürfen ohne Ducken nicht erreichbar sein (meldet nur Verstöße).
+  checkCrouchNoDuck(level, cfg, r);
+
+  // 5) Design-Proben des Levels (einmal, mit der Hauptlinie).
+  if (mode.main) {
+    const d = designProbes(level, cfg);
+    r.errors.push(...d.errors);
+    r.warnings.push(...d.warnings);
+    r.info.push(...d.info);
+    if (opts.probes) {
+      const x = opts.probes(level, cfg);
+      r.errors.push(...x.errors);
+      r.warnings.push(...x.warnings);
+      r.info.push(...x.info);
+    }
+    // 6) Start-Jitter des perfekten Bots (Grundlage von Gold/VELOCITY/Autor, build.ts): zerfällt er in
+    //    Zweige, ist der Median eine Frage der Stichprobe. Meldet nur Befunde.
+    const j = jitterMedian(level, { sync: 1 }, cfg);
+    if (j.branches)
+      r.warnings.push(
+        `Perfekter Bot zerfällt über den Start-Kasten (±16 u × ±1°, ${j.runs.length} Starts) in zwei Zweige: ${describeBranches(j.branches)} — ` +
+          `der Medaillen-Median (build.ts) hängt an der Stichprobe; Chaos-Stelle entschärfen (z. B. Absprung vor einer Wand)`,
+      );
+  }
   const hand = BOT_MODELS.findIndex((b) => b.model.aimNoiseDeg === 3);
   return { perfect: table.full[0].median, hand3: hand >= 0 ? table.full[hand].median : null, hand3Timed: timedMedian(level, { aimNoiseDeg: 3 }, FULL_RUN_SEEDS, cfg).median };
 }
@@ -882,6 +967,323 @@ function checkDecoOnPath(level: CompiledLevel, r: Report): void {
 }
 
 // ---------------------------------------------------------------------------
+// Plan 007: Crouch-Kanten, gestapelte Level, Lektionen
+
+/**
+ * Crouch-Kanten sollen so viel über der Reichweite ohne Ducken liegen (u). Heute (Repo-Physik, ledgeStep 5)
+ * reicht es ohne Ducken bis ≈ 63.8 u: Sprung 57 + Auto-Hop-Landehöhe bis 1.75 (Boden-Trace 2 u) +
+ * Kanten-Assist 5 — eine 64-u-Kante hat 0.2–0.5 u Reserve, ein Movement-Tuning kippt sie still.
+ */
+export const CROUCH_RESERVE = 2;
+
+/** Anlauf-Tempi der Crouch-Proben: Sprint, Mitte, bis 1.2 × Plan-Tempo des Knotens. */
+export function crouchSpeeds(cfg: MovementConfig, minSpeed: number | undefined): readonly number[] {
+  const vTop = Math.max(cfg.sprintSpeed, OVERSHOOT * (minSpeed ?? cfg.sprintSpeed));
+  return [cfg.sprintSpeed, (cfg.sprintSpeed + vTop) / 2, vTop];
+}
+
+/**
+ * Ein Anlauf auf eine Kante OHNE Ducken: ab `start` mit Tempo v in Richtung (fx, fz), W + Sprint + Leertaste
+ * gehalten (Auto-Hop, mehrere Versuche), 1.5 s. true = Füße stehen auf Kantenhöhe (≥ top − 1) und `past`.
+ * Füße selbst prüfen, kein simulate-Ziel: das wird gegen die ganze Hull geprüft (inbox level-tools).
+ */
+function climbsWithoutDuck(
+  world: CollisionWorld,
+  cfg: MovementConfig,
+  inp: MutablePlayerInput,
+  start: Vector3,
+  fx: number,
+  fz: number,
+  v: number,
+  top: number,
+  past: (x: number, z: number) => boolean,
+  killY: number,
+): boolean {
+  const pm = new PlayerMovement(world, cfg);
+  pm.teleport(start);
+  pm.state.vel.set(fx * v, 0, fz * v);
+  const yaw = Math.atan2(-fx, -fz);
+  for (let k = 0; k < 1.5 * cfg.tickRate; k++) {
+    inp.yaw = yaw;
+    inp.pitch = 0;
+    inp.forward = 1;
+    inp.side = 0;
+    inp.sprint = true;
+    inp.crouch = false;
+    inp.jumpHeld = true;
+    inp.jumpPressed = k === 0;
+    pm.tick(inp);
+    const st = pm.state;
+    if (st.pos.y < killY) return false;
+    if (st.onGround && st.pos.y >= top - 1 && past(st.pos.x, st.pos.z)) return true;
+  }
+  return false;
+}
+
+const reachCache = new Map<string, number>();
+
+/**
+ * Höchste Kante (u über dem Anlauf-Boden), die man OHNE Ducken erreicht — eine Eigenschaft der Config
+ * (Sprung, Auto-Hop, Kanten-Assist), nicht des Levels: Attrappe aus Boden und Wand der Höhe h, Anlauf
+ * 16–400 u vor der Wand im 8-u-Raster mit den Tempi der Probe, Bisektion auf 0.05 u. Cache je Config + Tempi.
+ */
+export function noDuckReach(cfg: MovementConfig, speeds: readonly number[]): number {
+  const key = `${configKey(cfg)}|${speeds.join(',')}`;
+  const hit = reachCache.get(key);
+  if (hit !== undefined) return hit;
+  const half = cfg.hull.halfWidth;
+  const inp = makeBotInput();
+  const floor = compileBrush({ type: 'box', min: [-256, -64, 0], max: [256, 0, 512], mat: 'floor' }, 0);
+  const climbs = (h: number): boolean => {
+    const world = new BrushWorld([floor, compileBrush({ type: 'box', min: [-256, -64, -512], max: [256, h, 0], mat: 'wall' }, 1)]);
+    for (let back = 16; back <= 400; back += 8)
+      for (const v of speeds) if (climbsWithoutDuck(world, cfg, inp, new Vector3(0, 0.25, back), 0, -1, v, h, (_x, z) => z <= half, -1000)) return true;
+    return false;
+  };
+  // Stufenhöhe schafft man immer (Step), 128 u nie (Crouch-Jump ≈ 76 u + Assist).
+  let lo = cfg.stepSize;
+  let hi = 128;
+  while (hi - lo > 0.05) {
+    const mid = (lo + hi) / 2;
+    if (climbs(mid)) lo = mid;
+    else hi = mid;
+  }
+  reachCache.set(key, lo);
+  return lo;
+}
+
+/**
+ * Crouch-Kanten (Knoten mit `crouch`, Flug auf eine höhere Fläche) dürfen OHNE Ducken nicht erreichbar
+ * sein, sonst lehrt die Kante nichts. Fehler: die Probe im Level kommt ohne Ducken hoch (Anlauf auf der
+ * Absprungfläche 16–400 u vor der Wand, Sprint bis 1.2 × Plan-Tempo, Linie und ±48 seitlich, W + Leertaste
+ * gehalten, nie geduckt). Warnung: die Kante liegt weniger als CROUCH_RESERVE über `noDuckReach` — heute
+ * noch dicht, nach dem nächsten Tuning nicht mehr. Meldet nur Befunde; L2 hat keine Crouch-Kante.
+ */
+function checkCrouchNoDuck(level: CompiledLevel, cfg: MovementConfig, r: Report): void {
+  const route = level.def.route ?? [];
+  const world = level.world;
+  const inp = makeBotInput();
+  for (let i = 0; i + 1 < route.length; i++) {
+    const A = route[i];
+    const B = route[i + 1];
+    if (!A.crouch || B.pos[1] <= A.pos[1] + PHYS.stepSize) continue;
+    const dx = B.pos[0] - A.pos[0];
+    const dz = B.pos[2] - A.pos[2];
+    const d = Math.hypot(dx, dz);
+    if (d < 1) continue;
+    const fx = dx / d;
+    const fz = dz / d;
+    // Wand = erster Punkt der Linie A→B, an dem der Boden über Stufenhöhe liegt; dort oben ist die Kante.
+    let wall = -1;
+    let top = 0;
+    for (let s = 0; s <= d; s += 4) {
+      const g = groundBelow(world, new Vector3(A.pos[0] + fx * s, B.pos[1] + 8, A.pos[2] + fz * s), B.pos[1] - A.pos[1] + 16, PROBE_MINS, PROBE_MAXS, 0);
+      if (g !== null && g > A.pos[1] + PHYS.stepSize) {
+        wall = s;
+        top = g;
+        break;
+      }
+    }
+    if (wall < 0) continue;
+    const speeds = crouchSpeeds(cfg, A.minSpeed);
+    const past = (x: number, z: number): boolean => (x - A.pos[0]) * fx + (z - A.pos[2]) * fz >= wall - PHYS.hullHalf;
+    const hits: string[] = [];
+    let runs = 0;
+    // 24-u-Raster: dichter (8 u) traf eine Kante 0.5 u unter der Reichweite auch nur 3× (320 u/s, 376 u vor
+    // der Wand — ein schmales Phasenfenster); knapp unter der Schwelle fängt die Reserve-Warnung.
+    for (let back = 16; back <= 400; back += 24) {
+      for (const lateral of [-48, 0, 48]) {
+        const x = A.pos[0] + fx * (wall - back) - fz * lateral;
+        const z = A.pos[2] + fz * (wall - back) + fx * lateral;
+        const g = groundBelow(world, new Vector3(x, A.pos[1] + 24, z), 48, STAND_MINS, STAND_MAXS, 0);
+        if (g === null || Math.abs(g - A.pos[1]) > 24) continue;
+        for (const v of speeds) {
+          runs++;
+          if (climbsWithoutDuck(world, cfg, inp, new Vector3(x, g + 0.25, z), fx, fz, v, top, past, level.def.killY)) hits.push(`${fmt(v)} u/s ${back} u vor der Wand, seitlich ${lateral}`);
+        }
+      }
+    }
+    const name = `Crouch-Kante Route ${i}→${i + 1}${A.note ? ` [${A.note}]` : ''} (${fmt(top - A.pos[1], 1)} u hoch)`;
+    const reach = noDuckReach(cfg, speeds);
+    const why = `ohne Ducken reicht es bis ${fmt(reach, 1)} u (Sprung, Auto-Hop-Landehöhe, Kanten-Assist)`;
+    const need = Math.ceil(reach + CROUCH_RESERVE);
+    if (hits.length) r.errors.push(`${name}: ohne Ducken erreichbar in ${hits.length}/${runs} Läufen (z. B. ${hits.slice(0, 2).join('; ')}) — ${why}; Crouch-Kanten brauchen ≥ ${need} u`);
+    else if (top - A.pos[1] - reach < CROUCH_RESERVE)
+      r.warnings.push(`${name}: Reserve ${fmt(top - A.pos[1] - reach, 1)} u < ${CROUCH_RESERVE} u — ${why}; ein Movement-Tuning kippt sie still, Kante auf ≥ ${need} u heben`);
+  }
+}
+
+/**
+ * Gestapelte Level (Wendel): liegen Knoten einer anderen Etage im Trigger eines Checkpoints, setzt der
+ * Wiedereinstieg nach einem Respawn beim ERSTEN Durchgang an (physics.resumeIndex). Fehler, wenn das nicht
+ * der Durchgang am Spawn ist — Bots, Spiel-Uhr und Proben fahren dann die falsche Etage ab ("Schatten-
+ * Knoten"). Abhilfe: Trigger in der Höhe begrenzen. Meldet nur Verstöße.
+ */
+function checkResume(level: CompiledLevel, r: Report): void {
+  const route = level.def.route ?? [];
+  for (const cp of level.triggers.filter((t) => t.kind === 'checkpoint')) {
+    const runs: Array<{ from: number; to: number; dist: number }> = [];
+    route.forEach((n, i) => {
+      if (!nodeInTrigger(n.pos, cp)) return;
+      const d = Math.hypot(n.pos[0] - cp.spawnPos.x, n.pos[1] - cp.spawnPos.y, n.pos[2] - cp.spawnPos.z);
+      const last = runs[runs.length - 1];
+      if (last && last.to === i - 1) {
+        last.to = i;
+        last.dist = Math.min(last.dist, d);
+      } else runs.push({ from: i, to: i, dist: d });
+    });
+    if (runs.length < 2) continue;
+    const near = runs.reduce((a, b) => (b.dist < a.dist ? b : a));
+    const at = resumeIndex(route, cp);
+    if (at >= near.from && at <= near.to + 1) continue;
+    r.errors.push(
+      `Checkpoint ${cp.order}: Wiedereinstieg bei Knoten ${at} (y ${fmt(route[at]?.pos[1] ?? Number.NaN)}), der Spawn gehört aber zum Durchgang ${near.from}–${near.to} ` +
+        `— die Route durchquert den Trigger ${runs.length}× (${runs.map((x) => `${x.from}–${x.to}`).join(', ')}): Schatten-Knoten einer anderen Etage, Trigger in der Höhe begrenzen`,
+    );
+  }
+}
+
+/** Lektionskarte im HUD: Titel ≤ 16 Zeichen, Texte ≤ 2 Zeilen à ≤ 40 Zeichen. */
+const TITLE_MAX = 16;
+const TEXT_LINES = 2;
+const TEXT_LINE_MAX = 40;
+
+function textProblem(text: string): string | null {
+  const lines = text.split('\n');
+  if (lines.length > TEXT_LINES) return `${lines.length} Zeilen (höchstens ${TEXT_LINES})`;
+  const long = lines.find((l) => [...l].length > TEXT_LINE_MAX);
+  return long === undefined ? null : `Zeile mit ${[...long].length} Zeichen (höchstens ${TEXT_LINE_MAX}): "${long}"`;
+}
+
+/** Zeichen ohne Glyphe im HUD-Pixelfont (ui/glyphs, samt Aliasen wie — → -) zeichnen als Kasten. */
+function glyphProblem(text: string): string | null {
+  const bad = [...new Set([...text].filter((ch) => ch !== '\n' && !hasGlyph(ch)))];
+  return bad.length ? `Zeichen ohne Glyphe im HUD-Font: ${bad.map((ch) => `"${ch}"`).join(' ')} in "${text.replace(/\n/g, ' / ')}"` : null;
+}
+
+function taskZones(task: TaskDef): readonly string[] {
+  switch (task.kind) {
+    case 'reach':
+    case 'crouchLand':
+      return [task.zone];
+    case 'course':
+      return task.zones;
+    default:
+      return [];
+  }
+}
+
+function taskProblem(task: TaskDef): string | null {
+  switch (task.kind) {
+    case 'hopChain':
+    case 'goodHops':
+    case 'crouchLand':
+    case 'event':
+      return Number.isInteger(task.count) && task.count >= 1 ? null : `count ${task.count}`;
+    case 'speed':
+    case 'surfSpeed':
+      return task.min > 0 ? null : `min ${task.min}`;
+    case 'surfHold':
+      return task.seconds > 0 ? null : `seconds ${task.seconds}`;
+    case 'course':
+      return task.zones.length === 0 ? 'course ohne Zonen' : task.minSpeed >= 0 ? null : `minSpeed ${task.minSpeed}`;
+    case 'reach':
+      return null;
+  }
+}
+
+/**
+ * Vertrag einer Lektion (LevelFile.training): kein Timer (medals/parTime verboten), Nummer/Kurzname/Gruppe,
+ * lektionsweit eindeutige IDs (Zonen, Tore, Stufen), jede Referenz zeigt auf Existierendes (Aufgaben-Zonen,
+ * opens → Tore, Tipp-Zonen, Urteile, Demo-Knoten), Titel ≤ 16 und Texte ≤ 2 × 40 Zeichen (HUD-Karte), jedes
+ * Zeichen von Name, Kurzname, Titeln, Texten und Tipps mit Glyphe im HUD-Font,
+ * mindestens eine Pflichtstufe, Stufen-Spawns stehen frei auf Boden.
+ */
+function checkTraining(level: CompiledLevel, r: Report): void {
+  const def = level.def;
+  const t = def.training;
+  if (!t) return;
+  const err = (m: string): void => {
+    r.errors.push(`Lektion ${t.short || def.id}: ${m}`);
+  };
+  if (def.medals !== undefined || def.parTime !== undefined) err('training zusammen mit medals/parTime — Lektionen haben keinen Timer und keine Bestzeit');
+  if (!Number.isInteger(t.lesson) || t.lesson < 1) err(`lesson ${t.lesson} ist keine Lektionsnummer ≥ 1`);
+  if (!t.short) err('short fehlt');
+  for (const [what, text] of [['Name', def.name], ['short', t.short]] as const) {
+    const gp = glyphProblem(text);
+    if (gp) err(`${what}: ${gp}`);
+  }
+  if (t.group !== 'basics' && t.group !== 'advanced') err(`group "${String(t.group)}" unbekannt`);
+  const ids = new Map<string, string>();
+  const claim = (id: string, what: string): void => {
+    const prev = ids.get(id);
+    if (prev !== undefined) err(`id "${id}" doppelt (${prev} und ${what}) — IDs sind lektionsweit eindeutig`);
+    else ids.set(id, what);
+  };
+  const zones = new Set<string>();
+  const gates = new Set<string>();
+  for (const z of t.zones ?? []) {
+    claim(z.id, 'Zone');
+    zones.add(z.id);
+    if (!(z.min[0] < z.max[0] && z.min[1] < z.max[1] && z.min[2] < z.max[2])) err(`Zone "${z.id}" ohne Volumen`);
+  }
+  for (const g of t.gates ?? []) {
+    claim(g.id, 'Tor');
+    gates.add(g.id);
+    if (!(g.min[0] < g.max[0] && g.min[1] < g.max[1] && g.min[2] < g.max[2])) err(`Tor "${g.id}" ohne Volumen`);
+  }
+  if (t.stages.length === 0) err('keine Stufen');
+  else if (!t.stages.some((s) => (s.rank ?? 'required') === 'required')) err('keine Pflichtstufe (rank required) — ohne sie gibt es keinen Stern');
+  const routeLen = (def.route ?? []).length;
+  for (const st of t.stages) {
+    const name = `Stufe "${st.id}"`;
+    claim(st.id, 'Stufe');
+    if ([...st.title].length > TITLE_MAX) err(`${name}: Titel "${st.title}" hat ${[...st.title].length} Zeichen (höchstens ${TITLE_MAX})`);
+    const tp = textProblem(st.text);
+    if (tp) err(`${name}: Text ${tp}`);
+    for (const [what, text] of [['Titel', st.title], ['Text', st.text]] as const) {
+      const gp = glyphProblem(text);
+      if (gp) err(`${name}: ${what} ${gp}`);
+    }
+    const task = taskProblem(st.task);
+    if (task) err(`${name}: Aufgabe ${st.task.kind} ungültig (${task})`);
+    for (const z of taskZones(st.task)) if (!zones.has(z)) err(`${name}: Aufgabe ${st.task.kind} verweist auf unbekannte Zone "${z}"`);
+    for (const g of st.opens ?? []) if (!gates.has(g)) err(`${name}: opens verweist auf unbekanntes Tor "${g}"`);
+    for (const tip of st.tips ?? []) {
+      const tt = textProblem(tip.text);
+      if (tt) err(`${name}: Tipp (${tip.on}) ${tt}`);
+      const tg = glyphProblem(tip.text);
+      if (tg) err(`${name}: Tipp (${tip.on}) ${tg}`);
+      if (tip.on === 'zone' && tip.zone === undefined) err(`${name}: Tipp 'zone' ohne Zone`);
+      if (tip.zone !== undefined && !zones.has(tip.zone)) err(`${name}: Tipp verweist auf unbekannte Zone "${tip.zone}"`);
+      if (tip.on === 'verdict' && tip.verdict === undefined) err(`${name}: Tipp 'verdict' ohne Urteil`);
+      if (tip.verdict !== undefined && !VERDICTS.some((v) => v === tip.verdict)) err(`${name}: Tipp mit unbekanntem Urteil "${String(tip.verdict)}"`);
+    }
+    const demo = st.demo;
+    if (demo?.kind === 'route' && !(Number.isInteger(demo.from) && Number.isInteger(demo.to) && demo.from >= 0 && demo.from < demo.to && demo.to < routeLen))
+      err(`${name}: Demo-Route ${demo.from}→${demo.to} liegt nicht in der Route (${routeLen} Knoten)`);
+    if (demo && !(demo.seconds > 0)) err(`${name}: Demo ohne Dauer`);
+    if (st.spawn) checkStandPoint(level.world, new Vector3(...st.spawn.pos), `${name}-Spawn`, r);
+  }
+  const rank = (k: string): number => t.stages.filter((s) => (s.rank ?? 'required') === k).length;
+  r.info.push(`Lektion ${t.short} (${t.group}): ${t.stages.length} Stufen (Pflicht ${rank('required')}, Bonus ${rank('bonus')}, Meister ${rank('master')}), ${zones.size} Zonen, ${gates.size} Tore`);
+}
+
+/** Zeilen einer Teilprüfung mit Präfix übernehmen ('' = direkt in den Bericht). */
+function tagged<T>(r: Report, tag: string, fn: (x: Report) => T): T {
+  if (!tag) return fn(r);
+  const x: Report = { name: r.name, errors: [], warnings: [], info: [] };
+  const out = fn(x);
+  r.errors.push(...x.errors.map((l) => tag + l));
+  r.warnings.push(...x.warnings.map((l) => tag + l));
+  r.info.push(...x.info.map((l) => tag + l));
+  return out;
+}
+
+const SAFE_LINE: LineMode = { tag: '[safeRoute] ', surfErrors: true, main: false };
+const NO_TIMES: BotTimes = { perfect: null, hand3: null, hand3Timed: null };
+
+// ---------------------------------------------------------------------------
 // Level
 
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
@@ -896,6 +1298,9 @@ export function validateLevel(file: string, def: LevelFile, opts: ValidateOption
     return r;
   }
   const world = level.world;
+  const training = def.training !== undefined;
+  // Gabel: die sichere Linie als eigene Level-Variante (alle Proben lesen def.route).
+  const safe = def.safeRoute ? withRoute(level, 'safeRoute') : null;
 
   // Environment
   const env = def.environment;
@@ -912,8 +1317,9 @@ export function validateLevel(file: string, def: LevelFile, opts: ValidateOption
   const starts = level.triggers.filter((t) => t.kind === 'start');
   const finishes = level.triggers.filter((t) => t.kind === 'finish');
   const cps = level.triggers.filter((t) => t.kind === 'checkpoint');
-  if (starts.length !== 1) r.errors.push(`${starts.length} Start-Trigger (erwartet 1)`);
-  if (finishes.length < 1) r.errors.push('kein Ziel-Trigger');
+  // Lektionen haben keinen Lauf (kein Timer): Start und Ziel sind dort freiwillig.
+  if (!training && starts.length !== 1) r.errors.push(`${starts.length} Start-Trigger (erwartet 1)`);
+  if (!training && finishes.length < 1) r.errors.push('kein Ziel-Trigger');
   for (const t of level.triggers) {
     const s = t.bounds.getSize(new Vector3());
     if (!(s.x > 0 && s.y > 0 && s.z > 0)) r.errors.push(`Trigger ${t.kind}${t.tag ? ` (${t.tag})` : ''} ohne Volumen`);
@@ -959,8 +1365,26 @@ export function validateLevel(file: string, def: LevelFile, opts: ValidateOption
   checkDecoIntersections(level, r);
   checkMarkings(level, r);
   checkKillZones(level, r);
-  const route = checkRoute(level, r);
-  const bots: BotTimes = opts.physics === false || route.length === 0 ? { perfect: null, hand3: null, hand3Timed: null } : checkPhysics(level, r);
+  checkTraining(level, r);
+  // Mit Gabel: route darf riskant sein (Surf-Prüfungen warnen), safeRoute muss halten.
+  const main: LineMode = safe ? { tag: '[route] ', surfErrors: false, main: true } : MAIN_LINE;
+  const route = tagged(r, main.tag, (x) => checkRoute(level, x, main));
+  const safeStats = safe ? tagged(r, SAFE_LINE.tag, (x) => checkRoute(safe, x, SAFE_LINE)) : null;
+  tagged(r, main.tag, (x) => checkResume(level, x));
+  if (safe) tagged(r, SAFE_LINE.tag, (x) => checkResume(safe, x));
+  const physics = opts.physics !== false;
+  let bots: BotTimes = NO_TIMES;
+  let safeBots: BotTimes | null = null;
+  if (physics && training) {
+    // Lektionen: Bot-Matrix je Stufe statt Start → Ziel (tools/levels/training/check.ts).
+    const t = checkTrainingLevel(level, VELOCITY_DEFAULT);
+    r.errors.push(...t.errors);
+    r.warnings.push(...t.warnings);
+    r.info.push(...t.info);
+  } else if (physics && route.length > 0) {
+    bots = tagged(r, main.tag, (x) => checkPhysics(level, x, main, opts));
+    if (safe && safeStats && safeStats.length > 0) safeBots = tagged(r, SAFE_LINE.tag, (x) => checkPhysics(safe, x, SAFE_LINE, opts));
+  }
 
   // Medaillen: streng fallend, Par = Bronze auf ganze Sekunden (build.ts misst beides mit der Spiel-Uhr).
   const m = def.medals;
@@ -969,7 +1393,7 @@ export function validateLevel(file: string, def: LevelFile, opts: ValidateOption
     if (!vals.every((x) => Number.isFinite(x) && x > 0)) r.errors.push(`Medaillen ungültig: ${JSON.stringify(m)}`);
     else if (!(m.bronze > m.silver && m.silver > m.gold && m.gold > m.velocity && m.velocity >= m.author)) r.errors.push(`Medaillen nicht streng fallend (bronze > silver > gold > velocity ≥ author): ${JSON.stringify(m)}`);
     if (def.parTime !== undefined && def.parTime !== Math.ceil(m.bronze)) r.warnings.push(`Par ${def.parTime} s ≠ Bronze ${m.bronze} s aufgerundet`);
-  } else if (route.length > 0) r.warnings.push('Keine Medaillen (npm run levels:build misst sie)');
+  } else if (route.length > 0 && !training) r.warnings.push('Keine Medaillen (npm run levels:build misst sie)');
 
   // Statistik
   const bmin = level.bounds.min;
@@ -992,14 +1416,91 @@ export function validateLevel(file: string, def: LevelFile, opts: ValidateOption
         (def.parTime !== undefined ? `, Par ${def.parTime} s` : '') +
         (m ? `, Medaillen ${m.bronze}/${m.silver}/${m.gold}/${m.velocity}/${m.author} s` : ''),
     );
+    if (safe && safeStats)
+      r.info.push(
+        `safeRoute ${(def.safeRoute ?? []).length} Knoten, ${fmt(safeStats.length)} u` +
+          (safeBots && safeBots.perfect !== null ? `, Bot sync 1.0 ${fmt(safeBots.perfect, 1)} s` : '') +
+          (safeBots && safeBots.hand3 !== null ? `, Hand 3° ${fmt(safeBots.hand3, 1)} s (Median)` : '') +
+          (safeBots && safeBots.hand3Timed !== null ? `, mit Spiel-Uhr ${fmt(safeBots.hand3Timed, 1)} s (Bronze/Par)` : ''),
+      );
     const par = def.parTime;
     if (par !== undefined && bots.perfect !== null && par < bots.perfect) r.warnings.push(`Par ${par} s liegt unter der Zeit des perfekten Bots (${fmt(bots.perfect, 1)} s)`);
     // Par = Ansage für Gelegenheitsspieler (3°-Hand + ~5 %, build.ts, Spiel-Uhr): darunter unerreichbar, weit darüber bedeutungslos.
-    const h3 = bots.hand3Timed;
+    // Mit Gabel misst build.ts Bronze auf der sicheren Linie — also auch hier.
+    const h3 = safeBots ? safeBots.hand3Timed : bots.hand3Timed;
     if (par !== undefined && h3 !== null && par < h3) r.warnings.push(`Par ${par} s liegt unter der 3°-Hand mit Spiel-Uhr (${fmt(h3, 1)} s)`);
     if (par !== undefined && h3 !== null && par > PAR_SLACK_MAX * h3) r.warnings.push(`Par ${par} s liegt über ${PAR_SLACK_MAX} × 3°-Hand (${fmt(h3, 1)} s) — bedeutungslos`);
   }
   return r;
+}
+
+/**
+ * Lektionsliste (training/index.json): ids über beide Indizes eindeutig, Nummer und Kurzname (Menü T1–T8)
+ * über alle Lektionen eindeutig. Liefert ✗-Zeilen; `ids` bekommt die Lektions-ids dazu.
+ */
+export function trainingIndexProblems(lessons: readonly TrainingIndexEntry[], ids: Map<string, string>): string[] {
+  const out: string[] = [];
+  const numbers = new Map<number, string>();
+  const shorts = new Map<string, string>();
+  for (const e of lessons) {
+    const f = `training/${e.file}`;
+    if (ids.has(e.id)) out.push(`training/index.json: id "${e.id}" doppelt (auch in index.json oder zweimal)`);
+    ids.set(e.id, f);
+    const n = numbers.get(e.lesson);
+    if (n !== undefined) out.push(`training/index.json: Lektionsnummer ${e.lesson} doppelt ("${n}" und "${e.id}")`);
+    else numbers.set(e.lesson, e.id);
+    const s = shorts.get(e.short);
+    if (s !== undefined) out.push(`training/index.json: Kurzname "${e.short}" doppelt ("${s}" und "${e.id}")`);
+    else shorts.set(e.short, e.id);
+  }
+  return out;
+}
+
+/** Auswahl für `levels:check -- <arg> …`: Dateien, Hinweise und ✗-Zeilen. */
+export interface LevelSelection {
+  readonly files: readonly string[];
+  readonly notes: readonly string[];
+  readonly errors: readonly string[];
+}
+
+/**
+ * Welche Dateien `levels:check -- <arg> …` prüft. `listed` = Index-Dateien (inkl. sandbox.json und
+ * training/…), `idOf` = Datei → id. Argument = id, Dateiname (mit/ohne .json) oder 'training' (alle
+ * Lektionen); genau, kein Präfix (level1 ≠ level10). Ohne Index-Eintrag zählt eine vorhandene Datei
+ * `<arg>.json` oder `training/<arg>.json` — `levels:build -- <id>` schreibt nur die Datei (Plan 007
+ * Phase 2). Jedes Argument muss etwas treffen: ein Tippfehler oder ein Stub ohne JSON ist ein Fehler,
+ * kein "0 Level, grün".
+ */
+export function selectLevels(only: readonly string[], listed: readonly string[], idOf: ReadonlyMap<string, string>, exists: (file: string) => boolean): LevelSelection {
+  if (!only.length) return { files: [...listed], notes: [], errors: [] };
+  const files: string[] = [];
+  const notes: string[] = [];
+  const errors: string[] = [];
+  const pick = (f: string): void => {
+    if (!files.includes(f)) files.push(f);
+  };
+  for (const o of only) {
+    if (o === 'training') {
+      const lessons = listed.filter((f) => f.startsWith('training/'));
+      if (!lessons.length) errors.push(`training: keine Lektionen gefunden (training/index.json fehlt oder ist leer) — erst npm run levels:build -- training`);
+      lessons.forEach(pick);
+      continue;
+    }
+    const name = o.replace(/\.json$/, '');
+    const hit = listed.find((f) => idOf.get(f) === o || f === o || f === `${name}.json` || f === `training/${name}.json`);
+    if (hit) {
+      pick(hit);
+      continue;
+    }
+    const loose = [`${name}.json`, `training/${name}.json`].find(exists);
+    if (loose) {
+      notes.push(`(${loose} steht in keinem Index — geprüft, weil ausdrücklich angefragt)`);
+      pick(loose);
+      continue;
+    }
+    errors.push(`${o}: kein Level und keine Lektion gefunden (weder im Index noch ${LEVEL_DIR}/${name}.json oder training/${name}.json) — Tippfehler oder noch nicht gebaut?`);
+  }
+  return { files, notes, errors };
 }
 
 async function main(): Promise<void> {
@@ -1023,9 +1524,23 @@ async function main(): Promise<void> {
     errors++;
   }
   files.push('sandbox.json');
-  // Optional: nur bestimmte Level prüfen (`npm run levels:check -- level1`), dann ohne Selbsttest.
+  // Lektionen des Trainingsmodus (Plan 007): public/levels/training/index.json, falls gebaut.
+  const trainingIndex = `${LEVEL_DIR}/training/index.json`;
+  if (existsSync(trainingIndex)) {
+    const lessons = JSON.parse(readFileSync(trainingIndex, 'utf8')) as TrainingIndexEntry[];
+    files.push(...lessons.map((e) => `training/${e.file}`));
+    for (const l of trainingIndexProblems(lessons, indexIds)) {
+      console.log(`✗ ${l}`);
+      errors++;
+    }
+  }
+  // Optional: nur bestimmte Level prüfen (`npm run levels:check -- level1`, `-- training`, `-- <Lektions-id>`), dann ohne Selbsttest.
   const only = process.argv.slice(2);
-  const selected = only.length ? files.filter((f) => only.some((o) => f.startsWith(o))) : files;
+  const sel = selectLevels(only, files, new Map([...indexIds].map(([id, file]) => [file, id] as const)), (f) => existsSync(`${LEVEL_DIR}/${f}`));
+  for (const l of sel.notes) console.log(l);
+  for (const l of sel.errors) console.log(`✗ ${l}`);
+  errors += sel.errors.length;
+  const selected = sel.files;
 
   for (const f of selected) {
     const path = `${LEVEL_DIR}/${f}`;

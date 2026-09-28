@@ -76,14 +76,17 @@ export class SettingsStore {
     // Bewusst kein "vom Spieler gesetzt"-Merker: der Preset-Wechsel IST die Spielerwahl,
     // der Schalter steht direkt darüber. Bei zwei Presets mit gegensätzlichem Default wäre
     // "Abweichung behalten" ohnehin identisch mit "Default des neuen Presets".
+    const presetChange = patch.movementPreset !== undefined && patch.movementPreset !== prev.movementPreset && isPresetId(patch.movementPreset);
     const presetAssist =
-      patch.movementPreset !== undefined && patch.movementPreset !== prev.movementPreset && patch.strafeAssist === undefined && isPresetId(patch.movementPreset)
-        ? { strafeAssist: MOVEMENT_PRESETS[patch.movementPreset].strafeAssist }
-        : {};
+      presetChange && patch.strafeAssist === undefined ? { strafeAssist: MOVEMENT_PRESETS[patch.movementPreset].strafeAssist } : {};
+    // Luftlenkung genauso (Plan 007): CS2 schaltet sie aus, velocity wieder an.
+    const presetAir =
+      presetChange && patch.airControl === undefined ? { airControl: MOVEMENT_PRESETS[patch.movementPreset].airControl > 0 } : {};
     const merged = {
       ...prev,
       ...patch,
       ...presetAssist,
+      ...presetAir,
       render: { ...prev.render, ...(patch.render ?? {}) },
       keybinds: { ...prev.keybinds, ...(patch.keybinds ?? {}) },
     };
@@ -109,11 +112,13 @@ export class SettingsStore {
 
 /**
  * Movement-Config aus den Spieler-Einstellungen: Preset als Basis, Auto-Hop und
- * Strafe-Assist aus den Settings (Spielerwahl schlägt Preset). Einzige Stelle
+ * Strafe-Assist aus den Settings (Spielerwahl schlägt Preset). Luftlenkung: die Einstellung kann
+ * sie nur abschalten (0); an gilt der Wert des Presets (CS2 hat keine). Einzige Stelle
  * dieser Regel — Engine und TuningPanel benutzen beide diese Funktion.
  */
 export function movementConfigFor(s: GameSettings): MovementConfig {
-  return withMovement(MOVEMENT_PRESETS[s.movementPreset], { autoHop: s.autoHop, strafeAssist: s.strafeAssist });
+  const base = MOVEMENT_PRESETS[s.movementPreset];
+  return withMovement(base, { autoHop: s.autoHop, strafeAssist: s.strafeAssist, airControl: s.airControl ? base.airControl : 0 });
 }
 
 // ------------------------------------------------------------------ Bestzeiten
@@ -235,7 +240,17 @@ function sanitizeKeybinds(raw: unknown, base: KeyBinds): KeyBinds {
     jump: bindList(o.jump, base.jump),
     crouch: bindList(o.crouch, base.crouch),
     sprint: bindList(o.sprint, base.sprint),
+    demo: demoBinds(bindList(o.demo, base.demo), o, base),
   };
+}
+
+/**
+ * Vorführung (Plan 007) ist ein Druck, kein gehaltener Knopf — dieselbe Taste darf nicht zugleich
+ * springen/ducken/sprinten. Kollidiert der Default H mit einer alten Belegung, bleibt H dort.
+ */
+function demoBinds(list: readonly string[], o: Record<string, unknown>, base: KeyBinds): readonly string[] {
+  const used = new Set<string>([...bindList(o.jump, base.jump), ...bindList(o.crouch, base.crouch), ...bindList(o.sprint, base.sprint)]);
+  return list.filter((c) => !used.has(c));
 }
 
 /**
@@ -265,6 +280,11 @@ export function sanitizeSettings(raw: unknown, base: GameSettings): GameSettings
     strafeAssist: bool(
       o.strafeAssist,
       isPresetId(o.movementPreset) && o.movementPreset !== base.movementPreset ? MOVEMENT_PRESETS[o.movementPreset].strafeAssist : base.strafeAssist,
+    ),
+    // Fehlt in Ständen vor Plan 007 → folgt dem gespeicherten Preset wie strafeAssist (CS2: aus).
+    airControl: bool(
+      o.airControl,
+      isPresetId(o.movementPreset) && o.movementPreset !== base.movementPreset ? MOVEMENT_PRESETS[o.movementPreset].airControl > 0 : base.airControl,
     ),
     movementPreset: isPresetId(o.movementPreset) ? o.movementPreset : base.movementPreset,
     headBob: num(o.headBob, base.headBob, E.min, E.max),

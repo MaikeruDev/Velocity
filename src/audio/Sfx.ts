@@ -84,6 +84,22 @@ const BLIP_PARTIALS = 5;
 const BLIP_CENTER_HZ = 1200;
 const BLIP_SIGMA = 0.85;
 
+/**
+ * Weiterrutschen (PlayerMovement.slideCarry): über Mulde/Kante kommt slideEnd in der Luft und slideStart
+ * bei der Landung. Kam seit dem slideEnd kein Sprung, kein Aufstehen und kein Respawn und liegt es höchstens
+ * so lange (s) zurück, ist es dieselbe Rutsche — kein zweiter Kratz-Whoosh (L1-Start: zwei in 0.72 s).
+ * Das Bett-Kratzen läuft ohnehin über MusicDrive.sliding.
+ */
+const SLIDE_RESUME_WINDOW = 1;
+
+/**
+ * Lektion (Plan 007): gezählter Hop = Glocke auf der Pentatonik ab A4, je gezähltem Hop eine Stufe
+ * höher (die Aufgabe "spielt" eine Melodie wie die Hop-Kette). Höchstens so viele Stufen, dann bleibt
+ * sie oben (A4 + 2 Oktaven) — höher sticht sie über den Hats.
+ */
+const LESSON_ROOT = 69;
+const LESSON_MAX_STEP = 10;
+
 /** Whoosh: Pegel ab dieser seitlichen Nähe (u), voll bei WHOOSH_NEAR. */
 const WHOOSH_FAR = 160;
 const WHOOSH_NEAR = 40;
@@ -160,7 +176,7 @@ interface WhooshVoice {
  * Sound-Effekte auf eigenem Bus (am Musikfilter vorbei). Alles in A-Moll,
  * damit Blips und Chimes mit dem Track verschmelzen statt dagegen zu piepsen.
  * Ereignisse laufen über `mixer.sfx` (wächst mit der Energie), Dauerklänge
- * (Wind, Surf, Whoosh) über `mixer.sfxBed`.
+ * (Wind, Surf, Rutschen, Whoosh) über `mixer.sfxBed`.
  */
 export class Sfx {
   private readonly noise: AudioBuffer;
@@ -179,6 +195,9 @@ export class Sfx {
   private readonly surfGain: GainNode;
   private readonly surfBP: BiquadFilterNode;
   private readonly surfLfo: OscillatorNode;
+  private readonly slideGain: GainNode;
+  private readonly slideBP: BiquadFilterNode;
+  private readonly slideLfo: OscillatorNode;
   private readonly whoosh: WhooshVoice[];
 
   private clock: BeatClock | null = null;
@@ -189,7 +208,10 @@ export class Sfx {
   private lastSpeed = -1;
   private lastActive = true;
   private lastSurf = false;
+  private lastSlide = false;
   private lastRespawn = Number.NEGATIVE_INFINITY;
+  /** Zeit des letzten slideEnd, nach dem die Rutsche noch weitergehen kann (siehe SLIDE_RESUME_WINDOW). */
+  private slideGapFrom = Number.NEGATIVE_INFINITY;
 
   constructor(
     private readonly ctx: BaseAudioContext,
@@ -264,6 +286,24 @@ export class Sfx {
     ssrc.connect(shp).connect(this.surfBP).connect(grain).connect(this.surfGain);
     haasPair(ctx, this.surfGain, this.bed, -0.3, 0.011, 0.72);
 
+    // --- Rutsch-Kratzen (Plan 007): Rauschen HP → BP 1.3–2.6 kHz, rau moduliert (19–31 Hz), Pegel ∝ Tempo.
+    // Tiefer und körniger als das Surf-Zischen: Schuhe/Stoff auf Boden, nicht Luft an der Rampe.
+    const slsrc = ctx.createBufferSource();
+    slsrc.buffer = this.noise;
+    slsrc.loop = true;
+    slsrc.start(startAt, 1.53);
+    const slhp = makeFilter(ctx, 'highpass', 700, 0);
+    this.slideBP = makeFilter(ctx, 'bandpass', 1600, 1.1);
+    const slGrain = makeGain(ctx, 0.62);
+    this.slideLfo = ctx.createOscillator();
+    this.slideLfo.frequency.value = 19;
+    const slDepth = makeGain(ctx, 0.38);
+    this.slideLfo.connect(slDepth).connect(slGrain.gain);
+    this.slideLfo.start(startAt);
+    this.slideGain = makeGain(ctx, 0);
+    slsrc.connect(slhp).connect(this.slideBP).connect(slGrain).connect(this.slideGain);
+    haasPair(ctx, this.slideGain, this.bed, 0.15, 0.007, 0.7);
+
     // --- Vorbeizieh-Whoosh: je Seite eine Rauschstimme, Pegel nach Nähe × Tempo ---
     this.whoosh = [];
     for (const side of [-1, 1] as const) {
@@ -289,10 +329,12 @@ export class Sfx {
     // Der Drive ist die Wahrheit (pro Frame); surfStart/surfEnd erzwingen nur ein sofortiges Update.
     // Sonst bliebe das Zischen hängen, wenn ein surfEnd fehlt (Respawn mitten im Surf).
     const surf = d.active && d.surfing;
-    if (Math.abs(d.speed - this.lastSpeed) < 2 && d.active === this.lastActive && surf === this.lastSurf) return;
+    const slide = d.active && d.sliding === true;
+    if (Math.abs(d.speed - this.lastSpeed) < 2 && d.active === this.lastActive && surf === this.lastSurf && slide === this.lastSlide) return;
     this.lastSpeed = d.speed;
     this.lastActive = d.active;
     this.lastSurf = surf;
+    this.lastSlide = slide;
     const s = smoothstep(280, 1200, d.speed);
     const f = expLerp(4200, 6800, s);
     this.windBP[0].frequency.setTargetAtTime(f * 0.93, t, tau);
@@ -310,6 +352,11 @@ export class Sfx {
     this.surfBP.frequency.setTargetAtTime(expLerp(2200, 4600, sp), t, tau);
     this.surfLfo.frequency.setTargetAtTime(6 + 9 * sp, t, tau);
     this.surfGain.gain.setTargetAtTime(surfLevel, t, surf ? 0.04 : 0.12);
+    // Rutschen: Pegel und Helligkeit mit dem Tempo, Ausblenden in ~80 ms (τ 0.027).
+    const sl = smoothstep(160, 800, d.speed);
+    this.slideBP.frequency.setTargetAtTime(expLerp(1300, 2600, sl), t, tau);
+    this.slideLfo.frequency.setTargetAtTime(19 + 12 * sl, t, tau);
+    this.slideGain.gain.setTargetAtTime(slide ? 0.4 + 0.5 * sl : 0, t, slide ? 0.03 : 0.027);
   }
 
   /** Whoosh je Seite: Pegel ∝ Nähe × Tempo, Tonhöhe folgt der Distanzänderung (Doppler-Andeutung). */
@@ -343,6 +390,7 @@ export class Sfx {
   play(e: GameEvent, t: number, wall: number | null = null): void {
     switch (e.type) {
       case 'jump':
+        this.slideGapFrom = Number.NEGATIVE_INFINITY;
         this.jump(t, e.chain, e.gain, wall);
         break;
       case 'land':
@@ -352,11 +400,27 @@ export class Sfx {
         this.footstep(t, e.speed, e.left);
         break;
       case 'duck':
+        if (!e.down) this.slideGapFrom = Number.NEGATIVE_INFINITY;
         this.duck(t, e.down);
         break;
       case 'surfStart':
       case 'surfEnd':
         this.lastSpeed = -1;
+        break;
+      case 'slideEnd':
+        this.lastSpeed = -1;
+        this.slideGapFrom = t;
+        break;
+      case 'slideStart': {
+        this.lastSpeed = -1;
+        const resumed = !e.boost && t - this.slideGapFrom <= SLIDE_RESUME_WINDOW;
+        this.slideGapFrom = Number.NEGATIVE_INFINITY;
+        if (!resumed) this.slideStart(t, e.boost);
+        break;
+      }
+      case 'ledge':
+        if (e.kind === 'step') this.ledgeGrip(t);
+        else this.ledgeVault(t);
         break;
       case 'runStart':
         this.runStart(t);
@@ -368,6 +432,7 @@ export class Sfx {
         this.finish(t);
         break;
       case 'respawn':
+        this.slideGapFrom = Number.NEGATIVE_INFINITY;
         this.respawn(t, e.reason);
         break;
       case 'speedMilestone':
@@ -375,7 +440,68 @@ export class Sfx {
         break;
       case 'levelLoaded':
         break;
+      // Lektionen (Plan 007): Belohnung hörbar, Fehler nie — kein Straf-Sound für schlechte Hops.
+      case 'lessonHop':
+        if (e.counted) this.lessonCount(t, e.count, wall !== null);
+        break;
+      case 'lessonStage':
+        if (e.lessonDone) this.finish(t);
+        else this.lessonStage(t);
+        break;
+      case 'gate':
+        if (e.open) this.gateOpen(t);
+        break;
     }
+  }
+
+  /** Midi-Note der Stufe `step` (0 = A4) auf der A-Moll-Pentatonik, gedeckelt. */
+  static lessonNote(step: number): number {
+    const s = Math.max(0, Math.min(LESSON_MAX_STEP, Math.floor(step)));
+    return LESSON_ROOT + 12 * Math.floor(s / 5) + PENTATONIC[s % 5];
+  }
+
+  /** Gezählter Hop: Glocke (Rez-Prinzip auf das 32tel gerastert), Tonhöhe steigt mit dem Zähler. */
+  private lessonCount(t: number, count: number, realtime: boolean): void {
+    const at = this.nextGrid(t, realtime);
+    this.bell(at, Sfx.lessonNote(count - 1), 0.17);
+  }
+
+  /** Stufe geschafft: aufsteigende Terz-Arpeggio A C E + Stab-Akkord, die Musik duckt kurz (wie ein Checkpoint). */
+  private lessonStage(t: number): void {
+    this.mixer.rewardDuck(t, 3, 0.18);
+    const notes = [76, 81, 84, 88] as const;
+    for (let i = 0; i < notes.length; i++) this.bell(t + i * 0.055, notes[i], 0.2 - i * 0.02);
+    this.stabs.hit(t, 0.5, CHORD_AM9_UP, 1, 1, 0.1, 0.14);
+  }
+
+  /**
+   * Tor löst sich auf: Rauschen durch einen Bandpass, der in 0.45 s von 300 Hz auf 5 kHz fegt
+   * (Filter-Sweep), darunter ein tiefer Schub — "etwas geht auf", passend zu den 0.4 s der Optik.
+   */
+  private gateOpen(t: number): void {
+    const ctx = this.ctx;
+    const src = noiseBurst(ctx, this.noise, this.rng, t, 0.6);
+    const bp = makeFilter(ctx, 'bandpass', 300, 2.2);
+    bp.frequency.setValueAtTime(300, t);
+    bp.frequency.exponentialRampToValueAtTime(5000, t + 0.45);
+    const env = makeGain(ctx, 0);
+    env.gain.setValueAtTime(0, t);
+    env.gain.linearRampToValueAtTime(0.16, t + 0.08);
+    env.gain.setValueAtTime(0.16, t + 0.3);
+    env.gain.linearRampToValueAtTime(0, t + 0.55);
+    src.connect(bp).connect(env).connect(this.out);
+    const vSend = makeGain(ctx, 0.35);
+    env.connect(vSend).connect(this.mixer.sfxVerb);
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(55, t);
+    osc.frequency.exponentialRampToValueAtTime(110, t + 0.3);
+    const oEnv = makeGain(ctx, 0);
+    const end = percEnvelope(oEnv.gain, t, 0.14, 0.02, 0.09);
+    osc.connect(oEnv).connect(this.out);
+    osc.start(t);
+    osc.stop(end);
+    releaseWhenEnded([src, osc], [bp, env, vSend, oEnv]);
   }
 
   // ------------------------------------------------------------ Bewegung
@@ -561,6 +687,56 @@ export class Sfx {
     osc.start(t);
     osc.stop(end);
     releaseWhenEnded([src, osc], [lp, hp, nEnv, oEnv, pan]);
+  }
+
+  /** Rutsch-Einstieg: Kratz-Whoosh (Bandpass 2.5 → 1.2 kHz, 150 ms); Schub = tiefer Stoß als Akzent. */
+  private slideStart(t: number, boost: boolean): void {
+    const ctx = this.ctx;
+    const src = noiseBurst(ctx, this.noise, this.rng, t, 0.2);
+    const bp = makeFilter(ctx, 'bandpass', 2500, 1.3);
+    bp.frequency.setValueAtTime(2500, t);
+    bp.frequency.exponentialRampToValueAtTime(1200, t + 0.15);
+    const env = makeGain(ctx, 0);
+    percEnvelope(env.gain, t, 0.2, 0.01, 0.045, 0.03);
+    src.connect(bp).connect(env).connect(this.out);
+    if (!boost) {
+      releaseWhenEnded([src], [bp, env]);
+      return;
+    }
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(95, t);
+    osc.frequency.exponentialRampToValueAtTime(48, t + 0.07);
+    const oEnv = makeGain(ctx, 0);
+    const end = percEnvelope(oEnv.gain, t, 0.18, 0.003, 0.025);
+    osc.connect(oEnv).connect(this.out);
+    osc.start(t);
+    osc.stop(end);
+    releaseWhenEnded([src, osc], [bp, env, oEnv]);
+  }
+
+  /** Lip-Step (Kanten-Assist): kurzer Griff-Klack, Bandpass-Rauschen um 1.2 kHz, ~25 ms, etwa −12 dB. */
+  private ledgeGrip(t: number): void {
+    const ctx = this.ctx;
+    const src = noiseBurst(ctx, this.noise, this.rng, t, 0.04);
+    const bp = makeFilter(ctx, 'bandpass', 1200, 2.2);
+    const env = makeGain(ctx, 0);
+    percEnvelope(env.gain, t, 0.25, 0.001, 0.005);
+    src.connect(bp).connect(env).connect(this.out);
+    releaseWhenEnded([src], [bp, env]);
+  }
+
+  /** Tempo-Gedächtnis greift (über die Kante gezogen): leiser Whoosh, 80 ms. */
+  private ledgeVault(t: number): void {
+    const ctx = this.ctx;
+    const src = noiseBurst(ctx, this.noise, this.rng, t, 0.1);
+    const bp = makeFilter(ctx, 'bandpass', 900, 1);
+    bp.frequency.setValueAtTime(900, t);
+    bp.frequency.exponentialRampToValueAtTime(2200, t + 0.08);
+    const env = makeGain(ctx, 0);
+    percEnvelope(env.gain, t, 0.1, 0.02, 0.02, 0.02);
+    src.connect(bp).connect(env).connect(this.out);
+    releaseWhenEnded([src], [bp, env]);
   }
 
   private duck(t: number, down: boolean): void {

@@ -11,9 +11,13 @@
  *   führt ein begehbarer Rückweg aufs Vorfeld;
  *   Finale aus dem CP4-Respawn mit ≥ 10 % Landereserve.
  *
+ * - level3/level4: tools/levels/probes/level3.ts, level4.ts (Plan 007, Phase 2).
+ *
  * Die Proben finden ihre Geometrie über Brush-Tags und Route-Flags (nie über
  * Notiztexte) — wer die Level umbaut und Tags umbenennt, bekommt einen Fehler
- * statt Stille.
+ * statt Stille. Die allgemeinen Bausteine (Auto-Hop-Raster, W-Halter,
+ * Finale-Reserve, Wendel-Bande) sind exportiert: die Proben neuer Level bauen
+ * darauf auf, statt sie zu kopieren.
  */
 import { Box3, Vector3 } from 'three';
 import { VELOCITY_DEFAULT, type MovementConfig } from '../../src/player/MovementConfig';
@@ -23,7 +27,10 @@ import type { CompiledBrush } from '../../src/world/collision/types';
 import type { CompiledLevel } from '../../src/world/level/compileLevel';
 import type { RouteNode } from '../../src/world/level/LevelFormat';
 import { OVERSHOOT } from './ballistics';
+import { forwardOf, type V2 } from './lib';
 import { SpeedCurve, SurfRider, routeAxis, simulate, straightHop, type Controller } from './physics';
+import { level3Probes } from './probes/level3';
+import { level4Probes } from './probes/level4';
 
 export interface DesignReport {
   readonly errors: string[];
@@ -48,6 +55,12 @@ export function designProbes(level: CompiledLevel, cfg: MovementConfig = VELOCIT
       s0Catch(level, cfg, r);
       s0BackWay(level, cfg, r);
       finaleReserve(level, cfg, r);
+      break;
+    case 'level3':
+      level3Probes(level, cfg, r);
+      break;
+    case 'level4':
+      level4Probes(level, cfg, r);
       break;
   }
   return r;
@@ -237,7 +250,7 @@ const PROBE_MINS = new Vector3(-4, 0, -4);
 const PROBE_MAXS = new Vector3(4, 4, 4);
 
 /** Hat p den Knoten i schon passiert (Projektion auf das Segment i−1 → i ≥ 1)? */
-function passedNode(route: readonly RouteNode[], i: number, p: Vector3): boolean {
+export function passedNode(route: readonly RouteNode[], i: number, p: Vector3): boolean {
   const a = route[i - 1].pos;
   const b = route[i].pos;
   const sx = b[0] - a[0];
@@ -247,19 +260,19 @@ function passedNode(route: readonly RouteNode[], i: number, p: Vector3): boolean
   return ((p.x - a[0]) * sx + (p.z - a[2]) * sz) / l2 >= 1;
 }
 
-function byTag(level: CompiledLevel, tag: string): CompiledBrush | null {
+export function byTag(level: CompiledLevel, tag: string): CompiledBrush | null {
   return level.brushes.find((b) => b.tag === tag) ?? null;
 }
 
 /** Tag des Brushes, auf dem ein Route-Knoten steht (Boden bis 8 u darunter), sonst null. */
-function groundTag(level: CompiledLevel, n: RouteNode): string | null {
+export function groundTag(level: CompiledLevel, n: RouteNode): string | null {
   const p = new Vector3(...n.pos);
   const tr = level.world.traceBox(new Vector3(p.x, p.y + 1, p.z), new Vector3(p.x, p.y - 8, p.z), HULL_MINS, HULL_MAXS);
   if (tr.startSolid || tr.fraction >= 1) return null;
   return level.brushes[tr.brushIndex]?.tag ?? null;
 }
 
-function center(b: CompiledBrush): Vector3 {
+export function center(b: CompiledBrush): Vector3 {
   return b.bounds.getCenter(new Vector3());
 }
 
@@ -423,7 +436,7 @@ function chuteCatch(level: CompiledLevel, cfg: MovementConfig, r: DesignReport):
 }
 
 /** W + Leertaste gehalten, Blick auf den nächsten Route-Knoten (wie novice.ts "W+Space"), Start mit Tempo v am Knoten. */
-function wHolder(level: CompiledLevel, cfg: MovementConfig, from: number, v: number, lateral: number, goal: Box3): ReturnType<typeof simulate> {
+export function wHolder(level: CompiledLevel, cfg: MovementConfig, from: number, v: number, lateral: number, goal: Box3): ReturnType<typeof simulate> {
   const route = level.def.route ?? [];
   const A = route[from];
   const B = route[from + 1];
@@ -506,15 +519,15 @@ function expertIslands(level: CompiledLevel, cfg: MovementConfig, r: DesignRepor
 }
 
 /** Seitliche Versätze der Auto-Hop-Raster (u, rechts positiv). */
-const LATERALS: readonly number[] = [-96, -48, 0, 48, 96];
+export const LATERALS: readonly number[] = [-96, -48, 0, 48, 96];
 
-function band(lo: number, hi: number, step: number): number[] {
+export function band(lo: number, hi: number, step: number): number[] {
   const out: number[] = [];
   for (let v = lo; v <= hi + 1e-6; v += step) out.push(Math.round(v));
   return out;
 }
 
-interface AutoHopSpec {
+export interface AutoHopSpec {
   /** Route-Indizes der Startknoten; Richtung jeweils zum Folgeknoten. */
   readonly from: readonly number[];
   readonly speeds: readonly number[];
@@ -527,7 +540,7 @@ interface AutoHopSpec {
   readonly onLine?: (node: number, v: number, lateral: number, line: string) => void;
 }
 
-interface AutoHopResult {
+export interface AutoHopResult {
   readonly runs: number;
   readonly fails: Array<{ readonly node: number; readonly v: number; readonly lateral: number; readonly text: string }>;
 }
@@ -538,7 +551,7 @@ interface AutoHopResult {
  * sterben: die Landung einer Hop-Phase liegt vor einer Stirnwand. Start auf dem
  * Boden am Knoten (seitlich versetzt), Tempo v Richtung Folgeknoten.
  */
-function autoHopRaster(level: CompiledLevel, cfg: MovementConfig, spec: AutoHopSpec): AutoHopResult {
+export function autoHopRaster(level: CompiledLevel, cfg: MovementConfig, spec: AutoHopSpec): AutoHopResult {
   const route = level.def.route ?? [];
   const axis = routeAxis(route);
   const fails: Array<{ node: number; v: number; lateral: number; text: string }> = [];
@@ -599,21 +612,21 @@ function autoHopRaster(level: CompiledLevel, cfg: MovementConfig, spec: AutoHopS
 }
 
 /** Füße auf den Boden unter p setzen (Suche 48 u darüber bis 64 u darunter); null ohne begehbaren Boden. */
-function dropToGround(level: CompiledLevel, p: Vector3): Vector3 | null {
+export function dropToGround(level: CompiledLevel, p: Vector3): Vector3 | null {
   const tr = level.world.traceBox(new Vector3(p.x, p.y + 48, p.z), new Vector3(p.x, p.y - 64, p.z), HULL_MINS, HULL_MAXS);
   if (tr.startSolid || tr.fraction >= 1 || tr.normal.y < 0.7) return null;
   return tr.endPos.clone().setY(tr.endPos.y + 0.25);
 }
 
 /** Tag des Brushes unter den Füßen (für Linien-Protokolle), ohne Ring-Segmentnummer. */
-function groundTagAt(level: CompiledLevel, p: Vector3): string {
+export function groundTagAt(level: CompiledLevel, p: Vector3): string {
   const tr = level.world.traceBox(new Vector3(p.x, p.y + 1, p.z), new Vector3(p.x, p.y - 8, p.z), HULL_MINS, HULL_MAXS);
   if (tr.startSolid || tr.fraction >= 1) return '';
   return (level.brushes[tr.brushIndex]?.tag ?? '').replace(/#\d+$/, '');
 }
 
 /** Tag der Surf-Rampe, die p am nächsten ist (für Linien-Protokolle). */
-function flankName(level: CompiledLevel, p: Vector3): string {
+export function flankName(level: CompiledLevel, p: Vector3): string {
   let best = '';
   let bestD = Infinity;
   for (const b of level.brushes) {
@@ -773,8 +786,13 @@ function s0BackWay(level: CompiledLevel, cfg: MovementConfig, r: DesignReport): 
   else r.info.push(`Design: Rückweg von der S0-Fläche aufs Vorfeld begehbar (W / W + Leertaste, ≤ ${slow.toFixed(1)} s)`);
 }
 
-/** Finale aus dem CP4-Respawn (Grundtechnik, Blickfehler −1…+2°): Landung auf dem Ziel mit ≥ 10 % Weitenreserve. */
-function finaleReserve(level: CompiledLevel, cfg: MovementConfig, r: DesignReport): void {
+/**
+ * Finale aus dem Respawn am letzten Checkpoint (Grundtechnik, Blickfehler −1…+2°): Landung auf dem Ziel
+ * mit ≥ 10 % Weitenreserve. `yawDeg` = Flugrichtung des Launchs (L2: 0 = Norden; L3/L4 die Richtung ihres
+ * Kickers). Weiten werden entlang dieser Richtung gemessen; die nahe Kante der Zielplattform (Tag 'finish')
+ * muss quer dazu liegen (finishAfterLaunch baut sie so), sonst meldet die Probe einen Fehler statt einer Zahl.
+ */
+export function finaleReserve(level: CompiledLevel, cfg: MovementConfig, r: DesignReport, yawDeg = 0): void {
   const route = level.def.route ?? [];
   // Launch = letzter Surf-Knoten (Abflug ins Ziel).
   const launch = [...route].reverse().find((n) => n.surf === true);
@@ -785,9 +803,19 @@ function finaleReserve(level: CompiledLevel, cfg: MovementConfig, r: DesignRepor
     r.errors.push('Design: Finale-Probe findet Launch-Knoten, letzten Checkpoint oder Ziel nicht');
     return;
   }
-  const lz = launch.pos[2];
-  // Ziel liegt in Fahrtrichtung (−z): nahe Kante = größtes z der Zielplattform.
-  const lip = Math.abs(lz - pad.bounds.max.z);
+  const [fx, fz] = forwardOf(yawDeg);
+  const along = (x: number, z: number): number => (x - launch.pos[0]) * fx + (z - launch.pos[2]) * fz;
+  // Nahe Kante aus den echten Ecken der Plattform-Oberseite, nicht aus der AABB: bei schräger Flugrichtung
+  // läge eine AABB-Ecke näher als die Kante — Lücke zu klein, Reserve zu groß, die Probe grün statt rot.
+  const corners = new Map<string, number>();
+  for (const f of pad.faces) if (f.normal.y > 0.99) for (const v of f.vertices) corners.set(`${v.x.toFixed(3)},${v.z.toFixed(3)}`, along(v.x, v.z));
+  const tops = [...corners.values()].sort((a, b) => a - b);
+  // Die Weite gilt nur, wenn die nahe Kante quer zur Flugrichtung liegt (finishAfterLaunch baut sie so).
+  if (tops.length < 2 || tops[1] - tops[0] > 1) {
+    r.errors.push(`Design: Finale-Probe braucht eine Zielkante quer zur Flugrichtung ${yawDeg}° — die Plattform 'finish' steht schräg dazu (Ecken ${tops.slice(0, 2).map(f0).join(' / ')} u)`);
+    return;
+  }
+  const lip = tops[0];
   const axis = routeAxis(route);
   let worst = Infinity;
   const detail: string[] = [];
@@ -798,15 +826,119 @@ function finaleReserve(level: CompiledLevel, cfg: MovementConfig, r: DesignRepor
     // Erste Berührung der Zieloberseite = Landung (Füße auf Höhe der Oberseite).
     const onPad = new Box3(pad.bounds.min.clone().setY(pad.bounds.max.y - 1), pad.bounds.max.clone().setY(pad.bounds.max.y + 2));
     const res = simulate(level, pm, rider, { cfg, goal: onPad, timeout: 20 });
-    const landZ = res.end.z;
     if (!res.ok || Math.abs(res.end.y - pad.bounds.max.y) > 2) {
       r.errors.push(`Design: Finale aus dem CP${cp.order}-Respawn (Blick ${look}°) landet nicht auf dem Ziel`);
       return;
     }
-    const reserve = Math.abs(lz - landZ) / lip - 1;
+    const reserve = along(res.end.x, res.end.z) / lip - 1;
     worst = Math.min(worst, reserve);
     detail.push(`${look}°: ${f0(reserve * 100)} %`);
   }
   if (worst < 0.1) r.errors.push(`Design: Finale aus dem CP${cp.order}-Respawn hat nur ${f0(worst * 100)} % Weitenreserve (${detail.join(', ')}; Soll ≥ 10 %)`);
   else r.info.push(`Design: Finale aus dem Stand (CP${cp.order}) landet mit ${detail.join(', ')} Weitenreserve (Lücke ${f0(lip)} u)`);
+}
+
+// ---------------------------------------------------------------------------
+// Wendel (Plan 007: L4, gestapelte Lektionen)
+
+/** Was die Wendel-Proben brauchen — lib.Helix erfüllt es. θ in Grad, yaw in Grad. */
+export interface HelixLike {
+  xz(theta: number, r: number): V2;
+  yAt(theta: number, after?: boolean): number;
+  yawAt(theta: number): number;
+}
+
+export interface HelixBoardSpec {
+  /** θ von, bis (exklusiv), Schritt (Grad). */
+  readonly thetas: readonly [number, number, number];
+  readonly radii: readonly number[];
+  readonly speeds?: readonly number[];
+  /** Fester Blick relativ zur Fahrtrichtung (Grad): 0 und ±25 drücken in Kern und Bande. */
+  readonly aims?: readonly number[];
+  readonly seconds?: number;
+}
+
+export interface HelixBoardResult {
+  readonly runs: number;
+  readonly deaths: readonly string[];
+  /** Läufe, die > 150 u unter ihrem Start aufsetzten oder am Ende noch darunter fallen (von der Wendel geflogen). */
+  readonly fell: readonly string[];
+  /** Läufe mit Luft-Hänger > 0.25 s (in der Luft, |vy| < 12, Tempo < 40: Wall-Cling in einer Ecke). */
+  readonly hangs: readonly string[];
+  readonly worstDrop: number;
+}
+
+/**
+ * Bande einer Wendel: Geradeaus-Hüpfer (Blick fest, W + Leertaste gehalten, kein Lenken) quer über die
+ * Bahn — die Bande muss jeden halten, keiner darf in einer Ecke hängen. Entwurf L4 (Probe B): θ 10–530 ×
+ * 3 Radien × 320/600/900 u/s × Blick 0/±25°, 3 s — 0 Tode, 0 Landungen > 150 u tiefer, 0 Hänger.
+ */
+export function helixBoard(level: CompiledLevel, helix: HelixLike, spec: HelixBoardSpec, cfg: MovementConfig = VELOCITY_DEFAULT): HelixBoardResult {
+  const [t0, t1, step] = spec.thetas;
+  const kills = level.triggers.filter((t) => t.kind === 'kill');
+  const hangTicks = Math.round(0.25 * cfg.tickRate);
+  const lo = new Vector3();
+  const hi = new Vector3();
+  const deaths: string[] = [];
+  const fell: string[] = [];
+  const hangs: string[] = [];
+  let worstDrop = 0;
+  let runs = 0;
+  for (let theta = t0; theta < t1; theta += step) {
+    for (const r of spec.radii) {
+      for (const v of spec.speeds ?? [320, 600, 900]) {
+        for (const aim of spec.aims ?? [0, -25, 25]) {
+          const pm = new PlayerMovement(level.world, cfg);
+          const [x, z] = helix.xz(theta, r);
+          const y0 = helix.yAt(theta, true);
+          pm.teleport(new Vector3(x, y0 + 80, z));
+          const yaw0 = (helix.yawAt(theta) * Math.PI) / 180;
+          const yaw = yaw0 + (aim * Math.PI) / 180;
+          pm.state.vel.set(-Math.sin(yaw0) * v, 0, -Math.cos(yaw0) * v);
+          const inp = makeBotInput();
+          const name = `θ ${theta} r ${r} ${v} u/s Blick ${aim}°`;
+          let minY = Infinity;
+          let hang = 0;
+          let maxHang = 0;
+          for (let k = 0; k < (spec.seconds ?? 3) * cfg.tickRate; k++) {
+            inp.yaw = yaw;
+            inp.forward = 1;
+            inp.sprint = true;
+            inp.jumpHeld = true;
+            inp.jumpPressed = k === 0;
+            pm.tick(inp);
+            const s = pm.state;
+            if (s.onGround) minY = Math.min(minY, s.pos.y);
+            hang = !s.onGround && Math.abs(s.vel.y) < 12 && s.speed < 40 ? hang + 1 : 0;
+            maxHang = Math.max(maxHang, hang);
+            lo.copy(s.pos).add(pm.hullMins);
+            hi.copy(s.pos).add(pm.hullMaxs);
+            if (s.pos.y < level.def.killY || kills.some((t) => t.bounds.min.x < hi.x && t.bounds.max.x > lo.x && t.bounds.min.y < hi.y && t.bounds.max.y > lo.y && t.bounds.min.z < hi.z && t.bounds.max.z > lo.z)) {
+              deaths.push(`${name}: tot bei ${f0(s.pos.x)},${f0(s.pos.y)},${f0(s.pos.z)}`);
+              break;
+            }
+          }
+          runs++;
+          if (maxHang > hangTicks) hangs.push(`${name}: ${(maxHang / cfg.tickRate).toFixed(2)} s`);
+          // Tiefer gelandet — oder am Ende noch im Fall unter der Bahn (von der Wendel geflogen, Tod kommt erst später).
+          const end = pm.state;
+          const drop = Math.max(Number.isFinite(minY) ? y0 - minY : 0, end.onGround ? 0 : y0 - end.pos.y);
+          if (drop > 150) fell.push(`${name}: ${f0(drop)} u tiefer${end.onGround ? '' : ' (fällt noch)'}`);
+          worstDrop = Math.max(worstDrop, drop);
+        }
+      }
+    }
+  }
+  return { runs, deaths, fell, hangs, worstDrop };
+}
+
+/** helixBoard als Design-Probe: Tode, Abstürze oder Hänger sind Fehler. */
+export function helixBoardProbe(level: CompiledLevel, helix: HelixLike, spec: HelixBoardSpec, cfg: MovementConfig, r: DesignReport, name = 'Wendel'): void {
+  const res = helixBoard(level, helix, spec, cfg);
+  const bad = [...res.deaths, ...res.fell, ...res.hangs];
+  if (bad.length)
+    r.errors.push(
+      `Design: ${name}-Bande hält nicht: ${res.deaths.length} Tode, ${res.fell.length} Abstürze > 150 u, ${res.hangs.length} Hänger > 0.25 s von ${res.runs} Geradeaus-Hüpfern (z. B. ${bad.slice(0, 3).join('; ')})`,
+    );
+  else r.info.push(`Design: ${name}-Bande hält — ${res.runs} Geradeaus-Hüpfer ohne Tod, Absturz oder Hänger (größter Höhenverlust ${f0(res.worstDrop)} u)`);
 }

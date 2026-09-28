@@ -34,8 +34,28 @@ const SOURCE_MAX_GROUND_SPEED = 250;
 
 // --- VELOCITY-Konstanten ----------------------------------------------------
 
-/** Hop-Kette bleibt bestehen, wenn so viele Boden-Ticks mit Friction zwischen Landung und Sprung liegen. */
+/** Hop-Kette bleibt bestehen, wenn so viele Boden-Ticks zwischen Landung und Sprung liegen (ohne Lande-Gnade). */
 export const CHAIN_GRACE_TICKS = 3;
+/** Lande-Gnade nur nach so viel Luftzeit (s): Stufen und Kanten-Holpern sind keine Landung. */
+const LAND_GRACE_MIN_AIR = 0.1;
+/** Hang-Landung: flacher als ~0.8° ist flach (bitgleich zu Source). */
+const FLAT_NORMAL_Y = 0.9999;
+/** Kanten-Assist: nur ab diesem Anlauf (u/s) und bei mehr als 1 u/s Verlust im Move. */
+const LEDGE_MIN_SPEED = 50;
+/** Kanten-Assist: Wand = fast senkrecht (|n.y| darunter). */
+const LEDGE_WALL_MAX_NY = 0.1;
+/** Kanten-Assist: nur frontale Anpraller (cos 45° zur Wandnormalen). */
+const LEDGE_MIN_INCIDENCE = Math.SQRT1_2;
+/** Gedächtnis: greift, solange v_h unter diesem Anteil des gemerkten liegt … */
+const LEDGE_RESTORE_SHARE = 0.9;
+/** … und die Füße mindestens so viel (u) über der Anprallhöhe sind. */
+const LEDGE_RESTORE_RISE = 0.5;
+/**
+ * Lip-Step im Steigen nur, wenn der Rest-Aufstieg die Kante nicht um mindestens so viel (u) selbst
+ * überragt — sonst verschluckte er den Sprung (Absprung direkt vor einer Stufe: 8 ms Luft statt 0.7 s);
+ * das Gedächtnis gibt das Tempo zurück, sobald die Hull oben frei ist.
+ */
+const LEDGE_RISE_CLEAR = 2;
 /** Surf-Fläche: 0.05 < normal.y < MIN_GROUND_NORMAL_Y (wie compileLevel). */
 const SURF_MIN_NORMAL_Y = 0.05;
 /** Hysterese: so viele Ticks Kontakt bis surfStart / ohne Kontakt bis surfEnd. */
@@ -66,11 +86,20 @@ const SYNC_MIN_SAMPLE_SHARE = 0.25;
 const CREEP_AXIS_SPEED = 100;
 /** Stuck-Schutz: nach erfolgloser Suche erst nach so vielen Ticks neu suchen (Source: Zeitdrossel in CheckStuck). */
 const STUCK_RETRY_TICKS = 16;
+/** Rampbug-Fix: Anhebungen (u) entlang der Surf-Normale für den Nachtrace, kleinste zuerst. */
+const SEAM_RETRACE: readonly number[] = [0.25, 1, 2];
+/** Rampbug-Fix: Gegen-Ebene = horizontale Normale mehr als 120° gegen die Fahrt … */
+const SEAM_OPPOSE_COS = -0.5;
+/** … und nur mit echter Fahrt (sonst kein Phantom, sondern Stehen an der Flanke). */
+const SEAM_MIN_SPEED = 100;
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 type JumpEvent = Mutable<Extract<MovementEvent, { type: 'jump' }>>;
 type LandEvent = Mutable<Extract<MovementEvent, { type: 'land' }>>;
 type FootstepEvent = Mutable<Extract<MovementEvent, { type: 'footstep' }>>;
+type LedgeEvent = Mutable<Extract<MovementEvent, { type: 'ledge' }>>;
+type SlideStartEvent = Mutable<Extract<MovementEvent, { type: 'slideStart' }>>;
+type SlideEndEvent = Mutable<Extract<MovementEvent, { type: 'slideEnd' }>>;
 
 const DUCK_DOWN: MovementEvent = Object.freeze({ type: 'duck', down: true });
 const DUCK_UP: MovementEvent = Object.freeze({ type: 'duck', down: false });
@@ -126,6 +155,43 @@ function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
+/**
+ * Horizontale Länge für die Arcade-Pfade. Nicht Math.hypot: V8 inlinet es nicht, jeder Aufruf boxt das
+ * Ergebnis als Heap-Zahl (gemessen +200 B/Tick Müll). Die Source-Pfade behalten hypot (bitgleich zu CS2).
+ */
+function hLen(x: number, z: number): number {
+  return Math.sqrt(x * x + z * z);
+}
+
+/** Zeigt die Ebene (horizontal) gegen die Fahrt? Rampbug-Fix: nur solche Treffer sind Fugen-Verdacht. */
+function opposesFlight(n: Vector3, v: Vector3): boolean {
+  const nh = hLen(n.x, n.z);
+  const vh = hLen(v.x, v.z);
+  return nh > 1e-6 && vh > SEAM_MIN_SPEED && (n.x * v.x + n.z * v.z) / (nh * vh) < SEAM_OPPOSE_COS;
+}
+
+/**
+ * Dreht v_h um höchstens maxRad zur Blickrichtung (forward = (−sin yaw, −cos yaw)); der Betrag
+ * bleibt. Nur wenn der Blick höchstens 90° neben der Flugrichtung liegt — nach hinten schauen ist
+ * keine Kurve (Rutschen, Luftlenkung). Rückgabe: gedrehter Winkel (rad).
+ */
+function turnTowardYaw(v: Vector3, yaw: number, maxRad: number): number {
+  const sp = hLen(v.x, v.z);
+  if (sp < 1e-3 || !(maxRad > 0)) return 0;
+  const fx = -Math.sin(yaw);
+  const fz = -Math.cos(yaw);
+  if (fx * v.x + fz * v.z <= 0) return 0;
+  let d = Math.atan2(fx, fz) - Math.atan2(v.x, v.z);
+  if (d > Math.PI) d -= 2 * Math.PI;
+  else if (d < -Math.PI) d += 2 * Math.PI;
+  const step = clamp(d, -maxRad, maxRad);
+  if (step === 0) return 0;
+  const a = Math.atan2(v.x, v.z) + step;
+  v.x = Math.sin(a) * sp;
+  v.z = Math.cos(a) * sp;
+  return Math.abs(step);
+}
+
 function approach(v: number, target: number, step: number): number {
   if (v < target) return Math.min(target, v + step);
   if (v > target) return Math.max(target, v - step);
@@ -156,10 +222,13 @@ export class PlayerMovement {
 
   private readonly events: MovementEvent[] = [];
   private readonly jumpPool = new EventRing<JumpEvent>(() => ({
-    type: 'jump', speed: 0, gain: 0, perfect: false, chain: 0, sync: 0, crouched: false, coyote: false,
+    type: 'jump', speed: 0, gain: 0, perfect: false, clean: false, chain: 0, sync: 0, crouched: false, coyote: false,
   }));
   private readonly landPool = new EventRing<LandEvent>(() => ({ type: 'land', impact: 0, speed: 0, airTime: 0, jumpQueued: false }));
   private readonly stepPool = new EventRing<FootstepEvent>(() => ({ type: 'footstep', speed: 0, left: false }));
+  private readonly ledgePool = new EventRing<LedgeEvent>(() => ({ type: 'ledge', kind: 'step', speed: 0, dy: 0 }));
+  private readonly slideStartPool = new EventRing<SlideStartEvent>(() => ({ type: 'slideStart', speed: 0, boost: false }));
+  private readonly slideEndPool = new EventRing<SlideEndEvent>(() => ({ type: 'slideEnd', speed: 0 }));
 
   // Hull
   private readonly standMins = new Vector3();
@@ -178,8 +247,43 @@ export class PlayerMovement {
   private leftGroundTick = Number.NEGATIVE_INFINITY;
   /** Coyote nur nach Verlassen einer Kante ohne Sprung und ohne Rampen-Launch. */
   private coyoteOk = false;
-  /** Boden-Ticks mit Friction seit der letzten Landung. */
+  /** Boden-Ticks seit der letzten Landung (in der Lande-Gnade ohne Friction). */
   private frictionTicks = NO_LANDING;
+  /** Lande-Gnade in Ticks (aus cfg.landGraceTime) und ob die letzte Landung sie bekommt. */
+  private graceTicks = 0;
+  private graceArmed = false;
+  /** Hang-Landung: Anflug-Geschwindigkeit dieses Ticks vor dem ersten Boden-Clip. */
+  private readonly landRefVel = new Vector3();
+  private landRefSet = false;
+  /**
+   * Hang-Landung: gestundeter Bergauf-Verlust (u/s). Bergauf verliert man nichts, der erlassene
+   * Clip-Verlust wird aber mit dem nächsten Bergab-Gewinn verrechnet — sonst erntete jede Talfahrt
+   * den Sprungimpuls, den der Aufstieg gratis bekam (W+Leertaste über 10°-Wellen 320 → 785 u/s).
+   * Nie mehr als das Tempo über dem Lauftempo: darunter holt der Boden es ohnehin zurück.
+   */
+  private slopeDebt = 0;
+  /** Kanten-Assist: Tempo vor dem letzten frontalen Anprall, Fußhöhe dabei, Rest-Luftticks. */
+  private readonly memVel = new Vector3();
+  private memY = 0;
+  private memTicks = 0;
+  /** Rutschen: Tick des letzten Schubs (Abklingzeit). */
+  private lastBoostTick = -NO_LANDING;
+  /**
+   * Rutsch-Physik läuft (Reibung, Lenken, Hangabtrieb, keine Schritte). `state.sliding` und slideStart
+   * folgen erst nach der Lande-Gnade: ein Sprung darin ist ein Crouch-Hop, keine Rutsche — sonst
+   * kratzte jeder 1–8 Ticks späte Crouch-Hop (slideStart + slideEnd), während er als clean gelobt wird.
+   */
+  private slideOn = false;
+  /** Schub der noch nicht gemeldeten Rutsche (für slideStart.boost am Ende der Gnade). */
+  private slideBoostUnsaid = false;
+  /**
+   * Rutschen: die Rutsche hat den Boden ohne Sprung verlassen (Kante, Mulde, Kuppe). Bei der
+   * nächsten Landung geht sie weiter, solange die Hull geduckt ist und das Tempo ≥ slideExitSpeed —
+   * sonst würgte jede Bodenwelle sie unter slideMinSpeed zum Duck-Walk ab (270 → 85 u/s in 0.2 s).
+   */
+  private slideCarry = false;
+  /** Luftlenkung: Sekunden seit dem letzten Kontakt mit einer steilen Fläche (Surf-Pause). */
+  private steepAgo = Number.POSITIVE_INFINITY;
   /**
    * Ticks am Stück am Boden (Lande-Tick zählt mit, Teleport = 0) — Smart-Auto-Hop.
    * Nicht frictionTicks: das steht nach dem Spawn auf NO_LANDING und würde die
@@ -250,9 +354,20 @@ export class PlayerMovement {
   private readonly clipN = new Vector3();
   private readonly qMins = new Vector3();
   private readonly qMaxs = new Vector3();
+  private readonly seamNormal = new Vector3();
+  private readonly seamStart = new Vector3();
+  private readonly seamEnd = new Vector3();
+  private readonly lsP0 = new Vector3();
+  private readonly lsV0 = new Vector3();
+  private readonly lsPos = new Vector3();
+  private readonly lsVel = new Vector3();
+  private readonly lsEnd = new Vector3();
+  private readonly lsRef = new Vector3();
+  private readonly trLedge: TraceResult = makeTraceResult();
   private readonly trMove: TraceResult = makeTraceResult();
   private readonly trAux: TraceResult = makeTraceResult();
   private readonly trGround: TraceResult = makeTraceResult();
+  private readonly trSeam: TraceResult = makeTraceResult();
 
   constructor(world: CollisionWorld, config: MovementConfig) {
     this.world = world;
@@ -264,6 +379,7 @@ export class PlayerMovement {
     this.maxs = this.standMaxs;
     this.syncRing = new Uint8Array(Math.max(1, Math.round(config.tickRate)));
     this.applyHullConfig();
+    this.applyArcadeConfig();
     this.s.eyeHeight = config.hull.standEye;
     this.saveValid();
   }
@@ -283,6 +399,7 @@ export class PlayerMovement {
       airTime: 0,
       surfing: false,
       surfNormal: new Vector3(),
+      sliding: false,
     };
   }
 
@@ -318,6 +435,7 @@ export class PlayerMovement {
       this.resetSyncRing();
     }
     this.applyHullConfig();
+    this.applyArcadeConfig();
     const h = config.hull;
     this.s.eyeHeight = clamp(this.s.eyeHeight, Math.min(h.duckEye, h.standEye) - (h.standHeight - h.duckHeight), h.standEye);
   }
@@ -337,6 +455,7 @@ export class PlayerMovement {
     out.airTime = s.airTime;
     out.surfing = s.surfing;
     out.surfNormal.copy(this.lastSurfNormal);
+    out.sliding = s.sliding;
   }
 
   /**
@@ -354,6 +473,15 @@ export class PlayerMovement {
     this.leftGroundTick = Number.NEGATIVE_INFINITY;
     this.coyoteOk = false;
     this.frictionTicks = NO_LANDING;
+    this.graceArmed = false;
+    this.slopeDebt = 0;
+    this.memTicks = 0;
+    this.lastBoostTick = -NO_LANDING;
+    this.steepAgo = Number.POSITIVE_INFINITY;
+    s.sliding = false;
+    this.slideOn = false;
+    this.slideBoostUnsaid = false;
+    this.slideCarry = false;
     this.groundTicks = 0;
     this.landAirTime = 0;
     this.prevHopSpeed = 0;
@@ -417,11 +545,13 @@ export class PlayerMovement {
     const wishspeed = this.wishspeed;
     const preMoveVelY = s.vel.y;
     const wasOnGround = s.onGround;
+    this.landRefSet = false;
     if (s.onGround) {
       s.vel.y = 0;
+      this.updateSlide();
       this.friction();
       if (this.frictionTicks < NO_LANDING) this.frictionTicks++;
-      if (this.frictionTicks > CHAIN_GRACE_TICKS) {
+      if (this.frictionTicks > this.chainGraceTicks()) {
         s.hopChain = 0;
         // Kette gerissen: der nächste Sprung hat keinen "vorigen Luftabschnitt".
         this.lastAirSync = 0;
@@ -429,16 +559,27 @@ export class PlayerMovement {
       const x0 = s.pos.x;
       const z0 = s.pos.z;
       this.walkMove(this.wishdir, wishspeed);
-      this.advanceStride(Math.hypot(s.pos.x - x0, s.pos.z - z0));
+      // Rutschen hat keine Schritte (kein Head-Bob, keine Schritt-Events).
+      if (!this.slideOn) this.advanceStride(Math.hypot(s.pos.x - x0, s.pos.z - z0));
     } else {
       this.airMove(this.wishdir, wishspeed);
     }
 
     // 5) Kategorisieren (Boden/Luft, Landung)
     const groundMove = wasOnGround && !jumped;
+    // Hang-Landung, Sonden-Fall: der Move hat den Boden nicht berührt, die 2-u-Sonde findet ihn gleich.
+    if (!wasOnGround && !jumped && !this.landRefSet) this.landRefVel.copy(s.vel);
     this.categorize(jumped, groundMove);
-    if (!wasOnGround && s.onGround && !jumped) this.onLand(preMoveVelY);
-    else if (groundMove && !s.onGround) this.onLeaveGround();
+    if (!wasOnGround && s.onGround && !jumped) {
+      this.slopeLand();
+      if (s.onGround) this.onLand(preMoveVelY);
+    } else if (groundMove && !s.onGround) this.onLeaveGround();
+
+    // Rutschen endet mit dem Boden (Sprung, Kante, Rampslide); ohne Sprung geht es nach der Landung weiter.
+    if (this.slideOn && !s.onGround) {
+      this.endSlide();
+      this.slideCarry = !jumped;
+    }
 
     // 6) FinishGravity
     if (!s.onGround) s.vel.y -= halfGravity;
@@ -452,9 +593,13 @@ export class PlayerMovement {
     if (s.onGround) s.airTime = 0;
     else s.airTime += this.dt;
     this.groundTicks = s.onGround ? this.groundTicks + 1 : 0;
+    // Surf-Pause der Luftlenkung: jeder Kontakt mit einer steilen Fläche startet sie neu.
+    this.steepAgo = s.surfing || this.steepBelow || this.surfTouch ? 0 : this.steepAgo + this.dt;
     this.updateSurf();
     this.pushSync(this.syncSample);
     s.speed = Math.hypot(s.vel.x, s.vel.z);
+    // Gestundeter Hang-Verlust verfällt, soweit das Tempo aufs Lauftempo fällt (Reibung, Wand).
+    if (this.slopeDebt > 0) this.slopeDebt = Math.min(this.slopeDebt, Math.max(0, s.speed - this.maxGroundSpeed()));
 
     // NaN-Schutz: nicht endlich → letzter gültiger Zustand.
     if (!isFiniteVec(s.pos) || !isFiniteVec(s.vel) || !Number.isFinite(s.eyeHeight)) {
@@ -525,6 +670,12 @@ export class PlayerMovement {
     this.duckMaxs.set(h.halfWidth, h.duckHeight, h.halfWidth);
   }
 
+  /** Abgeleitete Tick-Werte des Arcade-Passes (Plan 007). */
+  private applyArcadeConfig(): void {
+    const cfg = this.cfg;
+    this.graceTicks = cfg.landGraceTime > 0 ? Math.max(0, Math.round(cfg.landGraceTime * cfg.tickRate)) : 0;
+  }
+
   private setHull(ducked: boolean): void {
     this.hullDucked = ducked;
     this.s.ducked = ducked;
@@ -541,11 +692,25 @@ export class PlayerMovement {
    */
   private checkDuck(): void {
     const s = this.s;
-    const h = this.cfg.hull;
+    const cfg = this.cfg;
+    const h = cfg.hull;
     const delta = h.standHeight - h.duckHeight;
-    const rate = ((h.standEye - h.duckEye) / Math.max(this.cfg.duckTime, 1e-3)) * this.dt;
+    let rate = ((h.standEye - h.duckEye) / Math.max(cfg.duckTime, 1e-3)) * this.dt;
 
     if (this.inCrouch) {
+      // Rutsch-Eintritt (Plan 007 A7): mit Tempo am Boden sofort ducken — Hull schrumpft von oben,
+      // Origin bleibt (kein Clip-Risiko). Sonst träfe man einen Duck-Tunnel mit der Stand-Hull,
+      // weil die Boden-Duck-Hull erst nach duckTime kommt. Das Auge folgt in slideEyeTime.
+      if (cfg.slideMinSpeed > 0 && s.onGround && (this.slideOn || hLen(s.vel.x, s.vel.z) >= cfg.slideMinSpeed)) {
+        if (!this.hullDucked) {
+          if (!this.duckIntent) {
+            this.duckIntent = true;
+            this.events.push(DUCK_DOWN);
+          }
+          this.setHull(true);
+        }
+        rate = ((h.standEye - h.duckEye) / Math.max(cfg.slideEyeTime, 1e-3)) * this.dt;
+      }
       if (!this.hullDucked) {
         if (!this.duckIntent) {
           this.duckIntent = true;
@@ -612,7 +777,9 @@ export class PlayerMovement {
     const cfg = this.cfg;
     const speed = Math.hypot(s.vel.x, s.vel.z);
     const perfect = !coyote && this.frictionTicks === 0;
-    s.hopChain = this.frictionTicks <= CHAIN_GRACE_TICKS ? s.hopChain + 1 : 1;
+    // Verlustfrei: jeder Bodentick davor lag in der Lande-Gnade (keine Reibung).
+    const clean = perfect || (!coyote && this.graceArmed && this.frictionTicks <= this.graceTicks);
+    s.hopChain = this.frictionTicks <= this.chainGraceTicks() ? s.hopChain + 1 : 1;
     const gain = s.hopChain > 1 ? speed - this.prevHopSpeed : 0;
     this.prevHopSpeed = speed;
 
@@ -637,16 +804,88 @@ export class PlayerMovement {
     this.coyoteOk = false;
     this.jumpPressTick = Number.NEGATIVE_INFINITY;
     this.frictionTicks = NO_LANDING;
+    // Ein Sprung beendet die Rutsche bewusst (auch per Coyote nach einer Kante): kein Weiterrutschen.
+    this.slideCarry = false;
     this.beginAirSegment();
 
     const e = this.jumpPool.next();
     e.speed = speed;
     e.gain = gain;
     e.perfect = perfect;
+    e.clean = clean;
     e.chain = s.hopChain;
     e.sync = this.lastAirSync;
     e.crouched = this.hullDucked || this.inCrouch;
     e.coyote = coyote;
+    this.events.push(e);
+  }
+
+  // --- Rutschen (Plan 007 A7) ----------------------------------------------------
+
+  /**
+   * Zustandsmaschine, läuft am Boden vor friction(). Eintritt geduckt ab slideMinSpeed (checkDuck
+   * hat die Hull schon sofort geduckt), Schub nur aus dem Lauf (Bodenzeit, Abklingzeit, Kappe) —
+   * Landen + Ducken ist Verzeihen, kein Schub-Farmen. Ende unter slideExitSpeed oder aufgestanden
+   * (im Tunnel ohne Platz rutscht man weiter). Kein Rutschen im Landetick mit Sprung: der Sprung
+   * kommt vorher (Bhop mit Ducken bleibt bitgleich). Hat die Rutsche den Boden ohne Sprung verlassen
+   * (slideCarry), geht sie im ersten Bodentick weiter wie eine laufende (ab slideExitSpeed, ohne Schub).
+   * Gemeldet (state.sliding, slideStart) wird sie erst nach der Lande-Gnade (siehe slideOn).
+   */
+  private updateSlide(): void {
+    const cfg = this.cfg;
+    const s = this.s;
+    const v = s.vel;
+    const carry = this.slideCarry;
+    this.slideCarry = false;
+    if (!(cfg.slideMinSpeed > 0)) {
+      if (this.slideOn) this.endSlide();
+      return;
+    }
+    if (!this.slideOn && !this.hullDucked) return;
+    const sp = hLen(v.x, v.z);
+    if (this.slideOn) {
+      if (!this.hullDucked || sp < cfg.slideExitSpeed) this.endSlide();
+      else if (!s.sliding && !this.inLandGrace()) this.announceSlide(this.slideBoostUnsaid);
+      return;
+    }
+    if (carry ? sp < cfg.slideExitSpeed : !this.inCrouch || sp < cfg.slideMinSpeed) return;
+    this.slideOn = true;
+    let boost = false;
+    const cooled = (this.tickCount - this.lastBoostTick) * this.dt >= cfg.slideBoostCooldown - 1e-9;
+    if (!carry && cfg.slideBoost > 0 && cooled && this.groundTicks * this.dt >= cfg.slideBoostMinGround - 1e-9 && sp < cfg.slideBoostCap) {
+      const add = Math.min(cfg.slideBoost, cfg.slideBoostCap - sp);
+      v.x += (v.x / sp) * add;
+      v.z += (v.z / sp) * add;
+      this.lastBoostTick = this.tickCount;
+      boost = true;
+    }
+    // Mit Preset-Werten nie Schub in der Gnade (Bodenzeit ≥ slideBoostMinGround) — im Panel möglich.
+    this.slideBoostUnsaid = boost;
+    if (!this.inLandGrace()) this.announceSlide(boost);
+  }
+
+  /** Lande-Gnade läuft (keine Reibung in diesem Bodentick) — gleiche Bedingung wie in friction(). */
+  private inLandGrace(): boolean {
+    return this.graceArmed && this.frictionTicks < this.graceTicks;
+  }
+
+  private announceSlide(boost: boolean): void {
+    const s = this.s;
+    s.sliding = true;
+    this.slideBoostUnsaid = false;
+    const e = this.slideStartPool.next();
+    e.speed = hLen(s.vel.x, s.vel.z);
+    e.boost = boost;
+    this.events.push(e);
+  }
+
+  private endSlide(): void {
+    const s = this.s;
+    this.slideOn = false;
+    if (!s.sliding) return;
+    s.sliding = false;
+    const e = this.slideEndPool.next();
+    e.speed = hLen(s.vel.x, s.vel.z);
     this.events.push(e);
   }
 
@@ -662,8 +901,68 @@ export class PlayerMovement {
     e.speed = Math.hypot(s.vel.x, s.vel.z);
     e.airTime = s.airTime + this.dt;
     this.landAirTime = e.airTime;
+    // Nur echte Luftphasen: Treppen-Holpern und Kanten-Abrollen bekommen keine reibungsfreie Zeit.
+    this.graceArmed = this.graceTicks > 0 && this.landAirTime >= LAND_GRACE_MIN_AIR - 1e-9;
     e.jumpQueued = this.jumpWillQueue();
     this.events.push(e);
+  }
+
+  /**
+   * Deterministische Hang-Landung (Abweichung, Plan 007 A4). In Source hängt es an der Tick-Phase,
+   * ob der Luft-Trace die Schräge trifft (Clip: bergab Gewinn, bergauf Verlust, evtl. Rampslide)
+   * oder die 2-u-Sonde sie vorher findet (kein Clip) — Lotterie. Hier zählt immer die Anflug-
+   * Geschwindigkeit vor dem Boden-Clip: geklippt nach oben schneller als nonJumpVelocity →
+   * Rampslide (in der Luft bleiben), sonst Landung in alter Richtung mit
+   * h1 = h0 + slopeLandGain · max(0, Clip-Anteil entlang der Flugrichtung − h0).
+   * Bergab gewinnt man in jeder Phase, bergauf verliert man nie, Landungen lenken nie. Der erlassene
+   * Bergauf-Verlust wird gestundet (slopeDebt) und vom nächsten Bergab-Gewinn abgezogen: auf
+   * gleichförmigem Gefälle ändert das nichts, auf Hügeln pumpt der Sprungimpuls kein Tempo mehr.
+   * Flacher Boden bleibt bitgleich.
+   */
+  private slopeLand(): void {
+    const k = this.cfg.slopeLandGain;
+    const s = this.s;
+    const n = s.groundNormal;
+    if (!(k > 0) || n.y >= FLAT_NORMAL_Y) return;
+    const vr = this.landRefVel;
+    const d = vr.x * n.x + vr.y * n.y + vr.z * n.z;
+    if (d >= 0) return;
+    const px = vr.x - n.x * d;
+    const py = vr.y - n.y * d;
+    const pz = vr.z - n.z * d;
+    if (py > this.cfg.nonJumpVelocity) {
+      s.vel.set(px, py, pz);
+      s.onGround = false;
+      s.groundNormal.set(0, 1, 0);
+      return;
+    }
+    const h0 = hLen(vr.x, vr.z);
+    if (h0 < 1e-3) {
+      // Senkrechter Fall: keine Flugrichtung, kein Gewinn — und kein Zufalls-Rutschen aus dem Clip.
+      s.vel.x = vr.x;
+      s.vel.z = vr.z;
+      return;
+    }
+    const dx = vr.x / h0;
+    const dz = vr.z / h0;
+    const along = px * dx + pz * dz;
+    let h1 = h0;
+    if (along < h0) {
+      // Kappung aufs Tempo über dem Lauftempo am Tick-Ende (tick), dort auch für Reibung und Wände.
+      this.slopeDebt += k * (h0 - along);
+    } else if (along > h0) {
+      const gain = k * (along - h0);
+      const pay = Math.min(gain, this.slopeDebt);
+      this.slopeDebt -= pay;
+      h1 = h0 + gain - pay;
+    }
+    s.vel.x = dx * h1;
+    s.vel.z = dz * h1;
+  }
+
+  /** Höchstes Boden-Wunschtempo (Laufen oder Sprint). */
+  private maxGroundSpeed(): number {
+    return Math.max(this.cfg.runSpeed, this.cfg.sprintSpeed);
   }
 
   /**
@@ -673,6 +972,11 @@ export class PlayerMovement {
    */
   private jumpWillQueue(): boolean {
     return this.jumpBuffered() || (this.cfg.autoHop && this.inJumpHeld && this.heldHopReady(1));
+  }
+
+  /** Kette und Sync reißen erst nach der Lande-Gnade (sonst hieße ein verlustfreier Hop "Kette weg"). */
+  private chainGraceTicks(): number {
+    return this.graceArmed && this.graceTicks > CHAIN_GRACE_TICKS ? this.graceTicks : CHAIN_GRACE_TICKS;
   }
 
   private jumpBuffered(): boolean {
@@ -721,8 +1025,7 @@ export class PlayerMovement {
    */
   private groundLaunchVelocity(): number {
     const cfg = this.cfg;
-    const maxGround = Math.max(cfg.runSpeed, cfg.sprintSpeed);
-    return Math.max(cfg.nonJumpVelocity, (cfg.nonJumpVelocity * maxGround) / SOURCE_MAX_GROUND_SPEED);
+    return Math.max(cfg.nonJumpVelocity, (cfg.nonJumpVelocity * this.maxGroundSpeed()) / SOURCE_MAX_GROUND_SPEED);
   }
 
   private beginAirSegment(): void {
@@ -759,10 +1062,20 @@ export class PlayerMovement {
   }
 
   private friction(): void {
+    // Lande-Gnade (Abweichung, Plan 007 A3): keine Reibung in den ersten Bodenticks nach einer
+    // echten Landung — ein paar ms zu spät springen kostet kein Tempo. Läuft vor frictionTicks++.
+    if (this.inLandGrace()) return;
     const v = this.s.vel;
     const speed = v.length();
     if (speed < 0.1) return;
     const cfg = this.cfg;
+    if (this.slideOn) {
+      // Rutsch-Reibung (Plan 007 A7): proportional + konstant, ohne stopSpeed — trägt Tempo über
+      // kurze Bodenstücke, endet aber sicher (unter slideExitSpeed wird es Duck-Walk).
+      const next = Math.max(speed - (speed * cfg.slideFriction + cfg.slideDecel) * this.dt, 0);
+      v.multiplyScalar(next / speed);
+      return;
+    }
     const control = speed < cfg.stopSpeed ? cfg.stopSpeed : speed;
     const drop = control * cfg.friction * this.dt;
     let newspeed = speed - drop;
@@ -776,7 +1089,29 @@ export class PlayerMovement {
     const s = this.s;
     const vel = s.vel;
     vel.y = 0;
+    if (this.slideOn) {
+      // Rutschen: Hangabtrieb (horizontale Komponente von g·sinθ entlang der Falllinie), Lenken
+      // mit der Maus, keine Bodenbeschleunigung.
+      const n = s.groundNormal;
+      const g = this.cfg.gravity * this.cfg.slideSlopeGravity * this.dt;
+      vel.x += g * n.x * n.y;
+      vel.z += g * n.z * n.y;
+      turnTowardYaw(vel, this.inYaw, this.cfg.slideSteerRate * this.dt);
+      wishspeed = 0;
+    }
+    // Schub-Kappe der Lande-Gnade: Boden-Accelerate ist ungekappt — ohne Kappe wäre die reibungsfreie
+    // Zeit Ground-Strafe (+18 % in 8 Ticks gemessen). Läuft nach frictionTicks++ (Gnade = 1…graceTicks).
+    const grace = this.graceArmed && this.frictionTicks <= this.graceTicks;
+    const h0 = grace ? hLen(vel.x, vel.z) : 0;
     this.accelerate(wishdir, wishspeed, this.cfg.accelerate);
+    if (grace) {
+      const cap = Math.max(h0, wishspeed);
+      const h1 = hLen(vel.x, vel.z);
+      if (h1 > cap + 1e-9) {
+        vel.x *= cap / h1;
+        vel.z *= cap / h1;
+      }
+    }
     vel.y = 0;
 
     if (vel.length() < 1) {
@@ -798,6 +1133,7 @@ export class PlayerMovement {
 
   private airMove(wishdir: Vector3, wishspeed: number): void {
     const vel = this.s.vel;
+    this.airControl();
     const before = Math.hypot(vel.x, vel.z);
     // Kriech-Schutz, Teil 1: Falllinien-Speed vor dem Schub merken.
     let creepU = Number.NaN;
@@ -824,7 +1160,150 @@ export class PlayerMovement {
     if (this.inSide !== 0) {
       this.syncSample = Math.hypot(vel.x, vel.z) > before + GAIN_EPSILON ? SYNC_GAIN : SYNC_MISS;
     }
+    this.airSlideMove();
+  }
+
+  /**
+   * Luftlenkung mit W (Abweichung, Plan 007 A8, CPMA-artig): nur W, kein A/D, nicht an Surf-Flanken
+   * und erst airControlSurfGrace nach dem letzten steilen Kontakt (sonst kippen Auffang-Designs:
+   * L2-S0 1/12 tot). v_h dreht zur Blickrichtung, der Betrag bleibt — kein Gewinn, kein Strafe-
+   * Ersatz (W-Lenken 32° in 0.3 s gegen 98° perfekter Strafe bei 320 u/s). Vor airAccelerate.
+   */
+  private airControl(): void {
+    const cfg = this.cfg;
+    const low = cfg.airControl;
+    if (!(low > 0) || this.inSide !== 0 || !(this.inForward > 0)) return;
+    const s = this.s;
+    if (s.surfing || this.steepBelow || this.steepAgo < cfg.airControlSurfGrace - 1e-9) return;
+    const sp = hLen(s.vel.x, s.vel.z);
+    const t = clamp((sp - cfg.airControlFadeFrom) / Math.max(1, cfg.airControlFadeTo - cfg.airControlFadeFrom), 0, 1);
+    turnTowardYaw(s.vel, this.inYaw, (low + (cfg.airControlHigh - low) * t) * this.dt);
+  }
+
+  /**
+   * Luft-Move mit Kanten-Assist (Abweichung, Plan 007 A6). Der schlechteste Parkour-Moment ist der
+   * Bonk: die Hull trifft knapp unter der Oberkante, der Clip nullt das Tempo, man kriecht auf die
+   * Kante. Nur bei frontalem Anprall (≤ 45°) an eine senkrechte Wand:
+   *  - Lip-Step: liegt begehbarer Boden höchstens ledgeStep über den Füßen, Q3-StepSlideMove in
+   *    der Luft und Landung auf der Kante (vel.y = 0, auch knapp vor dem Scheitel — reicht der Scheitel
+   *    nicht über die Kante, prallte man sonst ab). Nicht, solange der Rest-Aufstieg die Kante klar
+   *    selbst überragt und das Gedächtnis an ist: sonst bliebe vom Sprung direkt vor einer Stufe nichts
+   *    übrig; das Gedächtnis gibt das Tempo zurück, sobald die Hull oben frei ist.
+   *  - sonst Tempo-Gedächtnis: v_h vor dem Anprall kommt innerhalb ledgeMemory zurück, sobald die
+   *    Hull HÖHER frei ist (Steigen/Ducken) und auf der alten Höhe weiter blockiert wäre.
+   * Kein Impuls von Wänden, höchstens ledgeStep Hub, nur auf begehbare Oberkanten: kein Walljump.
+   */
+  private airSlideMove(): void {
+    const cfg = this.cfg;
+    const lipStep = cfg.ledgeStep;
+    const memory = cfg.ledgeMemory;
+    if (!(lipStep > 0) && !(memory > 0)) {
+      this.tryPlayerMove();
+      return;
+    }
+    const s = this.s;
+    const pos = s.pos;
+    const vel = s.vel;
+    const dt = this.dt;
+    const mins = this.mins;
+    const maxs = this.maxs;
+
+    if (this.memTicks > 0) {
+      this.memTicks--;
+      const hv = hLen(vel.x, vel.z);
+      const hm = hLen(this.memVel.x, this.memVel.z);
+      if (hv < hm * LEDGE_RESTORE_SHARE && pos.y > this.memY + LEDGE_RESTORE_RISE) {
+        this.lsEnd.set(pos.x + this.memVel.x * dt, pos.y, pos.z + this.memVel.z * dt);
+        const free = this.world.traceBox(pos, this.lsEnd, mins, maxs, this.trLedge);
+        if (free.fraction === 1 && !free.startSolid) {
+          this.lsPos.set(pos.x, this.memY, pos.z);
+          this.lsEnd.set(pos.x + this.memVel.x * dt, this.memY, pos.z + this.memVel.z * dt);
+          const low = this.world.traceBox(this.lsPos, this.lsEnd, mins, maxs, this.trLedge);
+          if (low.fraction < 1 || low.startSolid) {
+            vel.x = this.memVel.x;
+            vel.z = this.memVel.z;
+            this.memTicks = 0;
+            this.pushLedge('vault', 0);
+          }
+        }
+      } else if (hv >= hm * LEDGE_RESTORE_SHARE) {
+        this.memTicks = 0;
+      }
+    }
+
+    const p0 = this.lsP0.copy(pos);
+    const v0 = this.lsV0.copy(vel);
     this.tryPlayerMove();
+    const h0 = hLen(v0.x, v0.z);
+    const h1 = hLen(vel.x, vel.z);
+    if (!(h0 > LEDGE_MIN_SPEED && h1 < h0 - 1)) return;
+
+    // Senkrechte Wand in alter Richtung, frontal getroffen?
+    this.lsEnd.set(p0.x + v0.x * dt, p0.y, p0.z + v0.z * dt);
+    const wt = this.world.traceBox(p0, this.lsEnd, mins, maxs, this.trLedge);
+    if (!(wt.fraction < 1) || wt.startSolid || Math.abs(wt.normal.y) >= LEDGE_WALL_MAX_NY) return;
+    // Nur frontal: wer eine Bande längs streift und sie dann überfliegt, bekäme sonst den
+    // Queranteil zurück und flöge seitlich aus der Bahn (L1-Rutsche).
+    const incidence = -(v0.x * wt.normal.x + v0.z * wt.normal.z) / h0;
+    if (incidence < LEDGE_MIN_INCIDENCE) return;
+
+    if (lipStep > 0) {
+      const dPos = this.lsPos.copy(pos);
+      const dVel = this.lsVel.copy(vel);
+      // Der Versuch darf die Hang-Landungs-Referenz nicht verstellen, falls er verworfen wird.
+      const refSet = this.landRefSet;
+      this.lsRef.copy(this.landRefVel);
+      pos.copy(p0);
+      vel.copy(v0);
+      this.lsEnd.set(p0.x, p0.y + lipStep + DIST_EPSILON, p0.z);
+      const up = this.world.traceBox(p0, this.lsEnd, mins, maxs, this.trLedge);
+      let stepped = false;
+      if (!up.startSolid && !up.allSolid) {
+        pos.copy(up.endPos);
+        const raised = pos.y - p0.y;
+        this.tryPlayerMove();
+        this.lsEnd.set(pos.x, pos.y - raised - DIST_EPSILON, pos.z);
+        const dn = this.world.traceBox(pos, this.lsEnd, mins, maxs, this.trLedge);
+        if (!dn.startSolid && !dn.allSolid && dn.fraction < 1 && dn.normal.y >= MIN_GROUND_NORMAL_Y) {
+          const travelled = hLen(dn.endPos.x - p0.x, dn.endPos.z - p0.z);
+          const travelledDown = hLen(dPos.x - p0.x, dPos.z - p0.z);
+          // Steigt man noch klar über die Kante, bleibt der Sprung; das Gedächtnis gibt das Tempo oben zurück.
+          const riseClears = memory > 0 && v0.y > 0 && (v0.y * v0.y) / (2 * cfg.gravity) >= dn.endPos.y - p0.y + LEDGE_RISE_CLEAR;
+          if (!riseClears && travelled > travelledDown + 0.5 && dn.endPos.y > p0.y - 1e-6) {
+            pos.copy(dn.endPos);
+            vel.y = 0;
+            stepped = true;
+          }
+        }
+      }
+      if (stepped) {
+        // Landung auf der Kante: Hang-Landung nimmt dieses Tempo als Anflug (kein Nachschlag).
+        this.landRefVel.copy(vel);
+        this.landRefSet = true;
+        this.memTicks = 0;
+        this.pushLedge('step', pos.y - p0.y);
+        return;
+      }
+      pos.copy(dPos);
+      vel.copy(dVel);
+      this.landRefSet = refSet;
+      this.landRefVel.copy(this.lsRef);
+    }
+    // Ein schwächerer Folge-Anprall (Luft-Schub drückt weiter gegen die Wand, mit Cap 40 über
+    // LEDGE_MIN_SPEED) überschreibt das gemerkte Tempo nicht — sonst wäre es nach einem Tick weg.
+    if (memory > 0 && (this.memTicks <= 0 || h0 > hLen(this.memVel.x, this.memVel.z))) {
+      this.memVel.set(v0.x, 0, v0.z);
+      this.memY = p0.y;
+      this.memTicks = Math.max(1, Math.round(memory / dt));
+    }
+  }
+
+  private pushLedge(kind: 'step' | 'vault', dy: number): void {
+    const e = this.ledgePool.next();
+    e.kind = kind;
+    e.speed = hLen(this.s.vel.x, this.s.vel.z);
+    e.dy = dy;
+    this.events.push(e);
   }
 
   /** Source `TryPlayerMove`: Slide-Move mit bis zu 4 Bumps und 5 Clip-Ebenen. */
@@ -840,11 +1319,17 @@ export class PlayerMovement {
     let numPlanes = 0;
     let allFraction = 0;
     let timeLeft = this.dt;
+    /** Alle Treffer dieses Moves waren senkrechte Wände (Wand-Tasche, siehe unten). */
+    let wallsOnly = true;
+    // Rampbug-Fix nur, wenn der Move an einer Surf-Fläche beginnt (Plan 007 A2).
+    const seamFix = this.cfg.surfSeamFix && !s.onGround && (s.surfing || this.steepBelow) && this.lastSurfNormal.lengthSq() > 0.5;
+    if (seamFix) this.seamNormal.copy(this.lastSurfNormal);
 
     for (let bump = 0; bump < MAX_BUMPS; bump++) {
       if (vel.x === 0 && vel.y === 0 && vel.z === 0) break;
       this.end.copy(pos).addScaledVector(vel, timeLeft);
       this.world.traceBox(pos, this.end, this.mins, this.maxs, tr);
+      if (seamFix && tr.fraction < 1 && !tr.startSolid && opposesFlight(tr.normal, vel)) this.seamRetrace(pos, tr);
       allFraction += tr.fraction;
 
       if (tr.allSolid) {
@@ -866,6 +1351,12 @@ export class PlayerMovement {
       if (tr.fraction === 1) break;
 
       this.noteContact(tr.normal);
+      if (Math.abs(tr.normal.y) >= LEDGE_WALL_MAX_NY) wallsOnly = false;
+      // Hang-Landung: Anflug-Tempo vor dem ersten Clip an begehbarem Boden (Wand-Clips davor zählen mit).
+      if (!s.onGround && !this.landRefSet && tr.normal.y >= MIN_GROUND_NORMAL_Y) {
+        this.landRefVel.copy(original);
+        this.landRefSet = true;
+      }
       timeLeft -= timeLeft * tr.fraction;
 
       // Abweichung: am Boden wirkt eine steile Fläche (Surf-Rampe) wie eine
@@ -922,7 +1413,10 @@ export class PlayerMovement {
             break;
           }
           const dir = this.tpDir.crossVectors(planes[0], planes[1]).normalize();
-          vel.copy(dir).multiplyScalar(dir.dot(vel));
+          // Source: d = dir·vel VOR dem Kopieren. Nach copy war |v| = 1 → Luft-Hänger in
+          // konkaven Ecken (Plan 007 A1, gilt in jedem Preset).
+          const along = dir.dot(vel);
+          vel.copy(dir).multiplyScalar(along);
         }
         // Gegen die Ursprungsrichtung → stehen bleiben (kein Zittern in Ecken).
         if (vel.dot(primal) <= 0) {
@@ -932,7 +1426,55 @@ export class PlayerMovement {
       }
     }
 
-    if (allFraction === 0) vel.set(0, 0, 0);
+    if (allFraction === 0) {
+      vel.set(0, 0, 0);
+      // Kanten-Assist (Abweichung, Plan 007 A6): in einer Wand-Tasche aus fast parallelen Wänden
+      // (Gehrungsfuge einer Bande, Doppelebenen-Regel greift) kommt kein Bump vom Fleck — Source nullt
+      // die Geschwindigkeit, und solange W hineindrückt, schwebt man (fixcheck L4: 2 s Luft-Hänger).
+      // Keine Wand bremst nach unten: nur die Abwärtskomponente behalten und fallen.
+      if ((this.cfg.ledgeStep > 0 || this.cfg.ledgeMemory > 0) && !s.onGround && wallsOnly && numPlanes > 0 && primal.y < 0) {
+        this.dropInPocket(primal.y);
+      }
+    }
+  }
+
+  /** Wand-Tasche: senkrecht mit vy fallen (ein Trace, kein Luft-Schub). */
+  private dropInPocket(vy: number): void {
+    const s = this.s;
+    s.vel.set(0, vy, 0);
+    this.end.copy(s.pos);
+    this.end.y += vy * this.dt;
+    const tr = this.world.traceBox(s.pos, this.end, this.mins, this.maxs, this.trLedge);
+    if (tr.startSolid || tr.allSolid) {
+      s.vel.set(0, 0, 0);
+      return;
+    }
+    s.pos.copy(tr.endPos);
+    if (tr.fraction < 1) s.vel.y = 0;
+  }
+
+  /**
+   * Rampbug-Fix (Abweichung, Plan 007 A2, Momentum-Mod-Stil): beim Surfen trifft der Trace an
+   * Gehrungsfugen eine Ebene gegen die Fahrt — Kappe/Bevel des Nachbarstücks, das die Fuge in
+   * Wahrheit deckt. Derselbe Weg um 0.25/1/2 u entlang der Surf-Normale angehoben: kommt er
+   * weiter und trifft keine Gegen-Ebene, gilt der angehobene Trace. Echte Stirnwände treffen
+   * auch angehoben → unverändert. `this.end` ist das Ziel des aktuellen Bumps.
+   */
+  private seamRetrace(pos: Vector3, tr: TraceResult): void {
+    for (let i = 0; i < SEAM_RETRACE.length; i++) {
+      const d = SEAM_RETRACE[i];
+      this.seamStart.copy(pos).addScaledVector(this.seamNormal, d);
+      if (this.world.testBox(this.seamStart, this.mins, this.maxs)) continue;
+      this.seamEnd.copy(this.end).addScaledVector(this.seamNormal, d);
+      const r = this.world.traceBox(this.seamStart, this.seamEnd, this.mins, this.maxs, this.trSeam);
+      if (r.startSolid || r.allSolid || r.fraction <= tr.fraction + 1e-4) continue;
+      if (r.fraction < 1 && opposesFlight(r.normal, this.s.vel)) continue;
+      tr.fraction = r.fraction;
+      tr.endPos.copy(r.endPos);
+      tr.normal.copy(r.normal);
+      tr.brushIndex = r.brushIndex;
+      return;
+    }
   }
 
   /** Source `StepMove`: unten vs. um stepSize angehoben — wer weiter kommt, gewinnt. */

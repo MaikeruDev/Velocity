@@ -6,7 +6,7 @@ import { CS2_CLASSIC, VELOCITY_DEFAULT, type MovementConfig } from '../src/playe
 import { NaiveBot, StrafeBot, type Bot } from '../src/player/bots';
 import type { PlayerInput } from '../src/player/types';
 import { compileLevel } from '../src/world/level/compileLevel';
-import { AirDisplay, SpeedTrend, type Trend } from '../src/ui/hudLogic';
+import { AirDisplay, CENTER_BAND_TOP, LESSON_PIP, SpeedTrend, hudScale, lessonCardLayout, makeLessonCardLayout, turnBarLength, type Trend } from '../src/ui/hudLogic';
 import { flatLevel } from '../tools/sim/levels';
 
 /**
@@ -119,5 +119,42 @@ describe('AirDisplay — Luft-Zeile entprellt', () => {
     expect(d.air).toBe(true);
     for (let i = 0; i < 12; i++) d.update(1 / 60, true, false);
     expect(d.air).toBe(false);
+  });
+});
+
+describe('Lektions-HUD (Plan 007 TU2) — Karte und Drehbalken', () => {
+  it('Karte (Titel + ≤ 2 Textzeilen + Fortschritt) endet über dem Speedometer und dem mittleren Band', () => {
+    const lay = makeLessonCardLayout();
+    // Alle Pixelhöhen von 240 bis 1080 Zeilen (Einstellung pixelHeight), 0–2 Textzeilen (mehr kappt das Layout).
+    for (let h = 240; h <= 1080; h += 2) {
+      for (let lines = 0; lines <= 3; lines++) {
+        lessonCardLayout(h, lines, lay);
+        const s = hudScale(h);
+        // Speedometer-Ziffern beginnen bei 0.30 h (Hud SPEED_TOP), Bildmitte ab 0.35 h.
+        expect(lay.bottom).toBeLessThan(Math.round(h * 0.3));
+        expect(lay.bottom).toBeLessThan(h * CENTER_BAND_TOP);
+        // Reihenfolge: Titel über Text über Fortschritt, Pips passen ins Band.
+        expect(lay.top).toBeLessThan(lay.titleY);
+        expect(lay.titleY).toBeLessThan(lay.textY);
+        expect(lay.progressY).toBeGreaterThanOrEqual(lay.textY);
+        expect(lay.progressY + LESSON_PIP * s).toBeLessThan(lay.bottom);
+      }
+    }
+  });
+
+  it('Drehbalken: Ganzzahl, monoton, voll bei 360 °/s, Vorzeichen egal', () => {
+    const half = 20;
+    let prev = 0;
+    for (let d = 0; d <= 1000; d++) {
+      const len = turnBarLength(d, half);
+      expect(Number.isInteger(len)).toBe(true);
+      expect(len).toBeGreaterThanOrEqual(prev);
+      expect(turnBarLength(-d, half)).toBe(len);
+      prev = len;
+    }
+    expect(turnBarLength(360, half)).toBe(half - 1);
+    expect(turnBarLength(5000, half)).toBe(turnBarLength(360, half));
+    // Zielband 40–300 °/s liegt sichtbar getrennt (lo < hi).
+    expect(turnBarLength(40, half)).toBeLessThan(turnBarLength(300, half));
   });
 });

@@ -1,0 +1,121 @@
+# VELOCITY Movement-Sim (Preset: velocity)
+
+
+## Konfiguration: velocity
+
+| Wert | tickRate | gravity | jumpImpulse | runSpeed | sprintSpeed | duckSpeedScale | accelerate | airAccelerate | airSpeedCap | airSpeedCapLow | airSpeedCapFadeFrom | airSpeedCapFadeTo | strafeAssist | friction | stopSpeed | maxVelocity | stepSize | nonJumpVelocity | coyoteTime | jumpBufferTime | autoHop | autoHopSpeedShare | autoHopGroundTime | autoHopLandShare | autoHopLandAirTime | duckTime |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+|  | 128 | 800 | 301.993377 | 250 | 320 | 0.34 | 8 | 40 | 24 | 32 | 350 | 700 | true | 5.2 | 80 | 3500 | 18 | 140 | 0.1 | 0.12 | true | 0.97 | 0.2 | 0.75 | 0.25 | 0.15 |
+
+## Flacher Boden: Speed (u/s) bei Landung nach Hop n
+
+Start am Boden mit runSpeed Richtung -Z, Sprung gehalten (autoHop bzw. Flanke), Kurs halten. Bots mit Zufall: Mittel über 5 Seeds.
+
+Strafe 0.85/0.7: Fehler relativ zum Gewinnfenster (HUD-Sync nachgestellt). Zielfehler n°: absoluter, zeitlich korrelierter Winkelfehler. konst. 150°/s: Blick dreht mit fester Rate.
+
+| Hop | Strafe 1.0 | Strafe 0.85 | Strafe 0.7 | Zielfehler 2° | Zielfehler 3° | konst. 150°/s | Naive (W) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 399 | 371 | 323 | 382 | 367 | 317 | 250 |
+| 2 | 495 | 462 | 379 | 471 | 449 | 380 | 250 |
+| 3 | 566 | 525 | 452 | 520 | 476 | 437 | 250 |
+| 4 | 622 | 575 | 487 | 558 | 502 | 488 | 250 |
+| 5 | 670 | 600 | 523 | 588 | 518 | 536 | 250 |
+| 6 | 711 | 637 | 566 | 616 | 540 | 580 | 250 |
+| 7 | 749 | 671 | 575 | 623 | 526 | 621 | 250 |
+| 8 | 786 | 694 | 602 | 649 | 558 | 659 | 250 |
+| 9 | 820 | 721 | 628 | 667 | 578 | 695 | 250 |
+| 10 | 853 | 748 | 652 | 676 | 576 | 728 | 250 |
+| 11 | 886 | 772 | 671 | 688 | 584 | 761 | 250 |
+| 12 | 917 | 798 | 680 | 677 | 547 | 793 | 250 |
+| 13 | 946 | 823 | 699 | 684 | 551 | 824 | 250 |
+| 14 | 975 | 845 | 703 | 698 | 568 | 855 | 250 |
+| 15 | 1004 | 860 | 719 | 704 | 571 | 885 | 250 |
+| 16 | 1031 | 885 | 738 | 716 | 584 | 914 | 250 |
+| 17 | 1058 | 899 | 755 | 729 | 597 | 943 | 250 |
+| 18 | 1084 | 922 | 774 | 743 | 610 | 971 | 250 |
+| 19 | 1109 | 943 | 777 | 749 | 608 | 998 | 250 |
+| 20 | 1134 | 965 | 797 | 760 | 619 | 1026 | 250 |
+
+### 10 s Bhop
+
+| Bot | Ø gemessener Sync | Luftlinie 10 s (u) | Weg 10 s (u) | Ø Speed (u/s) | Speed nach 10 s |
+| --- | --- | --- | --- | --- | --- |
+| Strafe 1.0 | 1.00 | 6996 | 7041 | 704 | 954 |
+| Strafe 0.85 | 0.88 | 6238 | 6281 | 628 | 830 |
+| Strafe 0.7 | 0.73 | 5398 | 5439 | 544 | 697 |
+| Zielfehler 2° | 0.72 | 5825 | 5867 | 587 | 687 |
+| Zielfehler 3° | 0.65 | 5075 | 5114 | 511 | 556 |
+| konst. 150°/s | 1.00 | 5816 | 5846 | 585 | 832 |
+| Naive (W) | 0.00 | 2500 | 2500 | 250 | 250 |
+
+## Menschenmodell: velocity gegen cs2
+
+Speed bei Landung nach Hop 5/10/20 und gemessener Sync (Gewinn-Ticks/Strafe-Ticks). Absolute Fehler (Grad, Drehrate) sind der faire Vergleich zwischen Presets.
+
+| Bot | velocity H5 | H10 | H20 | Sync | cs2 H5 | H10 | H20 | Sync |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Strafe 1.0 | 670 | 853 | 1134 | 1.00 | 529 | 706 | 967 | 1.00 |
+| Strafe 1.0 @300°/s | 635 | 829 | 1115 | 1.00 | 527 | 705 | 966 | 1.00 |
+| konst. 250°/s | 621 | 817 | 1075 | 1.00 | 523 | 681 | 723 | 0.81 |
+| konst. 150°/s | 536 | 728 | 1026 | 1.00 | 483 | 665 | 933 | 1.00 |
+| Zielfehler 1° | 647 | 782 | 980 | 0.92 | 517 | 676 | 880 | 0.96 |
+| Zielfehler 2° | 588 | 676 | 760 | 0.72 | 477 | 591 | 714 | 0.81 |
+| Zielfehler 3° | 518 | 576 | 619 | 0.65 | 427 | 498 | 571 | 0.71 |
+| Zielfehler 4° | 451 | 492 | 523 | 0.62 | 377 | 418 | 463 | 0.65 |
+| Strafe 0.85 | 600 | 748 | 965 | 0.88 | 473 | 573 | 772 | 0.87 |
+| Strafe 0.7 | 523 | 652 | 797 | 0.73 | 343 | 407 | 542 | 0.71 |
+| Naive (W) | 250 | 250 | 250 | 0.00 | – | – | – | 0.00 |
+
+## Boden & Sprung
+
+| Messung | Wert |
+| --- | --- |
+| Naive aus dem Stand (W+Space ab t=0 gehalten), 2 s | 470 u, Dauertempo 245 u/s, 1. Sprung nach 0.195 s |
+| Naive aus dem Stand (W+Shift+Space ab t=0 gehalten), 2 s | 606 u, Dauertempo 315 u/s, 1. Sprung nach 0.195 s |
+| Naive aus dem Stand (W+Space ab t=0, frisch gedrückt), 2 s | 317 u, Dauertempo 247 u/s, 1. Sprung nach 0.000 s |
+| Naive aus dem Stand (W+Shift+Space ab t=0, frisch gedrückt), 2 s | 395 u, Dauertempo 313 u/s, 1. Sprung nach 0.000 s |
+| 0 → runSpeed (250) | 0.203 s |
+| 0 → sprintSpeed (320) | 0.203 s |
+| Stopp runSpeed → < 10 u/s | 0.391 s |
+| Stopp runSpeed → 0 | 0.406 s (39 u Bremsweg) |
+| Stopp sprintSpeed → < 10 u/s | 0.430 s |
+| Geduckt gehen | 85 u/s |
+| Sprunghöhe (Füße) | 57.00 u |
+| Crouch-Jump (Füße) | 75.00 u |
+| Luftzeit flach | 0.750 s |
+
+## Surf (Flanke normal.y ≈ 0.54, Start 400 u/s in der Luft über der Flanke)
+
+| Eingabe | nach 1 s | nach 2 s | nach 3 s | Höhe verloren | noch auf Rampe |
+| --- | --- | --- | --- | --- | --- |
+| ohne Eingabe | 783 | 1405 | 2060 | 2550 u | ja |
+| A in die Rampe, Blick entlang | 401 | 401 | 401 | -32 u | ja |
+
+## Sprungweiten (u, Origin, ohne Luft-Strafe)
+
+Horizontale Distanz vom Absprung bis die Füße die Zielhöhe kreuzen. Max. Lücke Kante-zu-Kante = Distanz + 32 (Hull-Breite).
+
+| Absprung u/s | +48 | +32 | 0 | -64 | -128 | -256 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 250 | 132 (164) | 157 (189) | 189 (221) | 232 (264) | 264 (296) | 316 (348) |
+| 320 | 169 (201) | 201 (233) | 242 (274) | 297 (329) | 338 (370) | 404 (436) |
+| 400 | 211 (243) | 251 (283) | 302 (334) | 371 (403) | 423 (455) | 505 (537) |
+| 500 | 264 (296) | 314 (346) | 378 (410) | 464 (496) | 529 (561) | 631 (663) |
+| 600 | 317 (349) | 377 (409) | 453 (485) | 557 (589) | 635 (667) | 757 (789) |
+| 800 | 423 (455) | 502 (534) | 604 (636) | 742 (774) | 846 (878) | 1010 (1042) |
+| 1000 | 528 (560) | 628 (660) | 755 (787) | 928 (960) | 1058 (1090) | 1262 (1294) |
+
+## Sprungweiten mit Crouch-Jump (u, Origin, ohne Luft-Strafe)
+
+Horizontale Distanz vom Absprung bis die Füße die Zielhöhe kreuzen. Max. Lücke Kante-zu-Kante = Distanz + 32 (Hull-Breite).
+
+| Absprung u/s | +48 | +32 | 0 | -64 | -128 | -256 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 250 | 159 (191) | 176 (208) | 203 (235) | 242 (274) | 273 (305) | 322 (354) |
+| 320 | 204 (236) | 226 (258) | 259 (291) | 310 (342) | 349 (381) | 412 (444) |
+| 400 | 255 (287) | 282 (314) | 324 (356) | 387 (419) | 436 (468) | 515 (547) |
+| 500 | 319 (351) | 353 (385) | 405 (437) | 484 (516) | 545 (577) | 644 (676) |
+| 600 | 383 (415) | 423 (455) | 487 (519) | 580 (612) | 654 (686) | 772 (804) |
+| 800 | 510 (542) | 565 (597) | 649 (681) | 774 (806) | 872 (904) | 1030 (1062) |
+| 1000 | 638 (670) | 706 (738) | 811 (843) | 967 (999) | 1090 (1122) | 1287 (1319) |
+

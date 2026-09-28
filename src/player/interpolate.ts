@@ -28,4 +28,5 @@ export function lerpSnapshot(a: PlayerSnapshot, b: PlayerSnapshot, t: number, ou
   out.airTime = b.airTime;
   out.surfing = b.surfing;
   out.surfNormal.copy(b.surfNormal);
+  out.sliding = b.sliding;
 }

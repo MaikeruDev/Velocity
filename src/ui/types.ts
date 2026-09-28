@@ -1,4 +1,5 @@
-import type { LevelMedals } from '../world/level/LevelFormat';
+import type { LevelMedals, StageRank } from '../world/level/LevelFormat';
+import type { LessonStars } from '../engine/trainingTypes';
 import type { MedalId } from './medals';
 
 /** Pro Frame vom Spiel an das HUD. */
@@ -41,6 +42,32 @@ export interface HudData {
    * Objekt nur beim Levelstart und im Ziel (nicht pro Frame).
    */
   readonly nextMedal?: { readonly id: MedalId; readonly limit: number } | null;
+  /**
+   * Lektionskarte im Trainingsmodus (Plan 007) an der Stelle des Timers. null/fehlt = keine Lektion
+   * (normales Level). Dasselbe Objekt in jedem Frame (TrainingSessionApi.hud).
+   */
+  readonly lesson?: LessonHud | null;
+}
+
+/**
+ * Lektionskarte (Plan 007). Texte ändern sich nur beim Stufenwechsel, Zahlen sind Ganzzahlen
+ * (count/goal: Hops, Landungen, Zonen; bei surfHold Zehntelsekunden).
+ */
+export interface LessonHud {
+  readonly lessonTitle: string;
+  readonly stageTitle: string;
+  /** Aufgabentext, ≤ 2 Zeilen à ≤ 40 Zeichen ("\n" trennt). */
+  readonly text: string;
+  readonly count: number;
+  readonly goal: number;
+  /** pips = einzelne Punkte (kleine Ziele), bar = Balken (Tempo, Zeit). */
+  readonly style: 'pips' | 'bar';
+  readonly rank: StageRank;
+  /** Stufe ab 0 und Anzahl Stufen der Lektion. */
+  readonly stageIndex: number;
+  readonly stageTotal: number;
+  /** Vorführung läuft (Taste H). */
+  readonly demo: boolean;
 }
 
 /**
@@ -67,6 +94,11 @@ export interface HudKeys {
   readonly strafe: number;
   /** So lange (ms, ganzzahlig) wird W in der Luft zusammen mit A/D gehalten; 0 = nicht. */
   readonly forwardInAirMs: number;
+  /**
+   * Zielband der Drehrate (°/s) am Drehbalken, nur in Lektionen (Plan 007, TrainingSessionApi.turnBand).
+   * null/fehlt = kein Band.
+   */
+  readonly turnBand?: { readonly lo: number; readonly hi: number } | null;
 }
 
 /** Lesbarer Zustand der Raw-Maus (InputManager.rawStatus) für die Einstellungen. */
@@ -96,6 +128,20 @@ export interface FinishResult {
   readonly medals?: LevelMedals | null;
   /** Mit diesem Lauf neu freigeschaltete Kosmetik (Anzeigenamen, Plan 005) — groß im Ergebnis. */
   readonly unlocked?: readonly string[];
+  /** Ziel-Foto des Handys (Plan 007, RendererApi.snapshot/selfie) — Polaroid im Ergebnis. Fehlt = keins. */
+  readonly photo?: HTMLCanvasElement;
+}
+
+/** Ergebnis einer Lektion (Plan 007) für den Bildschirm 'lessonDone'. */
+export interface LessonResult {
+  readonly lessonId: string;
+  readonly name: string;
+  readonly stars: LessonStars;
+  readonly stages: readonly { readonly id: string; readonly title: string; readonly rank: StageRank; readonly done: boolean }[];
+  /** Nächste Lektion (TrainingIndexEntry.id), null = letzte. */
+  readonly nextLessonId: string | null;
+  /** Mit dieser Lektion neu freigeschaltete Kosmetik (Anzeigenamen). */
+  readonly unlocked: readonly string[];
 }
 
 export interface MenuEvents {
@@ -114,8 +160,12 @@ export interface MenuEvents {
    * frischt Bestzeit/Nächstes Ziel auf, falls es das laufende Level ist.
    */
   adminBest: { readonly levelId: string };
+  /** Vorführung der aktuellen Stufe starten (Pause-Menü einer Lektion, Plan 007). */
+  demo: void;
+  /** Aktuelle Stufe überspringen (Pause-Menü/Admin einer Lektion, Plan 007). */
+  skipStage: void;
 }
 
 export type MenuEventName = keyof MenuEvents;
 
-export type MenuScreen = 'title' | 'pause' | 'settings' | 'controls' | 'finish' | 'cosmetics' | 'admin';
+export type MenuScreen = 'title' | 'pause' | 'settings' | 'controls' | 'finish' | 'cosmetics' | 'admin' | 'training' | 'lessonDone';

@@ -1,0 +1,23 @@
+  Kehre: Grat R 2000, 4 × 45° à 1571 u, 12°, Drops 64; innen 3 Lücken à 224 u (Bogen am Grat), Linie innen ≈ 5655 u, Kehle außen ≈ 7490 u; Innen-Rampe gesamt 6283 u; Enden Grat außen -1957 / innen -1957
+  Strand: Oberseite -4516 (1100 unter dem Kicker), Lücke 896 u bei unterem Band 700 u/s, Flugzeit 1.40 s
+  Kill-Kacheln: 45
+Tempo-Band Launch: schnell 524 u/s, sicher 440 u/s (90 % des Langsamsten)  
+  Strand: Oberseite -4516 (1100 unter dem Kicker), Lücke 528 u bei unterem Band 418 u/s, Flugzeit 1.40 s
+
+✓ SCHNELLE Linie (route) (0.0 s): 0 Fehler, 1 Warnungen
+    Bodenmarkierungen: 4, alle liegen auf
+    Kill-Zonen: 45 (kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile)
+    Brushes 296 (Kollision 259, Deko 37), Flächen 2170 (begehbar 109, Surf 406, 50–60°)
+    Bounds (-9980, -12800, -4399) … (4360, 2210, 13410), Größe (14340, 15010, 17809)
+    Trigger: Start 1, Checkpoints 3, Ziel 1; killY -12000, voidY -13000
+    Route 76 Knoten, 14539 u, Par 60 s
+  ! Keine Medaillen (npm run levels:build misst sie)
+
+✓ SICHERE Linie (safeRoute) (0.0 s): 0 Fehler, 1 Warnungen
+    Bodenmarkierungen: 4, alle liegen auf
+    Kill-Zonen: 45 (kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile)
+    Brushes 296 (Kollision 259, Deko 37), Flächen 2170 (begehbar 109, Surf 406, 50–60°)
+    Bounds (-9980, -12800, -4399) … (4360, 2210, 13410), Größe (14340, 15010, 17809)
+    Trigger: Start 1, Checkpoints 3, Ziel 1; killY -12000, voidY -13000
+    Route 76 Knoten, 15601 u, Par 60 s
+  ! Keine Medaillen (npm run levels:build misst sie)

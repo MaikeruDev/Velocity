@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "id": "t3",
+  "name": "AIR-STRAFE",
+  "subtitle": "Kurven in der Luft = Tempo.",
+  "spawn": {
+    "pos": [0,0,0],
+    "yaw": 0
+  },
+  "killY": -600,
+  "music": {
+    "bpm": 132
+  },
+  "environment": {
+    "skyTop": "#060a24",
+    "skyHorizon": "#1d3f7a",
+    "skyBottom": "#070b1f",
+    "fogColor": "#16305e",
+    "fogNear": 1800,
+    "fogFar": 9000,
+    "sunDir": [0.35,0.55,-0.75],
+    "sunColor": "#d6ecff",
+    "ambientSky": "#4a6ad0",
+    "ambientGround": "#141a3a",
+    "trimColor": "#33f0ff",
+    "trimColorAlt": "#ff3fd0",
+    "voidY": -1400
+  },
+  "brushes": [
+    {"type":"box","min":[-2816,-128,-2816],"max":[2816,0,2816],"mat":"floor","tag":"arena"},
+    {"type":"wedge","min":[-2752,-64,-2656],"max":[2752,96,-2400],"rise":"-z","lowY":0,"mat":"floor","tag":"rand-n"},
+    {"type":"wedge","min":[-2752,32,-2752],"max":[2752,262,-2656],"rise":"-z","lowY":96,"mat":"surf","tag":"band-n"},
+    {"type":"wedge","min":[-2752,-64,2400],"max":[2752,96,2656],"rise":"+z","lowY":0,"mat":"floor","tag":"rand-s"},
+    {"type":"wedge","min":[192,32,2656],"max":[2752,262,2752],"rise":"+z","lowY":96,"mat":"surf","tag":"band-s1"},
+    {"type":"wedge","min":[-2752,32,2656],"max":[-192,262,2752],"rise":"+z","lowY":96,"mat":"surf","tag":"band-s2"},
+    {"type":"wedge","min":[-2656,-72,-2400],"max":[-2400,96,2400],"rise":"-x","lowY":0,"mat":"floor","tag":"rand-w"},
+    {"type":"wedge","min":[-2752,24,-2400],"max":[-2656,262,2400],"rise":"-x","lowY":96,"mat":"surf","tag":"band-w"},
+    {"type":"wedge","min":[2400,-72,-2400],"max":[2656,96,2400],"rise":"+x","lowY":0,"mat":"floor","tag":"rand-o"},
+    {"type":"wedge","min":[2656,24,-2400],"max":[2752,262,2400],"rise":"+x","lowY":96,"mat":"surf","tag":"band-o"},
+    {"type":"box","min":[-2816,0,-2816],"max":[2816,400,-2752],"mat":"wall","tag":"bande-n"},
+    {"type":"box","min":[-2816,0,-2752],"max":[-2752,400,2752],"mat":"wall","tag":"bande-w"},
+    {"type":"box","min":[2752,0,-2752],"max":[2816,400,2752],"mat":"wall","tag":"bande-o"},
+    {"type":"box","min":[-2816,0,2752],"max":[-192,400,2816],"mat":"wall","tag":"bande-s1"},
+    {"type":"box","min":[192,0,2752],"max":[2816,400,2816],"mat":"wall","tag":"bande-s2"},
+    {"type":"box","min":[-192,32,2656],"max":[192,96,3392],"mat":"floor","tag":"nische"},
+    {"type":"box","min":[-256,0,2816],"max":[-192,400,3456],"mat":"wall","tag":"nische-w"},
+    {"type":"box","min":[192,0,2816],"max":[256,400,3456],"mat":"wall","tag":"nische-o"},
+    {"type":"box","min":[-192,0,3392],"max":[192,400,3456],"mat":"wall","tag":"nische-s"},
+    {"type":"box","min":[-160,96,3216],"max":[-128,320,3248],"mat":"dark","collide":false,"trim":false},
+    {"type":"box","min":[128,96,3216],"max":[160,320,3248],"mat":"dark","collide":false,"trim":false},
+    {"type":"box","min":[-160,320,3216],"max":[160,352,3248],"mat":"light","tint":"#9dff5c","collide":false,"trim":false},
+    {"type":"hull","points":[[0,0,-96],[0,-4,-96],[96,0,0],[96,-4,0],[0,0,96],[0,-4,96],[-96,0,0],[-96,-4,0]],"mat":"marking","tint":"#33f0ff","collide":false,"tag":"mitte","trim":false},
+    {"type":"hull","points":[[0,0,1734.456],[0,-4,1734.456],[50.912,0,1683.544],[50.912,-4,1683.544],[50.912,0,1665.544],[50.912,-4,1665.544],[0,0,1716.456],[0,-4,1716.456]],"mat":"marking","tint":"#ffb347","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[0,0,1734.456],[0,-4,1734.456],[-50.912,0,1683.544],[-50.912,-4,1683.544],[-50.912,0,1665.544],[-50.912,-4,1665.544],[0,0,1716.456],[0,-4,1716.456]],"mat":"marking","tint":"#ffb347","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[0,0,1914.456],[0,-4,1914.456],[50.912,0,1863.544],[50.912,-4,1863.544],[50.912,0,1845.544],[50.912,-4,1845.544],[0,0,1896.456],[0,-4,1896.456]],"mat":"marking","tint":"#ffb347","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[0,0,1914.456],[0,-4,1914.456],[-50.912,0,1863.544],[-50.912,-4,1863.544],[-50.912,0,1845.544],[-50.912,-4,1845.544],[0,0,1896.456],[0,-4,1896.456]],"mat":"marking","tint":"#ffb347","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[0,0,2094.456],[0,-4,2094.456],[50.912,0,2043.544],[50.912,-4,2043.544],[50.912,0,2025.544],[50.912,-4,2025.544],[0,0,2076.456],[0,-4,2076.456]],"mat":"marking","tint":"#ffb347","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[0,0,2094.456],[0,-4,2094.456],[-50.912,0,2043.544],[-50.912,-4,2043.544],[-50.912,0,2025.544],[-50.912,-4,2025.544],[0,0,2076.456],[0,-4,2076.456]],"mat":"marking","tint":"#ffb347","collide":false,"tag":"chevron","trim":false}
+  ],
+  "triggers": [
+    {"kind":"finish","min":[-128,96,3168],"max":[128,296,3296],"tag":"finish"}
+  ],
+  "training": {
+    "lesson": 3,
+    "short": "T3",
+    "group": "basics",
+    "gates": [{"id":"ausgang","min":[-192,96,2752],"max":[192,400,2776],"tint":"#ffb347"}],
+    "stages": [{"id":"links","title":"LINKSKURVE","text":"IN DER LUFT: A HALTEN\nUND DIE MAUS NACH LINKS ZIEHEN","task":{"kind":"goodHops","count":5,"side":"left"},"spawn":{"pos":[0,0,0],"yaw":0},"demo":{"kind":"hand","rateDeg":120,"pattern":"circle","side":"left","seconds":12},"tips":[{"on":"air","text":"JETZT: A HALTEN\nMAUS LANGSAM NACH LINKS"}]},{"id":"rechts","title":"RECHTSKURVE","text":"IN DER LUFT: D HALTEN\nUND DIE MAUS NACH RECHTS ZIEHEN","task":{"kind":"goodHops","count":5,"side":"right"},"demo":{"kind":"hand","rateDeg":120,"pattern":"circle","side":"right","seconds":12},"tips":[{"on":"air","text":"JETZT ANDERSHERUM:\nD HALTEN, MAUS NACH RECHTS"}]},{"id":"wechsel","title":"WECHSELN","text":"JEDER SPRUNG ANDERE SEITE:\nA + LINKS, DANN D + RECHTS","task":{"kind":"goodHops","count":6,"side":"alternate"},"opens":["ausgang"],"demo":{"kind":"hand","rateDeg":120,"pattern":"zigzag","side":"left","seconds":16}},{"id":"frueh","title":"FRÜH DRÜCKEN","text":"TASTE GLEICH NACH DEM ABSPRUNG:\n5 GUTE HOPS, A/D FAST DIE GANZE LUFT","task":{"kind":"goodHops","count":5,"side":"any","minSideShare":0.8},"rank":"bonus","demo":{"kind":"hand","rateDeg":120,"pattern":"zigzag","side":"left","seconds":16}},{"id":"profi","title":"PROFI-WECHSEL","text":"8 GUTE HOPS IM WECHSEL\nTASTE GLEICH NACH DEM ABSPRUNG","task":{"kind":"goodHops","count":8,"side":"alternate","minSideShare":0.85},"rank":"master","demo":{"kind":"hand","rateDeg":120,"pattern":"zigzag","side":"left","seconds":16}}],
+    "hud": {"forceKeys":true,"turnBand":true}
+  }
+}

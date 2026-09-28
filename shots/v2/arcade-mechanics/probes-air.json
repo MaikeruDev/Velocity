@@ -1,0 +1,44 @@
+[
+  {
+    "name": "1.6→0.8, Surf-Pause 0",
+    "level": "level1",
+    "fresh": []
+  },
+  {
+    "name": "1.6→0.8, Surf-Pause 0",
+    "level": "level2",
+    "fresh": [
+      "Design: S0 fängt Nicht-Surfer nicht: 1/12 W-Halter ab CP2 tot (Blick auf Knoten + Leertaste: kill nach 5.0 s bei 1606,-1161,-2622)"
+    ]
+  },
+  {
+    "name": "1.6→0.8, Surf-Pause 0.5 s",
+    "level": "level1",
+    "fresh": []
+  },
+  {
+    "name": "1.6→0.8, Surf-Pause 0.5 s",
+    "level": "level2",
+    "fresh": []
+  },
+  {
+    "name": "1.6→0.8, Surf-Pause 1.0 s",
+    "level": "level1",
+    "fresh": []
+  },
+  {
+    "name": "1.6→0.8, Surf-Pause 1.0 s",
+    "level": "level2",
+    "fresh": []
+  },
+  {
+    "name": "1.0→0.5, Surf-Pause 0.5 s",
+    "level": "level1",
+    "fresh": []
+  },
+  {
+    "name": "1.0→0.5, Surf-Pause 0.5 s",
+    "level": "level2",
+    "fresh": []
+  }
+]

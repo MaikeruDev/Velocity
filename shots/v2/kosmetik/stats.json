@@ -1,0 +1,250 @@
+{
+  "skins": {
+    "classic · relaxed": {
+      "drawCalls": 36,
+      "triangles": 3548
+    },
+    "classic (nur Hand)": {
+      "drawCalls": 36,
+      "triangles": 3548
+    },
+    "classic · open (Luft)": {
+      "drawCalls": 36,
+      "triangles": 3548
+    },
+    "classic · thumbsUp": {
+      "drawCalls": 36,
+      "triangles": 3548
+    },
+    "classic · grip + Dose": {
+      "drawCalls": 40,
+      "triangles": 3770
+    },
+    "gold · relaxed": {
+      "drawCalls": 36,
+      "triangles": 3548
+    },
+    "gold (nur Hand)": {
+      "drawCalls": 36,
+      "triangles": 3548
+    },
+    "gold · open (Luft)": {
+      "drawCalls": 36,
+      "triangles": 3548
+    },
+    "gold · thumbsUp": {
+      "drawCalls": 36,
+      "triangles": 3548
+    },
+    "gold · grip + Dose": {
+      "drawCalls": 40,
+      "triangles": 3770
+    },
+    "robot · relaxed": {
+      "drawCalls": 36,
+      "triangles": 8816
+    },
+    "robot (nur Hand)": {
+      "drawCalls": 36,
+      "triangles": 8816
+    },
+    "robot · open (Luft)": {
+      "drawCalls": 36,
+      "triangles": 8816
+    },
+    "robot · thumbsUp": {
+      "drawCalls": 36,
+      "triangles": 8816
+    },
+    "robot · grip + Dose": {
+      "drawCalls": 40,
+      "triangles": 9038
+    },
+    "skeleton · relaxed": {
+      "drawCalls": 36,
+      "triangles": 5968
+    },
+    "skeleton (nur Hand)": {
+      "drawCalls": 36,
+      "triangles": 5968
+    },
+    "skeleton · open (Luft)": {
+      "drawCalls": 36,
+      "triangles": 5968
+    },
+    "skeleton · thumbsUp": {
+      "drawCalls": 36,
+      "triangles": 5968
+    },
+    "skeleton · grip + Dose": {
+      "drawCalls": 40,
+      "triangles": 6190
+    },
+    "cat · relaxed": {
+      "drawCalls": 44,
+      "triangles": 5664
+    },
+    "cat (nur Hand)": {
+      "drawCalls": 44,
+      "triangles": 5664
+    },
+    "cat · open (Luft)": {
+      "drawCalls": 44,
+      "triangles": 5664
+    },
+    "cat · thumbsUp": {
+      "drawCalls": 44,
+      "triangles": 5664
+    },
+    "cat · grip + Dose": {
+      "drawCalls": 48,
+      "triangles": 5886
+    }
+  },
+  "props": {
+    "Jo-Jo · Ruhe (Faust)": {
+      "drawCalls": 36,
+      "triangles": 3548
+    },
+    "Jo-Jo · Sleeper 0.8 s": {
+      "drawCalls": 36,
+      "triangles": 3548
+    },
+    "Jo-Jo · Around 0.45 s": {
+      "drawCalls": 36,
+      "triangles": 3548
+    },
+    "Jo-Jo · Pass 0.3 s": {
+      "drawCalls": 36,
+      "triangles": 3548
+    },
+    "Spinner · Pinch": {
+      "drawCalls": 40,
+      "triangles": 4444
+    },
+    "Spinner · Fingerspitze (Surf)": {
+      "drawCalls": 40,
+      "triangles": 4444
+    },
+    "Münze · Knöchel (Faust)": {
+      "drawCalls": 40,
+      "triangles": 3688
+    },
+    "Münze · Flip (Luft)": {
+      "drawCalls": 40,
+      "triangles": 3688
+    },
+    "Feuerzeug · zu": {
+      "drawCalls": 44,
+      "triangles": 4100
+    },
+    "Feuerzeug · offen + Flamme": {
+      "drawCalls": 45,
+      "triangles": 4102
+    },
+    "Feuerzeug · Fahrtwind 900 u/s": {
+      "drawCalls": 45,
+      "triangles": 4102
+    },
+    "Kendama · Ruhe (Kugel hängt)": {
+      "drawCalls": 38,
+      "triangles": 4096
+    },
+    "Kendama · großer Becher": {
+      "drawCalls": 38,
+      "triangles": 4096
+    },
+    "Kendama · Kugel fliegt": {
+      "drawCalls": 38,
+      "triangles": 4096
+    },
+    "Handy · Feed (Daumen scrollt)": {
+      "drawCalls": 39,
+      "triangles": 3918
+    },
+    "Handy · hoch (Ziel-Foto)": {
+      "drawCalls": 39,
+      "triangles": 3918
+    }
+  },
+  "combos": {
+    "Roboter + Jo-Jo Around": {
+      "drawCalls": 36,
+      "triangles": 8816
+    },
+    "Skelett + Feuerzeug": {
+      "drawCalls": 45,
+      "triangles": 6522
+    },
+    "Gold + Münze": {
+      "drawCalls": 40,
+      "triangles": 3688
+    },
+    "Katze · Krallen raus (open)": {
+      "drawCalls": 44,
+      "triangles": 5664
+    },
+    "cat (nur Hand)": {
+      "drawCalls": 44,
+      "triangles": 5664
+    },
+    "Katze · Krallen drin (open)": {
+      "drawCalls": 44,
+      "triangles": 5664
+    },
+    "Katze + Kendama": {
+      "drawCalls": 46,
+      "triangles": 6212
+    },
+    "Neon (Referenz)": {
+      "drawCalls": 36,
+      "triangles": 3548
+    },
+    "neon (nur Hand)": {
+      "drawCalls": 36,
+      "triangles": 3548
+    },
+    "Roboter · fist": {
+      "drawCalls": 36,
+      "triangles": 8816
+    },
+    "robot (nur Hand)": {
+      "drawCalls": 36,
+      "triangles": 8816
+    },
+    "Katze · relaxed, Krallen raus": {
+      "drawCalls": 44,
+      "triangles": 5664
+    },
+    "Katze · fist (Checkpoint)": {
+      "drawCalls": 44,
+      "triangles": 5664
+    }
+  },
+  "ingame": {
+    "Spielgröße 480×270 · Roboter + Jo-Jo Sleeper": {
+      "drawCalls": 36,
+      "triangles": 8816
+    },
+    "Katze (Krallen raus) + Spinner": {
+      "drawCalls": 48,
+      "triangles": 6560
+    },
+    "Skelett + Kendama (großer Becher)": {
+      "drawCalls": 38,
+      "triangles": 6516
+    },
+    "Gold + Handy (Feed)": {
+      "drawCalls": 39,
+      "triangles": 3918
+    },
+    "Standard + Feuerzeug, Fahrtwind": {
+      "drawCalls": 45,
+      "triangles": 4102
+    },
+    "Neon + Münze (Flip)": {
+      "drawCalls": 40,
+      "triangles": 3688
+    }
+  }
+}

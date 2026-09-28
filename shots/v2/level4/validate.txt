@@ -1,0 +1,29 @@
+    Bodenmarkierungen: 4, alle liegen auf
+    Kill-Zonen: 35 (kill-start, kill-krone, kill-n-abf1a.0, kill-s-abf1a.0, kill-n-abf1a.1, kill-s-abf1a.1, kill-n-abf2.0, kill-s-abf2.0, kill-n-abf2.1, kill-s-abf2.1, kill-n-abf2.2, kill-s-abf2.2, kill-n-abf3.0, kill-s-abf3.0, kill-n-abf3.1, kill-s-abf3.1, kill-n-abf3.2, kill-s-abf3.2, kill-n-abf4.0, kill-s-abf4.0, kill-n-abf4.1, kill-s-abf4.1, kill-n-abf5a.0, kill-s-abf5a.0, kill-n-abf5b.0, kill-s-abf5b.0, kill-n-abf5b.1, kill-s-abf5b.1, kill-n-abf5c.0, kill-s-abf5c.0, kill-n-abf5d.0, kill-s-abf5d.0, kill-n-abf5e.0, kill-s-abf5e.0, kill-gap)
+    Sprünge: 3, knappste Reserve 11 % bei Route 63→64 (Launch); Überschieß-Band 1.2×: jede Landung hält
+    Bot-Durchlauf sync 1.0: 8/8 Seeds im Ziel, Median 28.1 s (28.1–28.1, max 1027 u/s)
+    Bot-Durchlauf sync 0.8: 8/8 Seeds im Ziel, Median 31.6 s (28.5–33.5, max 988 u/s)
+    Bot-Durchlauf Hand 2°: 8/8 Seeds im Ziel, Median 31.3 s (30.6–33.7, max 955 u/s)
+    Bot-Durchlauf Hand 3°: 8/8 Seeds im Ziel, Median 33.8 s (32.5–36.3, max 881 u/s)
+    Bot-Durchlauf sync 0.7: 8/8 Seeds im Ziel, Median 32.6 s (32.3–34.4, max 1043 u/s)
+    Bot-Durchlauf sync 0.9: 8/8 Seeds im Ziel, Median 30.1 s (28.9–32.5, max 1007 u/s)
+    Bot-Durchlauf Hand 1°: 8/8 Seeds im Ziel, Median 29.3 s (28.6–31.3, max 1022 u/s)
+    Bot-Durchlauf Hand 1.5°: 8/8 Seeds im Ziel, Median 29.7 s (29.2–32.6, max 962 u/s)
+    Abschnitt × Bot (aus dem Stand):   sync 1.0  sync 0.8   Hand 2°   Hand 3°  sync 0.7  sync 0.9   Hand 1° Hand 1.5°
+      Start→CP1     6.6 s     7.0 s     7.4 s     8.0 s     7.3 s     7.0 s     6.9 s     7.1 s
+      CP1→CP2       4.8 s     5.2 s     5.3 s     5.9 s     5.7 s     5.1 s     5.0 s     5.1 s
+      CP2→CP3       4.8 s     7.1 s     6.0 s     7.0 s     6.5 s     6.0 s     4.9 s     5.5 s
+      CP3→CP4       5.0 s     5.1 s     5.4 s     5.7 s     5.5 s     5.0 s     5.1 s     5.2 s
+      CP4→CP5       4.0 s     4.5 s     4.2 s     4.8 s     4.2 s     4.0 s     4.2 s     4.1 s
+      CP5→Ziel      7.8 s     7.7 s     8.4 s     8.6 s     8.7 s     8.0 s     8.1 s     8.2 s
+    Grundtechnik-Surfer aus dem Stand (Blick 0°/2°, Tempo am nächsten Checkpoint): CP4 674 u/s / 588 u/s; CP5 1138 u/s / 496 u/s
+    Surf-Raster abf1a → CP5: 90/90 Läufe, 0 Nahtstopps, Tempo am Ziel 645–1400 u/s
+    Surf-Raster abf2 → CP5: 108/108 Läufe, 0 Nahtstopps, Tempo am Ziel 482–1400 u/s
+    Surf-Raster abf3 → Ziel: 90/90 Läufe, 0 Nahtstopps, Tempo am Ziel 930–1837 u/s
+    Surf-Raster abf4 → Ziel: 108/108 Läufe, 0 Nahtstopps, Tempo am Ziel 460–1560 u/s
+    Surf-Raster abf5a → Ziel: 108/108 Läufe, 0 Nahtstopps, Tempo am Ziel 470–1319 u/s
+    Deko frei von der Flugbahn (4 Bot-Läufe, 17110 Ticks, Oberkörper+Kopf gegen 91 Deko-Brushes)
+    Brushes 616 (Kollision 525, Deko 91), Flächen 3473 (begehbar 627, Surf 18, 60–61°)
+    Bounds (-9950, -3200, -4370) … (4330, 2952, 3550), Größe (14280, 6152, 7920)
+    Trigger: Start 1, Checkpoints 5, Ziel 1; killY -2600, voidY -3000
+    Route 65 Knoten, 18204 u, Bot sync 1.0 28.1 s, Hand 3° 33.8 s (Median), mit Spiel-Uhr 32.6 s, Par 35 s, Medaillen 34.3/31.7/29.7/28.3/26.92 s

@@ -1,0 +1,74 @@
+{
+  "pxPerUnit270": 6.624,
+  "framerateInfluence": {
+    "yoyo-throw": {
+      "30 Hz fest": "0.522 u = 3.46 px, Überlänge 97.0 %",
+      "30 Hz naiv": "4.852 u = 32.14 px, Überlänge 203.0 %",
+      "60 Hz fest": "0.321 u = 2.12 px, Überlänge 98.3 %",
+      "60 Hz naiv": "3.589 u = 23.78 px, Überlänge 123.8 %",
+      "144 Hz fest": "0.781 u = 5.18 px, Überlänge 100.8 %",
+      "144 Hz naiv": "3.193 u = 21.15 px, Überlänge 102.5 %",
+      "240 Hz fest": "0.000 u = 0.00 px, Überlänge 100.8 %",
+      "240 Hz naiv": "3.142 u = 20.81 px, Überlänge 100.8 %"
+    },
+    "yoyo-around": {
+      "30 Hz fest": "0.182 u = 1.21 px, Überlänge 13.7 %",
+      "30 Hz naiv": "5.732 u = 37.97 px, Überlänge 290.0 %",
+      "60 Hz fest": "0.034 u = 0.23 px, Überlänge 14.0 %",
+      "60 Hz naiv": "2.908 u = 19.26 px, Überlänge 113.4 %",
+      "144 Hz fest": "0.007 u = 0.04 px, Überlänge 48.3 %",
+      "144 Hz naiv": "1.862 u = 12.33 px, Überlänge 49.5 %",
+      "240 Hz fest": "0.000 u = 0.00 px, Überlänge 48.2 %",
+      "240 Hz naiv": "1.791 u = 11.87 px, Überlänge 48.2 %"
+    },
+    "kendama-bigcup": {
+      "30 Hz fest": "0.095 u = 0.63 px, Überlänge 6.5 %",
+      "30 Hz naiv": "5.156 u = 34.15 px, Überlänge 226.2 %",
+      "60 Hz fest": "0.005 u = 0.04 px, Überlänge 17.4 %",
+      "60 Hz naiv": "2.394 u = 15.86 px, Überlänge 73.1 %",
+      "144 Hz fest": "0.210 u = 1.39 px, Überlänge 62.4 %",
+      "144 Hz naiv": "2.474 u = 16.39 px, Überlänge 63.6 %",
+      "240 Hz fest": "0.000 u = 0.00 px, Überlänge 62.4 %",
+      "240 Hz naiv": "3.060 u = 20.27 px, Überlänge 62.4 %"
+    }
+  },
+  "hangingYoyo": {
+    "Scheinkraft × 1, Deckel 99 g": {
+      "Bhop-Kette (0.5–2.3 s) Pendel-Ausschlag x": "4.319 u = 28.61 px",
+      "Maus-Flick (2.6–3.4 s)": "2.167 u = 14.36 px",
+      "höchster Punkt des Jo-Jos (y, Finger = 0)": "6.445 u = 42.69 px",
+      "30 Hz Abweichung Jo-Jo-Position": "15.584 u = 103.23 px",
+      "60 Hz Abweichung Jo-Jo-Position": "15.620 u = 103.46 px",
+      "144 Hz Abweichung Jo-Jo-Position": "15.680 u = 103.86 px",
+      "240 Hz Abweichung Jo-Jo-Position": "15.675 u = 103.83 px"
+    },
+    "Scheinkraft × 1, Deckel 0.6 g": {
+      "Bhop-Kette (0.5–2.3 s) Pendel-Ausschlag x": "3.721 u = 24.65 px",
+      "Maus-Flick (2.6–3.4 s)": "2.129 u = 14.10 px",
+      "höchster Punkt des Jo-Jos (y, Finger = 0)": "-9.020 u = -59.75 px",
+      "30 Hz Abweichung Jo-Jo-Position": "0.377 u = 2.50 px",
+      "60 Hz Abweichung Jo-Jo-Position": "0.185 u = 1.22 px",
+      "144 Hz Abweichung Jo-Jo-Position": "0.107 u = 0.71 px",
+      "240 Hz Abweichung Jo-Jo-Position": "0.083 u = 0.55 px"
+    },
+    "Scheinkraft × 2, Deckel 0.6 g": {
+      "Bhop-Kette (0.5–2.3 s) Pendel-Ausschlag x": "5.490 u = 36.36 px",
+      "Maus-Flick (2.6–3.4 s)": "4.168 u = 27.61 px",
+      "höchster Punkt des Jo-Jos (y, Finger = 0)": "-8.745 u = -57.93 px",
+      "30 Hz Abweichung Jo-Jo-Position": "0.714 u = 4.73 px",
+      "60 Hz Abweichung Jo-Jo-Position": "0.352 u = 2.33 px",
+      "144 Hz Abweichung Jo-Jo-Position": "0.337 u = 2.24 px",
+      "240 Hz Abweichung Jo-Jo-Position": "0.205 u = 1.36 px"
+    }
+  },
+  "costMicrosPerFrame": {
+    "30 Hz": 3.92,
+    "60 Hz": 2.09,
+    "144 Hz": 1,
+    "note": "Node 22, ein Kern, inkl. Szenario-Auswertung"
+  },
+  "robustness": {
+    "steps": 20000,
+    "nanValues": 0
+  }
+}

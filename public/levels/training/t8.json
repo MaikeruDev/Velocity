@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "id": "t8",
+  "name": "SURF: SPEED",
+  "subtitle": "Höhe wird Tempo.",
+  "spawn": {
+    "pos": [140,1080,560],
+    "yaw": 0
+  },
+  "killY": -1231,
+  "music": {
+    "bpm": 132
+  },
+  "environment": {
+    "skyTop": "#12061f",
+    "skyHorizon": "#6a2a8a",
+    "skyBottom": "#10061c",
+    "fogColor": "#3a1655",
+    "fogNear": 1800,
+    "fogFar": 10000,
+    "sunDir": [-0.3,0.5,-0.8],
+    "sunColor": "#ffd0f0",
+    "ambientSky": "#6a4ac0",
+    "ambientGround": "#1d0f2e",
+    "trimColor": "#ff3fd0",
+    "trimColorAlt": "#33f0ff",
+    "voidY": -2600
+  },
+  "brushes": [
+    {"type":"hull","points":[[0,1200,0],[-384,534.892,0],[384,534.892,0],[0,776.815,-2400],[-384,111.708,-2400],[384,111.708,-2400]],"mat":"surf","tag":"rampe1"},
+    {"type":"hull","points":[[0,665.743,-2304],[-384,0.635,-2304],[384,0.635,-2304],[0,242.558,-4704],[-384,-422.55,-4704],[384,-422.55,-4704]],"mat":"surf","tag":"rampe2"},
+    {"type":"wedge","min":[-1400,-727,-5704],"max":[1400,763,2200],"rise":"+z","lowY":-631,"mat":"metal","tag":"auffang"},
+    {"type":"box","min":[-1464,-727,-5704],"max":[-1400,1600,2200],"mat":"wall","tag":"bande-w"},
+    {"type":"box","min":[1400,-727,-5704],"max":[1464,1600,2200],"mat":"wall","tag":"bande-o"},
+    {"type":"box","min":[-1464,-727,-5768],"max":[1464,1600,-5704],"mat":"wall","tag":"bande-n"},
+    {"type":"box","min":[108,1016,0],"max":[412,1080,1920],"mat":"start","tag":"start-ost"},
+    {"type":"wedge","min":[444,407,500],"max":[764,1080,1920],"rise":"+z","lowY":471,"mat":"floor","tag":"rueckweg"},
+    {"type":"box","min":[-192,1016,1920],"max":[764,1080,2200],"mat":"floor","tag":"quersteg"},
+    {"type":"box","min":[-1464,-727,2200],"max":[-192,1600,2264],"mat":"wall","tag":"bande-s1"},
+    {"type":"box","min":[192,-727,2200],"max":[1464,1600,2264],"mat":"wall","tag":"bande-s2"},
+    {"type":"box","min":[-192,1016,2200],"max":[192,1080,2620],"mat":"floor","tag":"nische"},
+    {"type":"box","min":[-256,1016,2264],"max":[-192,1600,2684],"mat":"wall","tag":"nische-w"},
+    {"type":"box","min":[192,1016,2264],"max":[256,1600,2684],"mat":"wall","tag":"nische-o"},
+    {"type":"box","min":[-192,1016,2620],"max":[192,1600,2684],"mat":"wall","tag":"nische-s"},
+    {"type":"box","min":[-160,1080,2484],"max":[-128,1304,2516],"mat":"dark","collide":false,"trim":false},
+    {"type":"box","min":[128,1080,2484],"max":[160,1304,2516],"mat":"dark","collide":false,"trim":false},
+    {"type":"box","min":[-160,1304,2484],"max":[160,1336,2516],"mat":"light","tint":"#9dff5c","collide":false,"trim":false},
+    {"type":"hull","points":[[260,1080,328.373],[260,1076,328.373],[214.745,1080,373.627],[214.745,1076,373.627],[214.745,1080,391.627],[214.745,1076,391.627],[260,1080,346.373],[260,1076,346.373]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[260,1080,328.373],[260,1076,328.373],[305.255,1080,373.627],[305.255,1076,373.627],[305.255,1080,391.627],[305.255,1076,391.627],[260,1080,346.373],[260,1076,346.373]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[260,1080,188.373],[260,1076,188.373],[214.745,1080,233.627],[214.745,1076,233.627],[214.745,1080,251.627],[214.745,1076,251.627],[260,1080,206.373],[260,1076,206.373]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[260,1080,188.373],[260,1076,188.373],[305.255,1080,233.627],[305.255,1076,233.627],[305.255,1080,251.627],[305.255,1076,251.627],[260,1080,206.373],[260,1076,206.373]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"chevron","trim":false}
+  ],
+  "triggers": [
+    {"kind":"finish","min":[-128,1080,2436],"max":[128,1280,2564],"tag":"finish"}
+  ],
+  "route": [
+    {"pos":[0,1080,2500],"note":"portal"},
+    {"pos":[140,1080,2060]},
+    {"pos":[140,1080,1800]},
+    {"pos":[140,1080,560],"note":"spawn"},
+    {"pos":[140,1080,40]},
+    {"pos":[119.923,954.29,-400],"surf":true},
+    {"pos":[119.923,848.494,-1000],"surf":true},
+    {"pos":[119.923,742.698,-1600],"surf":true},
+    {"pos":[119.923,645.718,-2150],"surf":true},
+    {"pos":[131.47,400.033,-2704],"surf":true},
+    {"pos":[131.47,294.237,-3304],"surf":true},
+    {"pos":[131.47,188.441,-3904],"surf":true},
+    {"pos":[131.47,91.461,-4454],"surf":true}
+  ],
+  "training": {
+    "lesson": 8,
+    "short": "T8",
+    "group": "advanced",
+    "zones": [{"id":"rampe2","min":[8,177.579,-2804],"max":[384,656.11,-2404]},{"id":"grube","min":[-1400,-639,-5704],"max":[1400,475,0]}],
+    "gates": [{"id":"ausgang","min":[-192,1080,2200],"max":[192,1600,2224],"tint":"#ffb347"}],
+    "stages": [{"id":"v800","title":"TEMPO 800","text":"SURFEN WIE IN T7, DIE RAMPE FÄLLT:\nTIEFER AN DER FLANKE = SCHNELLER","task":{"kind":"surfSpeed","min":800},"spawn":{"pos":[140,1080,560],"yaw":0},"demo":{"kind":"route","from":3,"to":12,"seconds":12},"tips":[{"on":"land","zone":"grube","text":"TASTE IN DIE RAMPE HALTEN\n[F] = ZURÜCK NACH OBEN"}]},{"id":"drop","title":"DER DROP","text":"AM ENDE WEITERSURFEN: DIE NÄCHSTE\nRAMPE BEGINNT TIEFER, EINFACH FALLEN","task":{"kind":"reach","zone":"rampe2"},"demo":{"kind":"route","from":3,"to":12,"seconds":12}},{"id":"v1000","title":"TEMPO 1000","text":"BEIDE RAMPEN IN EINEM ZUG\nSURFE SCHNELLER ALS 1000","task":{"kind":"surfSpeed","min":1000},"opens":["ausgang"],"demo":{"kind":"route","from":3,"to":12,"seconds":12}},{"id":"bonus","title":"BONUS 1100","text":"BONUS: SCHNELLER ALS 1100\nRUHIG ENTLANG, NICHT GEGENLENKEN","task":{"kind":"surfSpeed","min":1100},"rank":"bonus"},{"id":"meister","title":"MEISTER 1200","text":"MEISTER: SCHNELLER ALS 1200\nSAUBERE LINIE ÜBER BEIDE RAMPEN","task":{"kind":"surfSpeed","min":1200},"rank":"master"}],
+    "hud": {"forceKeys":true}
+  }
+}

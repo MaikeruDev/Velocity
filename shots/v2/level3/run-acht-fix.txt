@@ -1,0 +1,105 @@
+  Acht: schnell R 1600 (10629 u, 6°, fällt 1104 u), sicher R 2048 (13444 u, 4.5°, fällt 1045 u); Enden (0.0, -4000) / (0.0, -4000), Grat -2076 / -2017
+  Freiraum unter der Gabel: F-Fuß -1384 über Schleifen-Grat -2017 → 507 u
+  M: Grat -2204; Drop schnell 128 u, sicher 187 u
+  Strand: Oberseite -4055 (1100 unter dem Kicker), Lücke 896 u bei unterem Band 700 u/s, Flugzeit 1.40 s
+  Kill-Kacheln: 59
+Tempo-Band Launch: schnell 388 u/s, sicher 388 u/s (90 % des Langsamsten)  
+  Strand: Oberseite -4055 (1100 unter dem Kicker), Lücke 496 u bei unterem Band 388 u/s, Flugzeit 1.40 s
+
+✗ SCHNELLE Linie (route) (1.8 s): 15 Fehler, 2 Warnungen
+    Bodenmarkierungen: 4, alle liegen auf
+    Kill-Zonen: 55 (kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile)
+    Bot-Durchlauf sync 1.0: 8/8 Seeds im Ziel, Median 23.0 s (23.0–23.0, max 1225 u/s)
+    Bot-Durchlauf sync 0.8: 8/8 Seeds im Ziel, Median 25.8 s (22.8–28.2, max 1233 u/s)
+    Bot-Durchlauf Hand 2°: 8/8 Seeds im Ziel, Median 25.7 s (25.1–28.4, max 1141 u/s)
+    Bot-Durchlauf Hand 3°: 8/8 Seeds im Ziel, Median 29.8 s (26.7–34.9, max 1077 u/s)
+    Bot-Durchlauf sync 0.7: 7/8 Seeds im Ziel, Median 26.2 s (23.8–29.6, max 1162 u/s) — Seed 4: stall bei (-228, -402, -210) vor Knoten 2
+    Bot-Durchlauf sync 0.9: 8/8 Seeds im Ziel, Median 23.6 s (22.7–28.5, max 1222 u/s)
+    Bot-Durchlauf Hand 1°: 8/8 Seeds im Ziel, Median 23.5 s (23.4–25.6, max 1214 u/s)
+    Bot-Durchlauf Hand 1.5°: 8/8 Seeds im Ziel, Median 24.7 s (23.9–26.1, max 1173 u/s)
+    Abschnitt × Bot (aus dem Stand):   sync 1.0  sync 0.8   Hand 2°   Hand 3°  sync 0.7  sync 0.9   Hand 1° Hand 1.5°
+      Start→CP1     6.1 s     6.7 s     6.7 s     6.6 s     6.8 s     6.3 s     6.1 s     6.5 s
+      CP1→CP2      15.9 s    16.3 s    18.5 s    21.0 s    19.0 s    16.6 s    17.5 s    17.9 s
+      CP2→Ziel      5.1 s     5.0 s     5.5 s     5.8 s     5.3 s     5.3 s     5.2 s     5.4 s
+    Grundtechnik-Surfer aus dem Stand (Blick 0°/2°, Tempo am nächsten Checkpoint): CP1 464 u/s / 443 u/s; CP2 903 u/s / 431 u/s
+    Surf-Raster w1 → CP1: 108/108 Läufe, 0 Nahtstopps, Tempo am Ziel 605–1484 u/s
+    Surf-Raster w2 → CP1: 108/108 Läufe, 0 Nahtstopps, Tempo am Ziel 505–1418 u/s
+    Surf-Raster forkFast → CP2: 42/90 Läufe, 9 Nahtstopps, Tempo am Ziel 115–1138 u/s
+    Surf-Raster loopFasta → CP2: 37/108 Läufe, 2 Nahtstopps, Tempo am Ziel 126–1223 u/s
+    Surf-Raster merge → CP2: 108/108 Läufe, 0 Nahtstopps, Tempo am Ziel 466–1400 u/s
+    Surf-Raster finalea → Ziel: 90/90 Läufe, 0 Nahtstopps, Tempo am Ziel 728–1352 u/s
+    Deko frei von der Flugbahn (4 Bot-Läufe, 14325 Ticks, Oberkörper+Kopf gegen 38 Deko-Brushes)
+    Brushes 249 (Kollision 211, Deko 38), Flächen 1697 (begehbar 7, Surf 410, 60–61°)
+    Bounds (-7810, -12800, -12590) … (6950, 2210, 3350), Größe (14760, 15010, 15940)
+    Trigger: Start 1, Checkpoints 2, Ziel 1; killY -12000, voidY -13000
+    Route 68 Knoten, 17808 u, Bot sync 1.0 23.0 s, Hand 3° 29.8 s (Median), mit Spiel-Uhr 27.1 s, Par 60 s
+  ! Keine Medaillen (npm run levels:build misst sie)
+  ! Par 60 s liegt über 1.25 × 3°-Hand (27.1 s) — bedeutungslos
+  ✗ Surf forkFast → CP2: Einstieg 850 u/s, Versatz -90, Blick -2° scheitert (timeout bei (-753, -4029, -9824))
+  ✗ Surf forkFast → CP2: Einstieg 850 u/s, Versatz -90, Blick 0° scheitert (timeout bei (323, -4053, -9824))
+  ✗ Surf forkFast → CP2: Einstieg 850 u/s, Versatz -90, Blick 2° scheitert (kill bei (-467, -3924, -6484))
+  ✗ Surf forkFast → CP2: Einstieg 1000 u/s, Versatz -90, Blick -2° scheitert (timeout bei (-600, -3999, -9824))
+  ✗ Surf forkFast → CP2: … 44 weitere Fehlschläge
+  ✗ Surf forkFast: Nahtstopp bei (-199, -1286, -3536) (298 → 34 u/s; Einstieg 400/-30/-2°)
+  ✗ Surf forkFast: Nahtstopp bei (-167, -1230, -3536) (293 → 34 u/s; Einstieg 400/30/-2°)
+  ✗ Surf forkFast: Nahtstopp bei (-162, -1222, -3536) (388 → 62 u/s; Einstieg 400/30/0°)
+  ✗ Surf loopFasta → CP2: Einstieg 850 u/s, Versatz -150, Blick -2° scheitert (timeout bei (-746, -4028, -9824))
+  ✗ Surf loopFasta → CP2: Einstieg 850 u/s, Versatz -150, Blick 0° scheitert (timeout bei (402, -3998, -9824))
+  ✗ Surf loopFasta → CP2: Einstieg 850 u/s, Versatz -150, Blick 2° scheitert (kill bei (-1093, -4439, -9824))
+  ✗ Surf loopFasta → CP2: Einstieg 1000 u/s, Versatz -150, Blick -2° scheitert (timeout bei (-463, -4017, -9824))
+  ✗ Surf loopFasta → CP2: … 67 weitere Fehlschläge
+  ✗ Surf loopFasta: Nahtstopp bei (-164, -1226, -3536) (464 → 41 u/s; Einstieg 400/-30/-2°)
+  ✗ Surf loopFasta: Nahtstopp bei (-118, -1146, -3536) (329 → 56 u/s; Einstieg 400/-30/0°)
+
+✗ SICHERE Linie (safeRoute) (2.2 s): 16 Fehler, 2 Warnungen
+    Bodenmarkierungen: 4, alle liegen auf
+    Kill-Zonen: 55 (kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile)
+    Bot-Durchlauf sync 1.0: 8/8 Seeds im Ziel, Median 25.4 s (25.4–25.4, max 1246 u/s)
+    Bot-Durchlauf sync 0.8: 8/8 Seeds im Ziel, Median 29.8 s (25.9–32.7, max 1217 u/s)
+    Bot-Durchlauf Hand 2°: 8/8 Seeds im Ziel, Median 31.3 s (30.0–35.3, max 1060 u/s)
+    Bot-Durchlauf Hand 3°: 8/8 Seeds im Ziel, Median 36.3 s (34.0–49.2, max 909 u/s)
+    Bot-Durchlauf sync 0.7: 7/8 Seeds im Ziel, Median 33.6 s (30.2–37.2, max 1051 u/s) — Seed 4: kill bei (254, -1189, -53) vor Knoten 2
+    Bot-Durchlauf sync 0.9: 8/8 Seeds im Ziel, Median 26.5 s (25.4–33.8, max 1241 u/s)
+    Bot-Durchlauf Hand 1°: 8/8 Seeds im Ziel, Median 28.0 s (26.0–30.7, max 1211 u/s)
+    Bot-Durchlauf Hand 1.5°: 8/8 Seeds im Ziel, Median 30.6 s (28.3–34.0, max 1098 u/s)
+    Abschnitt × Bot (aus dem Stand):   sync 1.0  sync 0.8   Hand 2°   Hand 3°  sync 0.7  sync 0.9   Hand 1° Hand 1.5°
+      Start→CP1     6.1 s     6.6 s     7.0 s     6.4 s     7.1 s     6.6 s     6.3 s     6.3 s
+      CP1→CP2      21.3 s    23.1 s    24.3 s    30.4 s    28.5 s    21.3 s    22.9 s    23.6 s
+      CP2→Ziel      5.0 s     5.2 s     5.3 s     5.7 s     5.9 s     5.3 s     5.3 s     5.2 s
+    Grundtechnik-Surfer aus dem Stand (Blick 0°/2°, Tempo am nächsten Checkpoint): CP1 464 u/s / 443 u/s; CP2 903 u/s / 431 u/s
+    Surf-Raster w1 → CP1: 108/108 Läufe, 0 Nahtstopps, Tempo am Ziel 605–1484 u/s
+    Surf-Raster w2 → CP1: 108/108 Läufe, 0 Nahtstopps, Tempo am Ziel 505–1418 u/s
+    Surf-Raster forkSafe → CP2: 35/90 Läufe, 7 Nahtstopps, Tempo am Ziel 113–1232 u/s
+    Surf-Raster loopSafea → CP2: 39/108 Läufe, 4 Nahtstopps, Tempo am Ziel 114–1304 u/s
+    Surf-Raster merge → CP2: 108/108 Läufe, 0 Nahtstopps, Tempo am Ziel 466–1400 u/s
+    Surf-Raster finalea → Ziel: 90/90 Läufe, 0 Nahtstopps, Tempo am Ziel 728–1352 u/s
+    Deko frei von der Flugbahn (4 Bot-Läufe, 18466 Ticks, Oberkörper+Kopf gegen 38 Deko-Brushes)
+    Brushes 249 (Kollision 211, Deko 38), Flächen 1697 (begehbar 7, Surf 410, 60–61°)
+    Bounds (-7810, -12800, -12590) … (6950, 2210, 3350), Größe (14760, 15010, 15940)
+    Trigger: Start 1, Checkpoints 2, Ziel 1; killY -12000, voidY -13000
+    Route 79 Knoten, 20595 u, Bot sync 1.0 25.4 s, Hand 3° 36.3 s (Median), mit Spiel-Uhr 33.9 s, Par 60 s
+  ! Keine Medaillen (npm run levels:build misst sie)
+  ! Par 60 s liegt über 1.25 × 3°-Hand (33.9 s) — bedeutungslos
+  ✗ Surf forkSafe → CP2: Einstieg 700 u/s, Versatz -90, Blick -2° scheitert (timeout bei (727, -4008, -9824))
+  ✗ Surf forkSafe → CP2: Einstieg 700 u/s, Versatz -90, Blick 0° scheitert (timeout bei (-341, -4000, -9824))
+  ✗ Surf forkSafe → CP2: Einstieg 850 u/s, Versatz -90, Blick -2° scheitert (timeout bei (654, -4016, -9824))
+  ✗ Surf forkSafe → CP2: Einstieg 850 u/s, Versatz -90, Blick 0° scheitert (timeout bei (-322, -4014, -9824))
+  ✗ Surf forkSafe → CP2: … 51 weitere Fehlschläge
+  ✗ Surf forkSafe: Nahtstopp bei (153, -1205, -3536) (415 → 54 u/s; Einstieg 400/30/0°)
+  ✗ Surf forkSafe: Nahtstopp bei (212, -1306, -3536) (596 → 46 u/s; Einstieg 550/30/-2°)
+  ✗ Surf forkSafe: Nahtstopp bei (190, -1268, -3536) (517 → 60 u/s; Einstieg 550/30/0°)
+  ✗ Surf loopSafea → CP2: Einstieg 700 u/s, Versatz -150, Blick -2° scheitert (timeout bei (738, -3999, -9824))
+  ✗ Surf loopSafea → CP2: Einstieg 850 u/s, Versatz -150, Blick -2° scheitert (timeout bei (693, -4052, -9824))
+  ✗ Surf loopSafea → CP2: Einstieg 850 u/s, Versatz -150, Blick 0° scheitert (timeout bei (-518, -4026, -9824))
+  ✗ Surf loopSafea → CP2: Einstieg 850 u/s, Versatz -150, Blick 2° scheitert (kill bei (1126, -4434, -9824))
+  ✗ Surf loopSafea → CP2: … 65 weitere Fehlschläge
+  ✗ Surf loopSafea: Nahtstopp bei (61, -1044, -3536) (328 → 47 u/s; Einstieg 400/-90/0°)
+  ✗ Surf loopSafea: Nahtstopp bei (164, -1223, -3536) (486 → 30 u/s; Einstieg 400/-30/-2°)
+  ✗ Surf loopSafea: Nahtstopp bei (116, -1140, -3536) (338 → 49 u/s; Einstieg 400/-30/0°)
+
+Spiel-Uhr (Median Seeds 1–8):
+  {"sync":1}           schnell 20.88 s [20.9 20.9 20.9 20.9 20.9 20.9 20.9 20.9] Tode 0   |   sicher 23.23 s [23.2 23.2 23.2 23.2 23.2 23.2 23.2 23.2] Tode 0
+  {"sync":0.8}         schnell 22.98 s [20.1 24.6 23.0 25.7 24.2 20.6 22.9 23.3] Tode 0   |   sicher 27.68 s [23.3 29.6 26.4 30.3 27.7 25.7 29.8 27.9] Tode 0
+  {"aimNoiseDeg":1}    schnell 21.30 s [21.5 22.0 21.2 21.3 21.2 21.3 23.2 21.2] Tode 0   |   sicher 25.69 s [25.7 28.2 25.7 23.9 25.8 25.5 24.1 26.4] Tode 0
+  {"aimNoiseDeg":2}    schnell 23.23 s [22.7 25.5 25.2 23.2 23.0 24.8 23.0 23.5] Tode 0   |   sicher 28.83 s [27.2 32.6 31.3 28.1 28.3 30.5 30.5 28.8] Tode 0
+  {"aimNoiseDeg":3}    schnell 27.09 s [24.0 31.5 28.5 26.1 24.6 28.5 29.9 27.1] Tode 0   |   sicher 33.85 s [32.6 46.3 35.1 31.4 33.3 38.0 38.8 33.9] Tode 0

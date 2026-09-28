@@ -1,0 +1,84 @@
+
+Kurve 45° über 1536 u, Gefälle 0°, Innenflanke (links), Faltung 0.0 u, Radius 1956
+  Surfer aus dem Stand: -2°: 5.51 s, 653 u/s | 0°: 6.24 s, 445 u/s | 2°: 8.66 s, 106 u/s
+  RouteFollower: {"sync":1}: 25.95 s, 50 u/s, max 689 NAHT | {"sync":0.8}: bot | {"aimNoiseDeg":2}: 6.53 s, 410 u/s, max 639 | {"aimNoiseDeg":3}: 8.34 s, 233 u/s, max 580
+  Raster ab r1: 93/108 ok, 15 Nähte, Ziel 168–1347 u/s — 550/-150/2° fell; 700/-150/2° fell; 850/-150/2° fell
+  Raster ab r2a: 91/108 ok, 19 Nähte, Ziel 200–1322 u/s — 400/-150/2° timeout; 1000/-150/2° fell; 400/-90/2° timeout
+  Raster ab r3: 108/108 ok, 0 Nähte, Ziel 400–1400 u/s
+
+Kurve 45° über 1536 u, Gefälle 0°, Außenflanke (rechts), Faltung 0.0 u, Radius 1956
+  Surfer aus dem Stand: -2°: fell @ -843,-8016,-4908 | 0°: 7.14 s, 491 u/s | 2°: 10.61 s, 87 u/s
+  RouteFollower: {"sync":1}: 6.56 s, 576 u/s, max 664 | {"sync":0.8}: 10.31 s, 207 u/s, max 480 | {"aimNoiseDeg":2}: 7.13 s, 444 u/s, max 628 | {"aimNoiseDeg":3}: 10.84 s, 124 u/s, max 538
+  Raster ab r1: 65/108 ok, 0 Nähte, Ziel 77–1307 u/s — 700/-150/2° fell; 850/-150/-2° fell; 1000/-150/-2° fell
+  Raster ab r2a: 65/108 ok, 7 Nähte, Ziel 147–1363 u/s — 1000/-150/-2° fell; 1000/-150/0° fell; 1400/-150/-2° fell
+  Raster ab r3: 108/108 ok, 0 Nähte, Ziel 400–1400 u/s
+
+Kurve 45° über 1536 u, Gefälle 6°, Innenflanke (links), Faltung 2.6 u, Radius 1956
+  Surfer aus dem Stand: -2°: 5.23 s, 808 u/s | 0°: timeout @ -359,-866,-1601 NAHT | 2°: 6.40 s, 490 u/s
+  RouteFollower: {"sync":1}: 5.75 s, 720 u/s, max 720 | {"sync":0.8}: 7.98 s, 555 u/s, max 555 | {"aimNoiseDeg":2}: 6.21 s, 572 u/s, max 639 | {"aimNoiseDeg":3}: 8.95 s, 361 u/s, max 579 NAHT
+  Raster ab r1: 97/108 ok, 13 Nähte, Ziel 400–1426 u/s — 550/-150/0° fell; 1000/-150/2° fell; 1400/-150/2° timeout
+  Raster ab r2a: 99/108 ok, 13 Nähte, Ziel 275–1382 u/s — 700/-150/2° fell; 550/-90/0° timeout; 1000/-90/0° timeout
+  Raster ab r3: 108/108 ok, 0 Nähte, Ziel 400–1400 u/s
+
+Kurve 45° über 1536 u, Gefälle 6°, Außenflanke (rechts), Faltung 2.6 u, Radius 1956
+  Surfer aus dem Stand: -2°: fell @ -350,-8018,-4944 | 0°: 6.51 s, 690 u/s | 2°: 7.30 s, 503 u/s
+  RouteFollower: {"sync":1}: 6.23 s, 744 u/s, max 744 | {"sync":0.8}: 8.39 s, 570 u/s, max 570 | {"aimNoiseDeg":2}: 6.95 s, 627 u/s, max 628 | {"aimNoiseDeg":3}: 8.10 s, 469 u/s, max 538
+  Raster ab r1: 59/108 ok, 0 Nähte, Ziel 501–1151 u/s — 400/-150/2° fell; 550/-150/2° fell; 700/-150/-2° fell
+  Raster ab r2a: 75/108 ok, 0 Nähte, Ziel 379–1375 u/s — 1000/-150/-2° fell; 1000/-150/0° fell; 1400/-150/-2° fell
+  Raster ab r3: 108/108 ok, 0 Nähte, Ziel 400–1400 u/s
+
+Kurve 45° über 1536 u, Gefälle 10°, Innenflanke (links), Faltung 4.4 u, Radius 1956
+  Surfer aus dem Stand: -2°: 5.05 s, 927 u/s | 0°: 5.42 s, 783 u/s | 2°: 6.03 s, 620 u/s
+  RouteFollower: {"sync":1}: 5.55 s, 812 u/s, max 812 | {"sync":0.8}: 7.72 s, 662 u/s, max 662 | {"aimNoiseDeg":2}: 6.27 s, 624 u/s, max 638 | {"aimNoiseDeg":3}: 7.09 s, 590 u/s, max 590
+  Raster ab r1: 94/108 ok, 12 Nähte, Ziel 321–1490 u/s — 400/-150/0° fell; 550/-150/0° fell; 700/-150/0° fell
+  Raster ab r2a: 99/108 ok, 16 Nähte, Ziel 424–1408 u/s — 400/-90/0° timeout; 400/-90/2° timeout; 850/-30/0° timeout
+  Raster ab r3: 108/108 ok, 0 Nähte, Ziel 400–1400 u/s
+
+Kurve 45° über 1536 u, Gefälle 10°, Außenflanke (rechts), Faltung 4.4 u, Radius 1956
+  Surfer aus dem Stand: -2°: fell @ -347,-8002,-4971 | 0°: 6.25 s, 822 u/s | 2°: 6.80 s, 642 u/s
+  RouteFollower: {"sync":1}: 6.27 s, 793 u/s, max 793 | {"sync":0.8}: 8.03 s, 679 u/s, max 679 | {"aimNoiseDeg":2}: 7.05 s, 646 u/s, max 646 | {"aimNoiseDeg":3}: 7.73 s, 566 u/s, max 586
+  Raster ab r1: 55/108 ok, 0 Nähte, Ziel 629–1044 u/s — 550/-150/2° fell; 1000/-150/-2° fell; 1000/-150/0° fell
+  Raster ab r2a: 70/108 ok, 0 Nähte, Ziel 534–1030 u/s — 1000/-150/-2° fell; 1000/-150/0° fell; 1000/-150/2° fell
+  Raster ab r3: 108/108 ok, 0 Nähte, Ziel 400–1400 u/s
+
+Kurve 90° über 2304 u, Gefälle 6°, Innenflanke (links), Faltung 2.6 u, Radius 1467
+  Surfer aus dem Stand: -2°: 6.05 s, 787 u/s | 0°: 6.98 s, 631 u/s | 2°: 8.38 s, 448 u/s
+  RouteFollower: {"sync":1}: 6.63 s, 807 u/s, max 813 | {"sync":0.8}: 9.59 s, 610 u/s, max 620 | {"aimNoiseDeg":2}: 7.52 s, 615 u/s, max 639 | {"aimNoiseDeg":3}: 8.88 s, 569 u/s, max 579
+  Raster ab r1: 89/108 ok, 9 Nähte, Ziel 341–1375 u/s — 400/-150/-2° fell; 400/-150/0° fell; 550/-150/-2° fell
+  Raster ab r2a: 92/108 ok, 3 Nähte, Ziel 304–1331 u/s — 550/-150/0° fell; 700/-150/-2° fell; 700/-150/0° fell
+  Raster ab r3: 108/108 ok, 0 Nähte, Ziel 400–1400 u/s
+
+Kurve 90° über 2304 u, Gefälle 6°, Außenflanke (rechts), Faltung 2.6 u, Radius 1467
+  Surfer aus dem Stand: -2°: fell @ -505,-8010,-4681 | 0°: 8.47 s, 650 u/s | 2°: 10.45 s, 429 u/s
+  RouteFollower: {"sync":1}: 7.51 s, 841 u/s, max 847 | {"sync":0.8}: 10.03 s, 646 u/s, max 652 | {"aimNoiseDeg":2}: 8.89 s, 576 u/s, max 628 | {"aimNoiseDeg":3}: 9.65 s, 509 u/s, max 538
+  Raster ab r1: 34/108 ok, 0 Nähte, Ziel 435–850 u/s — 550/-150/-2° fell; 550/-150/2° fell; 700/-150/-2° fell
+  Raster ab r2a: 48/108 ok, 0 Nähte, Ziel 341–904 u/s — 850/-150/-2° fell; 850/-150/0° fell; 850/-150/2° fell
+  Raster ab r3: 108/108 ok, 0 Nähte, Ziel 400–1400 u/s
+
+Kurve 45° über 1024 u, Gefälle 6°, Innenflanke (links), Faltung 2.6 u, Radius 1304
+  Surfer aus dem Stand: -2°: 4.66 s, 736 u/s | 0°: 5.10 s, 581 u/s | 2°: 5.57 s, 462 u/s
+  RouteFollower: {"sync":1}: 4.97 s, 655 u/s, max 691 | {"sync":0.8}: bot NAHT | {"aimNoiseDeg":2}: 5.27 s, 522 u/s, max 639 | {"aimNoiseDeg":3}: 6.10 s, 409 u/s, max 579
+  Raster ab r1: 100/108 ok, 7 Nähte, Ziel 180–1410 u/s — 400/-150/0° fell; 550/-150/0° fell; 700/-150/0° fell
+  Raster ab r2a: 105/108 ok, 6 Nähte, Ziel 168–1360 u/s — 700/-30/2° timeout; 400/30/0° timeout; 400/90/0° timeout
+  Raster ab r3: 108/108 ok, 0 Nähte, Ziel 400–1400 u/s
+
+Kurve 45° über 1024 u, Gefälle 6°, Außenflanke (rechts), Faltung 2.6 u, Radius 1304
+  Surfer aus dem Stand: -2°: 5.84 s, 733 u/s | 0°: 5.95 s, 649 u/s | 2°: 6.76 s, 445 u/s
+  RouteFollower: {"sync":1}: 5.52 s, 696 u/s, max 696 | {"sync":0.8}: 7.40 s, 528 u/s, max 528 | {"aimNoiseDeg":2}: 6.04 s, 567 u/s, max 628 | {"aimNoiseDeg":3}: 6.77 s, 496 u/s, max 538
+  Raster ab r1: 59/108 ok, 0 Nähte, Ziel 470–1073 u/s — 550/-150/2° fell; 1000/-150/-2° fell; 1000/-150/0° fell
+  Raster ab r2a: 51/108 ok, 0 Nähte, Ziel 330–899 u/s — 850/-150/-2° fell; 850/-150/0° fell; 850/-150/2° fell
+  Raster ab r3: 108/108 ok, 0 Nähte, Ziel 400–1400 u/s
+
+Kurve -45° über 1536 u, Gefälle 6°, Außenflanke (links), Faltung 2.6 u, Radius 1956
+  Surfer aus dem Stand: -2°: fell @ 350,-8018,-4944 | 0°: 6.51 s, 690 u/s | 2°: 7.30 s, 503 u/s
+  RouteFollower: {"sync":1}: 6.30 s, 716 u/s, max 716 | {"sync":0.8}: 8.51 s, 570 u/s, max 570 | {"aimNoiseDeg":2}: 6.69 s, 632 u/s, max 638 | {"aimNoiseDeg":3}: 7.80 s, 506 u/s, max 579
+  Raster ab r1: 59/108 ok, 0 Nähte, Ziel 501–1151 u/s — 400/-150/2° fell; 550/-150/2° fell; 700/-150/-2° fell
+  Raster ab r2a: 75/108 ok, 0 Nähte, Ziel 379–1375 u/s — 1000/-150/-2° fell; 1000/-150/0° fell; 1400/-150/-2° fell
+  Raster ab r3: 108/108 ok, 0 Nähte, Ziel 400–1400 u/s
+
+Kurve -45° über 1536 u, Gefälle 6°, Innenflanke (rechts), Faltung 2.6 u, Radius 1956
+  Surfer aus dem Stand: -2°: 5.23 s, 808 u/s | 0°: timeout @ 359,-866,-1601 NAHT | 2°: 6.40 s, 490 u/s
+  RouteFollower: {"sync":1}: 5.66 s, 760 u/s, max 760 | {"sync":0.8}: 7.96 s, 549 u/s, max 549 | {"aimNoiseDeg":2}: 6.47 s, 553 u/s, max 628 | {"aimNoiseDeg":3}: 8.55 s, 235 u/s, max 538
+  Raster ab r1: 101/108 ok, 9 Nähte, Ziel 192–1426 u/s — 550/-150/0° fell; 1000/-150/2° fell; 1400/-150/2° timeout
+  Raster ab r2a: 101/108 ok, 12 Nähte, Ziel 305–1382 u/s — 700/-150/2° fell; 850/-150/0° timeout; 1000/-90/0° timeout
+  Raster ab r3: 108/108 ok, 0 Nähte, Ziel 400–1400 u/s

@@ -1,14 +1,15 @@
-import { BoxGeometry, BufferAttribute, BufferGeometry, GLSL3, Group, Mesh, PerspectiveCamera, PlaneGeometry, Points, Scene, ShaderMaterial, Vector3 } from 'three';
+import { BufferAttribute, BufferGeometry, GLSL3, Group, Line, Mesh, PerspectiveCamera, Points, Scene, ShaderMaterial, Vector3 } from 'three';
 import type { IUniform, Material, Object3D, Texture, WebGLRenderer } from 'three';
 import type { EnvironmentDef } from '../../world/level/LevelFormat';
-import { VM_ARM_BASE, VM_JOINT } from '../types';
+import { VM_ARM_BASE, VM_JOINT, VM_RIG, VM_STRING_POINTS } from '../types';
 import type { ViewModelFrame, ViewModelGlove, ViewModelItem } from '../types';
 import { hexToRgb } from '../util';
-import { capsuleGeometry, discGeometry, smoothBoxGeometry, tubeGeometry } from './vmGeometry';
-import type { Ring } from './vmGeometry';
-import { createLitMaterial, createOutlineMaterial, createVmLight } from './vmMaterials';
+import { ITEM_REGISTRY } from './items';
+import { SKIN_REGISTRY } from './skins';
+import { GloveSkin } from './skins/glove';
+import type { ItemView, Part, SkinFrameFx, SkinView, VmBuildCtx, VmRig } from './vmBuild';
+import { ScalarUniform, createVmLight, setHexVec } from './vmMaterials';
 import type { VmLightUniforms } from './vmMaterials';
-import { canLabelTexture, canLidTexture, cardBackTexture, cardFrontTexture, knifeBladeTexture, knifeHandleTexture } from './vmTextures';
 
 /**
  * 3D-View-Hand (Plan 006): prozedural modellierte Low-Poly-Hand im Stil klassischer
@@ -20,6 +21,11 @@ import { canLabelTexture, canLidTexture, cardBackTexture, cardFrontTexture, knif
  * Koordinaten der Hand (Handgelenk-Raum): Ursprung Handgelenk, +y Richtung Finger,
  * −x Daumenseite, −z Handfläche. Einheiten ~1 cm. Der Renderer ist "dumm": Posen,
  * Bewegung und Tricks kommen fertig im ViewModelFrame (ui/hand).
+ *
+ * Plan 007 (Kosmetik v2): Das ViewModel hält nur noch das Rig (VM_RIG), den Dreh-Sockel des
+ * Gegenstands, einen zweiten Körper (sub) mit Schnur und den Zauber-Poof. Hand-Skins kommen aus
+ * skins/ (Material-Varianten der Handschuh-Geometrie oder eigene Geometrie je Rig-Slot),
+ * Gegenstände aus items/ — beide lazy, nie im Frame-Pfad gebaut (prewarm).
  */
 
 /** Vertikales FOV der Viewmodel-Kamera — entspricht viewmodel_fov 68 (4:3 horizontal, Source). */
@@ -28,47 +34,8 @@ export const VM_FOV = 54;
 export const VM_DEPTH = 40;
 const TAN_HALF_FOV = Math.tan((VM_FOV * Math.PI) / 360);
 
-// ------------------------------------------------------------------ Maße der Hand
-
-interface FingerSpec {
-  readonly x: number;
-  readonly y: number;
-  readonly z: number;
-  readonly r: number;
-  readonly len: readonly [number, number, number];
-  /** Ruhe-Spreizung (rad), damit die Finger in 0-Pose leicht fächern. */
-  readonly splay: number;
-}
-
-const FINGERS: readonly FingerSpec[] = [
-  { x: -3.15, y: 8.7, z: 0.2, r: 1.62, len: [3.2, 2.2, 1.9], splay: 0.07 },
-  { x: -0.95, y: 9.1, z: 0.25, r: 1.66, len: [3.5, 2.4, 2.0], splay: 0.0 },
-  { x: 1.25, y: 8.8, z: 0.2, r: 1.6, len: [3.3, 2.2, 1.9], splay: -0.06 },
-  { x: 3.25, y: 8.0, z: 0.1, r: 1.45, len: [2.6, 1.8, 1.7], splay: -0.13 },
-];
-
-/** Daumen: Sattelgelenk, Ruhe-Ausrichtung (ZXY, rad) und Glieder. */
-const THUMB = {
-  x: -3.4,
-  y: 2.4,
-  z: -0.8,
-  baseZ: 0.62,
-  baseX: -0.3,
-  baseY: -0.85,
-  len: [3.3, 2.5, 2.1] as const,
-  r: [1.85, 1.6, 1.48] as const,
-};
-
-const SEG_FINGER = 7;
-const SEG_PALM = 10;
-const SEG_CUFF = 12;
-
-// Farben
-const GLOVE = {
-  classic: { glove: 0xeeeef2, cuff: 0xf7f7f7, band: 0x17161c, outline: 0x0d0c14, bandEmis: 0x000000, rim: 0.3 },
-  neon: { glove: 0x2c2d48, cuff: 0x23243a, band: 0x3a0f36, outline: 0x33f0ff, bandEmis: 0xc43aa8, rim: 0.7 },
-} as const;
-const PROP_OUTLINE = 0x0d0c14;
+const FINGERS = VM_RIG.fingers;
+const THUMB = VM_RIG.thumb;
 
 // ------------------------------------------------------------------ Poof-Partikel
 
@@ -98,10 +65,18 @@ void main() {
 }
 `;
 
-interface Part {
-  readonly lit: Mesh;
-  readonly hull: Mesh;
+const LINE_VERT = /* glsl */ `
+void main() {
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
+`;
+const LINE_FRAG = /* glsl */ `
+uniform vec3 uColor;
+out vec4 fragColor;
+void main() {
+  fragColor = vec4(uColor, 1.0);
+}
+`;
 
 export class ViewModel {
   readonly scene = new Scene();
@@ -111,6 +86,8 @@ export class ViewModel {
   private readonly propPx: IUniform<number> = { value: 1.5 };
   /** Messer ist schmal: dünnere Kontur, sonst ist es nur ein schwarzer Strich. */
   private readonly knifePx: IUniform<number> = { value: 1 };
+  /** Größe der Pixel-Partikel (Poof, Funkeln). */
+  private readonly pointPx: IUniform<number> = { value: 3 };
 
   private readonly anchor = new Group();
   private readonly motion = new Group();
@@ -125,18 +102,24 @@ export class ViewModel {
   private readonly socket = new Group();
   /** Innerste Drehung des Gegenstands um die eigene y-Achse (Twirl, Karten-Spin). */
   private readonly spinner = new Group();
+  /** Gelenk-Gruppen für Skins und Tools (fk.test vergleicht die UI-FK damit). */
+  readonly rig: VmRig;
 
-  // Materialien je Handschuh
-  private readonly mats: Record<ViewModelGlove, { glove: ShaderMaterial; cuff: ShaderMaterial; band: ShaderMaterial; outline: ShaderMaterial }>;
-  private readonly gloveParts: Part[] = [];
-  private readonly cuffParts: Part[] = [];
-  private readonly bandParts: Part[] = [];
+  private readonly ctx: VmBuildCtx;
+  private readonly gloveSkin: GloveSkin;
+  private readonly skins = new Map<ViewModelGlove, SkinView>();
+  private activeSkin: SkinView;
   private glove: ViewModelGlove = 'classic';
+  private readonly skinFx: SkinFrameFx = { kick: 0 };
 
   // Gegenstände (lazy)
-  private can: { group: Group; tab: Group; hole: Mesh } | null = null;
-  private card: { group: Group; vis: IUniform<number> } | null = null;
-  private knife: { group: Group; blade: Group; bite: Group } | null = null;
+  private readonly items = new Map<ViewModelItem, ItemView>();
+  /** Dieselben Views als Array: der Frame-Pfad iteriert ohne Map-Iterator (keine Allokation). */
+  private readonly itemList: ItemView[] = [];
+  /** Zweiter Körper (Plan 007) und Schnur — erst angelegt, wenn ein Gegenstand sie hat. */
+  private subSocket: Group | null = null;
+  private subSpin: Group | null = null;
+  private string: { line: Line; pos: BufferAttribute; color: Vector3 } | null = null;
   private readonly poof: Points;
   private readonly poofMat: ShaderMaterial;
   private readonly geometries: BufferGeometry[] = [];
@@ -151,17 +134,20 @@ export class ViewModel {
 
   constructor() {
     this.scene.matrixWorldAutoUpdate = true;
-    const L = this.light;
-    const mk = (g: ViewModelGlove): { glove: ShaderMaterial; cuff: ShaderMaterial; band: ShaderMaterial; outline: ShaderMaterial } => {
-      const c = GLOVE[g];
-      return {
-        glove: this.track(createLitMaterial(L, { color: c.glove, rim: c.rim, wrap: 0.3, ink: 0.22, inkColor: c.outline })),
-        cuff: this.track(createLitMaterial(L, { color: c.cuff, rim: c.rim * 0.8, wrap: 0.3 })),
-        band: this.track(createLitMaterial(L, { color: c.band, rim: 0.15, wrap: 0.5, emissive: c.bandEmis })),
-        outline: this.track(createOutlineMaterial(L, c.outline, this.outlinePx)),
-      };
+    this.ctx = {
+      light: this.light,
+      handPx: this.outlinePx,
+      propPx: this.propPx,
+      thinPx: this.knifePx,
+      pointPx: this.pointPx,
+      track: (m) => this.track(m),
+      trackGeo: (g) => this.trackGeo(g),
+      trackTex: (t) => {
+        this.textures.push(t);
+        return t;
+      },
+      part: (parent, geo, mat, outline, list, hullGeo) => this.part(parent, geo, mat, outline, list, hullGeo),
     };
-    this.mats = { classic: mk('classic'), neon: mk('neon') };
 
     this.scene.add(this.anchor);
     this.anchor.add(this.motion);
@@ -171,8 +157,37 @@ export class ViewModel {
     this.arm.rotation.set(VM_ARM_BASE.pitch, VM_ARM_BASE.twist, VM_ARM_BASE.roll);
     this.arm.add(this.wrist);
     this.wrist.rotation.order = 'ZXY';
-    this.buildSleeve();
-    this.buildHand();
+    // Rig (VM_RIG): Finger-Ketten und Daumen — Skins hängen ihre Geometrie hier ein.
+    const fingers: [Group, Group, Group][] = [];
+    for (const f of FINGERS) {
+      const root = new Group();
+      root.position.set(f.x, f.y, f.z);
+      root.rotation.order = 'ZXY';
+      this.wrist.add(root);
+      const pip = new Group();
+      pip.position.y = f.len[0];
+      root.add(pip);
+      const dip = new Group();
+      dip.position.y = f.len[1];
+      pip.add(dip);
+      this.fingerRoot.push(root);
+      this.fingerPip.push(pip);
+      this.fingerDip.push(dip);
+      fingers.push([root, pip, dip]);
+    }
+    const t = THUMB;
+    this.thumbRoot.position.set(t.x, t.y, t.z);
+    this.thumbRoot.rotation.order = 'ZXY';
+    this.wrist.add(this.thumbRoot);
+    this.thumbMcp.position.y = t.len[0];
+    this.thumbRoot.add(this.thumbMcp);
+    this.thumbIp.position.y = t.len[1];
+    this.thumbMcp.add(this.thumbIp);
+    this.rig = { arm: this.arm, wrist: this.wrist, fingers, thumb: [this.thumbRoot, this.thumbMcp, this.thumbIp] };
+
+    // Handschuh (classic/neon sofort, Gold lazy) — gleiche Material-/Mesh-Reihenfolge wie Plan 006.
+    this.gloveSkin = new GloveSkin(this.ctx, this.rig);
+    this.activeSkin = this.gloveSkin;
     this.wrist.add(this.socket);
     this.socket.add(this.spinner);
 
@@ -181,7 +196,7 @@ export class ViewModel {
         glslVersion: GLSL3,
         vertexShader: POOF_VERT,
         fragmentShader: POOF_FRAG,
-        uniforms: { uT: { value: 0 }, uSize: { value: 3 }, uA: { value: new Vector3(1, 1, 1) }, uB: { value: new Vector3(0.22, 0.94, 1) } },
+        uniforms: { uT: new ScalarUniform(0), uSize: this.pointPx, uA: { value: new Vector3(1, 1, 1) }, uB: { value: new Vector3(0.22, 0.94, 1) } },
       }),
     );
     const pg = this.trackGeo(new BufferGeometry());
@@ -236,199 +251,58 @@ export class ViewModel {
     return p;
   }
 
-  private buildSleeve(): void {
-    const m = this.mats.classic;
-    // Stulpe: etwas weiter als das Handgelenk, läuft aus dem Bild (Unterarm angeschnitten).
-    const cuff: Ring[] = [
-      { y: 0.6, rx: 3.55, rz: 2.9 },
-      { y: 0.1, rx: 4.05, rz: 3.3 },
-      { y: -2.5, rx: 4.2, rz: 3.45 },
-      { y: -9, rx: 4.3, rz: 3.55 },
-      { y: -40, rx: 4.9, rz: 4.1 },
-    ];
-    this.part(this.arm, tubeGeometry(cuff, SEG_CUFF, { poleStart: 0.75 }), m.cuff, m.outline, this.cuffParts);
-    // Schwarzes Band direkt am Handgelenk (macht den Handschuh lesbar wie in den Referenzen).
-    const band: Ring[] = [
-      { y: 0.35, rx: 4.18, rz: 3.44 },
-      { y: -0.2, rx: 4.3, rz: 3.55 },
-      { y: -2.4, rx: 4.36, rz: 3.62 },
-      { y: -2.8, rx: 4.26, rz: 3.52 },
-    ];
-    this.part(this.arm, tubeGeometry(band, SEG_CUFF, { poleStart: 0.5, poleEnd: -2.9 }), m.band, m.outline, this.bandParts);
-  }
-
-  private buildHand(): void {
-    const m = this.mats.classic;
-    // Handfläche: flacher, weicher Block von der Wurzel bis zu den Knöcheln.
-    const palm: Ring[] = [
-      { y: -0.9, rx: 3.0, rz: 2.2, cz: 0.1 },
-      { y: 0.8, rx: 3.75, rz: 2.35, cz: 0.05 },
-      { y: 3.8, rx: 4.45, rz: 2.4, cx: -0.1, cz: -0.1 },
-      { y: 7.0, rx: 4.6, rz: 2.25, cz: -0.05 },
-      { y: 8.9, rx: 4.4, rz: 1.95, cz: 0.05 },
-    ];
-    this.part(this.wrist, tubeGeometry(palm, SEG_PALM, { poleStart: -1.5, poleEnd: 10.1 }), m.glove, m.outline, this.gloveParts);
-
-    for (const f of FINGERS) {
-      const root = new Group();
-      root.position.set(f.x, f.y, f.z);
-      root.rotation.order = 'ZXY';
-      this.wrist.add(root);
-      const r0 = f.r;
-      const r1 = f.r * 0.95;
-      const r2 = f.r * 0.9;
-      this.part(root, capsuleGeometry(f.len[0], r0, r1, SEG_FINGER, 0.92), m.glove, m.outline, this.gloveParts);
-      const pip = new Group();
-      pip.position.y = f.len[0];
-      root.add(pip);
-      this.part(pip, capsuleGeometry(f.len[1], r1, r2, SEG_FINGER, 0.92), m.glove, m.outline, this.gloveParts);
-      const dip = new Group();
-      dip.position.y = f.len[1];
-      pip.add(dip);
-      this.part(dip, capsuleGeometry(f.len[2], r2, r2 * 0.97, SEG_FINGER, 0.92), m.glove, m.outline, this.gloveParts);
-      this.fingerRoot.push(root);
-      this.fingerPip.push(pip);
-      this.fingerDip.push(dip);
+  private ensureSkin(g: ViewModelGlove): SkinView {
+    const def = SKIN_REGISTRY[g];
+    if (!def || 'material' in def) return this.gloveSkin;
+    let s = this.skins.get(g);
+    if (!s) {
+      s = def.build(this.ctx, this.rig);
+      this.skins.set(g, s);
     }
-
-    const t = THUMB;
-    this.thumbRoot.position.set(t.x, t.y, t.z);
-    this.thumbRoot.rotation.order = 'ZXY';
-    this.wrist.add(this.thumbRoot);
-    this.part(this.thumbRoot, capsuleGeometry(t.len[0], t.r[0], t.r[1], SEG_FINGER, 0.9), m.glove, m.outline, this.gloveParts);
-    this.thumbMcp.position.y = t.len[0];
-    this.thumbRoot.add(this.thumbMcp);
-    this.part(this.thumbMcp, capsuleGeometry(t.len[1], t.r[1], t.r[2], SEG_FINGER, 0.9), m.glove, m.outline, this.gloveParts);
-    this.thumbIp.position.y = t.len[1];
-    this.thumbMcp.add(this.thumbIp);
-    this.part(this.thumbIp, capsuleGeometry(t.len[2], t.r[2], t.r[2] * 0.92, SEG_FINGER, 0.9), m.glove, m.outline, this.gloveParts);
+    return s;
   }
 
-  private ensureCan(): NonNullable<ViewModel['can']> {
-    if (this.can) return this.can;
-    const L = this.light;
-    const label = canLabelTexture();
-    const lidTex = canLidTexture();
-    this.textures.push(label, lidTex);
-    const outline = this.track(createOutlineMaterial(L, PROP_OUTLINE, this.propPx));
-    const body = this.track(createLitMaterial(L, { color: 0xffffff, map: label, rim: 0.25, wrap: 0.45 }));
-    const alu = this.track(createLitMaterial(L, { color: 0xffffff, map: lidTex, rim: 0.2, wrap: 0.4 }));
-    const aluPlain = this.track(createLitMaterial(L, { color: 0xf4f6fa, rim: 0.2, wrap: 0.4 }));
-    const dark = this.track(createLitMaterial(L, { color: 0x0e0f14, rim: 0, wrap: 0.2 }));
-    const group = new Group();
-    const H = 7.8;
-    const rings: Ring[] = [
-      { y: -H, rx: 2.95, rz: 2.95 },
-      { y: -H + 0.5, rx: 3.55, rz: 3.55 },
-      { y: H - 1.6, rx: 3.55, rz: 3.55 },
-      { y: H - 0.45, rx: 3.0, rz: 3.0 },
-      { y: H, rx: 2.92, rz: 2.92 },
-    ];
-    this.part(group, tubeGeometry(rings, 10, { poleStart: -H + 0.1, poleEnd: H - 0.35, uvByY: true }), body, outline, null);
-    // Deckel mit Niete, Lasche und Trinköffnung — ÜBER der Kegelkappe des Körpers (Pol tief
-    // genug), sonst deckt der Kegel die Öffnung zu (fallen.md).
-    const lid = new Mesh(this.trackGeo(discGeometry(2.8, 10, H - 0.06)), alu);
-    lid.frustumCulled = false;
-    group.add(lid);
-    const hole = new Mesh(this.trackGeo(discGeometry(1.0, 8, 0)), dark);
-    hole.scale.set(1.15, 1, 0.85);
-    hole.position.set(0, H - 0.02, 1.55);
-    hole.visible = false;
-    group.add(hole);
-    const tab = new Group();
-    // Drehpunkt an der Niete (Mitte), Lasche zeigt zur Öffnung hin (+z) und nach hinten (−z).
-    tab.position.set(0, H - 0.02, 0.1);
-    const tabMesh = new Mesh(this.trackGeo(new BoxGeometry(1.1, 0.14, 2.3)), aluPlain);
-    tabMesh.position.set(0, 0.07, -0.85);
-    tabMesh.frustumCulled = false;
-    tab.add(tabMesh);
-    group.add(tab);
-    group.visible = false;
-    this.spinner.add(group);
-    this.can = { group, tab, hole };
-    return this.can;
-  }
-
-  private ensureCard(): NonNullable<ViewModel['card']> {
-    if (this.card) return this.card;
-    const L = this.light;
-    const front = cardFrontTexture();
-    const back = cardBackTexture();
-    this.textures.push(front, back);
-    const vis: IUniform<number> = { value: 1 };
-    const outline = this.track(createOutlineMaterial(L, PROP_OUTLINE, this.propPx));
-    const fm = this.track(createLitMaterial(L, { color: 0xffffff, map: front, holo: true, rim: 0.15, wrap: 0.7 }));
-    const bm = this.track(createLitMaterial(L, { color: 0xffffff, map: back, rim: 0.15, wrap: 0.7 }));
-    const em = this.track(createLitMaterial(L, { color: 0xe8e8f0, rim: 0, wrap: 0.7 }));
-    for (const m of [outline, fm, bm, em]) m.uniforms.uVis = vis;
-    const W = 6.4;
-    const H = 8.8;
-    const D = 0.12;
-    const group = new Group();
-    const f = new Mesh(this.trackGeo(new PlaneGeometry(W, H)), fm);
-    f.position.z = D / 2 + 0.001;
-    const b = new Mesh(this.trackGeo(new PlaneGeometry(W, H)), bm);
-    b.rotation.y = Math.PI;
-    b.position.z = -D / 2 - 0.001;
-    const edge = new Mesh(this.trackGeo(new BoxGeometry(W, H, D)), em);
-    const hull = new Mesh(this.trackGeo(smoothBoxGeometry(W, H, D)), outline);
-    for (const o of [f, b, edge, hull]) {
-      o.frustumCulled = false;
-      group.add(o);
+  private ensureItem(item: ViewModelItem): ItemView | null {
+    const have = this.items.get(item);
+    if (have) return have;
+    const build = ITEM_REGISTRY[item];
+    if (!build) return null;
+    const v = build(this.ctx);
+    this.spinner.add(v.group);
+    if (v.sub) {
+      const s = this.ensureSub();
+      v.sub.visible = false;
+      s.add(v.sub);
     }
-    group.visible = false;
-    this.spinner.add(group);
-    this.card = { group, vis };
-    return this.card;
+    if (v.stringColor !== undefined) this.ensureString();
+    this.items.set(item, v);
+    this.itemList.push(v);
+    return v;
   }
 
-  private ensureKnife(): NonNullable<ViewModel['knife']> {
-    if (this.knife) return this.knife;
-    const L = this.light;
-    const ht = knifeHandleTexture();
-    const bt = knifeBladeTexture();
-    this.textures.push(ht, bt);
-    const outline = this.track(createOutlineMaterial(L, PROP_OUTLINE, this.knifePx));
-    const hm = this.track(createLitMaterial(L, { color: 0xffffff, map: ht, rim: 0.3, wrap: 0.5 }));
-    const bm = this.track(createLitMaterial(L, { color: 0xffffff, map: bt, rim: 0.2, wrap: 0.35 }));
-    const pinM = this.track(createLitMaterial(L, { color: 0xd8dce4, rim: 0, wrap: 0.4 }));
-    const HL = 10.5;
-    const HW = 1.25;
-    const HD = 0.95;
-    const PIN = 0.9;
-    const handle = (parent: Group): void => {
-      const g = new Group();
-      g.position.set(0, -HL / 2 + 0.3, 0);
-      parent.add(g);
-      this.part(g, new BoxGeometry(HW, HL, HD), hm, outline, null, smoothBoxGeometry(HW, HL, HD));
-      const pin = new Mesh(this.trackGeo(new BoxGeometry(0.4, 0.4, HD + 0.12)), pinM);
-      pin.position.set(0, HL / 2 - 0.3, 0);
-      g.add(pin);
-    };
-    const group = new Group();
-    // Gehaltener Griff (safe) am Ursprung, Klinge dreht um seinen Stift.
-    handle(group);
-    const blade = new Group();
-    blade.rotation.order = 'XYZ';
-    group.add(blade);
-    const bladeGeo = new BoxGeometry(1.5, 8.6, 0.18);
-    bladeGeo.translate(PIN, 4.3 + 0.2, 0);
-    const bladeHull = smoothBoxGeometry(1.5, 8.6, 0.18);
-    bladeHull.translate(PIN, 4.3 + 0.2, 0);
-    this.part(blade, bladeGeo, bm, outline, null, bladeHull);
-    // Spitze: schräg abgeschnitten (kleiner gedrehter Block).
-    const tipGeo = new BoxGeometry(0.95, 0.95, 0.16);
-    tipGeo.rotateZ(Math.PI / 4);
-    tipGeo.translate(PIN + 0.12, 8.95, 0);
-    this.part(blade, tipGeo, bm, outline, null);
-    const bite = new Group();
-    bite.position.set(PIN * 2, 0, 0);
-    blade.add(bite);
-    handle(bite);
-    group.visible = false;
-    this.spinner.add(group);
-    this.knife = { group, blade, bite };
-    return this.knife;
+  private ensureSub(): Group {
+    if (this.subSpin) return this.subSpin;
+    const socket = new Group();
+    const spin = new Group();
+    socket.add(spin);
+    this.wrist.add(socket);
+    this.subSocket = socket;
+    this.subSpin = spin;
+    return spin;
+  }
+
+  private ensureString(): void {
+    if (this.string) return;
+    const pos = new BufferAttribute(new Float32Array(VM_STRING_POINTS * 3), 3);
+    const g = this.trackGeo(new BufferGeometry());
+    g.setAttribute('position', pos);
+    const color = new Vector3(1, 1, 1);
+    const mat = this.track(new ShaderMaterial({ glslVersion: GLSL3, vertexShader: LINE_VERT, fragmentShader: LINE_FRAG, uniforms: { uColor: { value: color } } }));
+    const line = new Line(g, mat);
+    line.frustumCulled = false;
+    line.visible = false;
+    this.wrist.add(line);
+    this.string = { line, pos, color };
   }
 
   // ---------------------------------------------------------------- API
@@ -455,7 +329,7 @@ export class ViewModel {
     this.outlinePx.value = Math.max(1.5, Math.min(4, Math.round((h / 100) * 2) / 2));
     this.propPx.value = Math.max(1, Math.min(3.5, Math.round((h / 115) * 2) / 2));
     this.knifePx.value = Math.max(1, Math.round(h / 200));
-    (this.poofMat.uniforms.uSize as IUniform<number>).value = Math.max(2, Math.round(h / 90));
+    this.pointPx.value = Math.max(2, Math.round(h / 90));
     const aspect = w / Math.max(1, h);
     if (Math.abs(this.camera.aspect - aspect) > 1e-6) {
       this.camera.aspect = aspect;
@@ -467,29 +341,26 @@ export class ViewModel {
     this.light.uTime.value = t;
   }
 
+  /** Kick-Hüllkurve der Musik (Roboter-LED); 0 = keine Musik. */
+  setKick(k: number): void {
+    this.skinFx.kick = Number.isFinite(k) ? k : 0;
+  }
+
   setGlove(g: ViewModelGlove): void {
     this.glove = g;
-    const m = this.mats[g];
-    for (const p of this.gloveParts) {
-      p.lit.material = m.glove;
-      p.hull.material = m.outline;
-    }
-    for (const p of this.cuffParts) {
-      p.lit.material = m.cuff;
-      p.hull.material = m.outline;
-    }
-    for (const p of this.bandParts) {
-      p.lit.material = m.band;
-      p.hull.material = m.outline;
-    }
+    const def = SKIN_REGISTRY[g];
+    const next = this.ensureSkin(g);
+    if (next !== this.activeSkin) this.activeSkin.setVisible(false);
+    // Skins ohne Umsetzung zeichnen als 'classic' (Vertrag render/types).
+    if (next === this.gloveSkin) this.gloveSkin.setMaterial(def && 'material' in def ? def.material : 'classic');
+    next.setVisible(true);
+    this.activeSkin = next;
   }
 
   /** Geometrie/Texturen anlegen und Shader kompilieren (außerhalb des Frame-Pfads). */
   prewarm(renderer: WebGLRenderer, item: ViewModelItem, glove: ViewModelGlove): void {
     this.setGlove(glove);
-    if (item === 'can') this.ensureCan();
-    else if (item === 'card') this.ensureCard();
-    else if (item === 'knife') this.ensureKnife();
+    this.ensureItem(item);
     const vis: Object3D[] = [];
     this.scene.traverse((o) => {
       if (!o.visible) {
@@ -502,9 +373,22 @@ export class ViewModel {
     for (const t of this.textures) renderer.initTexture(t);
   }
 
-  /** Frame übernehmen (keine Allokation). */
+  /**
+   * Frame übernehmen (keine Allokation). Bewusst in kleine Methoden geteilt: in EINER großen
+   * Methode inlinet V8 die three-Setter (Vector3/Euler.set) nicht mehr und boxt jedes Double-
+   * Argument als HeapNumber — gemessen 16 KiB/s Dauer-Müll (inbox/cosmetics.md).
+   */
   apply(f: ViewModelFrame): void {
     if (f.glove !== this.glove) this.setGlove(f.glove);
+    this.applyRig(f);
+    this.activeSkin.apply(f, this.skinFx);
+    const view = this.applyItem(f);
+    this.applySub(view, f);
+    this.applyPoof(f, view);
+  }
+
+  /** Hand: Anker, Bewegung, Handgelenk, Finger, Daumen (wie Plan 006). */
+  private applyRig(f: ViewModelFrame): void {
     const hh = this.depth * TAN_HALF_FOV;
     this.anchor.position.set(f.x * 2 * hh, -f.y * 2 * hh, -this.depth + f.z);
     const sq = f.squash > 0.2 ? f.squash : 1;
@@ -522,39 +406,59 @@ export class ViewModel {
     this.thumbRoot.rotation.set(THUMB.baseX - j[VM_JOINT.thumbOpp], THUMB.baseY, THUMB.baseZ + j[VM_JOINT.thumbAbd]);
     this.thumbMcp.rotation.x = -j[VM_JOINT.thumbMcp];
     this.thumbIp.rotation.x = -j[VM_JOINT.thumbIp];
+  }
 
-    // Gegenstand
-    const item = f.item;
+  /** Gegenstand: Dreh-Sockel, sichtbare View (lazy gebaut) und ihre Kanäle. */
+  private applyItem(f: ViewModelFrame): ItemView | null {
     const show = f.propVisible > 0.001;
     this.socket.position.set(f.propPos[0], f.propPos[1], f.propPos[2]);
     this.socket.rotation.set(f.propRot[0], f.propRot[1], f.propRot[2]);
     const s = f.propScale > 0.001 ? f.propScale : 0.001;
     this.socket.scale.set(s, s, s);
     this.spinner.rotation.y = f.propSpin;
-    if (this.can) this.can.group.visible = false;
-    if (this.card) this.card.group.visible = false;
-    if (this.knife) this.knife.group.visible = false;
-    if (item === 'can' && show) {
-      const c = this.ensureCan();
-      c.group.visible = true;
-      // Lasche: Hebel um die Niete — das hintere Ende steigt (bis ~75°).
-      c.tab.rotation.x = f.canTab * 1.3;
-      c.hole.visible = f.canOpen;
-    } else if (item === 'card' && show) {
-      const c = this.ensureCard();
-      c.group.visible = true;
-      c.vis.value = f.propVisible;
-    } else if (item === 'knife' && show) {
-      const k = this.ensureKnife();
-      k.group.visible = true;
-      k.blade.rotation.z = f.knifeBlade;
-      k.bite.rotation.z = f.knifeBite;
+    const list = this.itemList;
+    for (let i = 0; i < list.length; i++) {
+      const v = list[i];
+      v.group.visible = false;
+      if (v.sub) v.sub.visible = false;
     }
-    if (f.poof >= 0 && f.poof < 1) {
+    // Erst beim ersten Zeigen bauen (wie vor Plan 007) — prewarm macht es vorher.
+    const view = show ? this.ensureItem(f.item) : (this.items.get(f.item) ?? null);
+    if (view && show) {
+      view.group.visible = true;
+      view.apply(f);
+    }
+    return view;
+  }
+
+  /** Zauber-Poof (Karte). Gegenstände mit eigenen Partikeln (ownPoof) zeichnen f.poof selbst. */
+  private applyPoof(f: ViewModelFrame, view: ItemView | null): void {
+    if (f.poof >= 0 && f.poof < 1 && !(view && view.ownPoof)) {
       this.poof.visible = true;
       this.poof.position.set(f.poofPos[0], f.poofPos[1], f.poofPos[2]);
       (this.poofMat.uniforms.uT as IUniform<number>).value = f.poof;
     } else this.poof.visible = false;
+  }
+
+  /** Zweiter Körper und Schnur (nur Gegenstände, die sie haben). */
+  private applySub(view: ItemView | null, f: ViewModelFrame): void {
+    const sub = view?.sub;
+    if (sub && this.subSocket && this.subSpin && f.subVisible > 0.001) {
+      sub.visible = true;
+      this.subSocket.position.set(f.subPos[0], f.subPos[1], f.subPos[2]);
+      this.subSocket.rotation.set(f.subRot[0], f.subRot[1], f.subRot[2]);
+      this.subSpin.rotation.y = f.subSpin;
+    }
+    const st = this.string;
+    if (!st) return;
+    const n = view?.stringColor !== undefined ? Math.min(VM_STRING_POINTS, Math.max(0, Math.floor(f.stringCount))) : 0;
+    st.line.visible = n >= 2;
+    if (n < 2 || view?.stringColor === undefined) return;
+    const a = st.pos.array as Float32Array;
+    for (let i = 0; i < n * 3; i++) a[i] = f.stringPts[i];
+    st.pos.needsUpdate = true;
+    st.line.geometry.setDrawRange(0, n);
+    setHexVec(st.color, view.stringColor);
   }
 
   /** Nach der Welt ins aktuelle Render-Target: Tiefe leeren, Farbe behalten. */
@@ -566,8 +470,26 @@ export class ViewModel {
     r.autoClear = auto;
   }
 
+  /** Tools (Bild-Hülle der Tricks): Dreh-Sockel des Gegenstands und Sockel des zweiten Körpers. */
+  get itemSocket(): Group {
+    return this.socket;
+  }
+
+  get subSocketGroup(): Group | null {
+    return this.subSocket;
+  }
+
   get lowResLines(): number {
     return this.lines;
+  }
+
+  /** Aktuelle Auflösung (setResolution) — das Selfie rendert kurz in 96×54 und stellt sie zurück. */
+  get resolutionWidth(): number {
+    return this.light.uRes.value.x;
+  }
+
+  get resolutionHeight(): number {
+    return this.light.uRes.value.y;
   }
 
   dispose(): void {
@@ -587,4 +509,3 @@ function tintTowards(v: Vector3, grey: number, hex: string, k: number): void {
   const s = grey / lum;
   v.set(grey * (1 - k) + Math.min(1.2, r * s) * k, grey * (1 - k) + Math.min(1.2, g * s) * k, grey * (1 - k) + Math.min(1.2, b * s) * k);
 }
-

@@ -1,0 +1,74 @@
+[
+  {
+    "id": "t1",
+    "name": "ERSTE SCHRITTE",
+    "subtitle": "Laufen, springen, rutschen.",
+    "file": "t1.json",
+    "lesson": 1,
+    "short": "T1",
+    "group": "basics"
+  },
+  {
+    "id": "t2",
+    "name": "AUTO-HOP",
+    "subtitle": "Leertaste halten statt hämmern.",
+    "file": "t2.json",
+    "lesson": 2,
+    "short": "T2",
+    "group": "basics"
+  },
+  {
+    "id": "t3",
+    "name": "AIR-STRAFE",
+    "subtitle": "Kurven in der Luft = Tempo.",
+    "file": "t3.json",
+    "lesson": 3,
+    "short": "T3",
+    "group": "basics"
+  },
+  {
+    "id": "t4",
+    "name": "SPEED",
+    "subtitle": "Tempo aufbauen und halten.",
+    "file": "t4.json",
+    "lesson": 4,
+    "short": "T4",
+    "group": "basics"
+  },
+  {
+    "id": "t5",
+    "name": "KURVEN",
+    "subtitle": "Im Flug um die Kurve.",
+    "file": "t5.json",
+    "lesson": 5,
+    "short": "T5",
+    "group": "advanced"
+  },
+  {
+    "id": "t6",
+    "name": "CROUCH-JUMP",
+    "subtitle": "Erst springen, dann ducken.",
+    "file": "t6.json",
+    "lesson": 6,
+    "short": "T6",
+    "group": "advanced"
+  },
+  {
+    "id": "t7",
+    "name": "SURF: HALTEN",
+    "subtitle": "An der Rampe bleiben.",
+    "file": "t7.json",
+    "lesson": 7,
+    "short": "T7",
+    "group": "advanced"
+  },
+  {
+    "id": "t8",
+    "name": "SURF: SPEED",
+    "subtitle": "Höhe wird Tempo.",
+    "file": "t8.json",
+    "lesson": 8,
+    "short": "T8",
+    "group": "advanced"
+  }
+]

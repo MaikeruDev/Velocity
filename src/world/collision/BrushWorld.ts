@@ -119,9 +119,10 @@ function cellKey(x: number, z: number): number {
 
 /**
  * Quake 3 `CM_TraceThroughBrush` für eine Box. Aktualisiert `tr` nur, wenn
- * dieser Brush früher trifft als alles bisher Gefundene.
+ * dieser Brush früher trifft als alles bisher Gefundene. Exportiert für die GatedWorld
+ * (Plan 007): geschlossene Tore werden damit zusätzlich zur BrushWorld getraced.
  */
-function clipBoxToBrush(
+export function clipBoxToBrush(
   brush: CompiledBrush,
   start: Vector3,
   end: Vector3,

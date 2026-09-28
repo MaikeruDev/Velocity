@@ -23,9 +23,11 @@ import { PostPass } from './post';
 import { SkyLayers } from './sky';
 import { TextureLibrary } from './textures';
 import { buildTriggerGeometry, createTriggerMaterial } from './triggerVisuals';
+import { applyGateOpen, buildGateGeometry, createGateMaterial } from './gateVisuals';
 import { buildTrims } from './trims';
 import { DEFAULT_RENDER_SETTINGS } from './types';
-import type { RenderFx, RendererApi, RenderSettings, ViewModelGlove, ViewModelItem } from './types';
+import type { RenderFx, RendererApi, RenderSettings, ViewModelFrame, ViewModelGlove, ViewModelItem } from './types';
+import { renderSelfie } from './selfie';
 import { ViewModel } from './viewmodel/ViewModel';
 import { clamp01, setVecFromHex } from './util';
 import { VoidGrid } from './voidGrid';
@@ -33,14 +35,24 @@ import { VoidGrid } from './voidGrid';
 export interface RenderStats {
   /** Draw-Calls des Szenen-Passes (ohne den einen Post-Pass). */
   readonly sceneCalls: number;
-  /** Draw-Calls des Viewmodel-Passes im letzten Frame (0 = keine Hand). */
+  /** Draw-Calls des Viewmodel-Passes im letzten Frame (0 = keine Hand). Budget Plan 007: ≤ 50. */
   readonly viewModelCalls: number;
+  /** Dreiecke des Viewmodel-Passes im letzten Frame. Budget Plan 007: ≤ 12 000. */
+  readonly viewModelTriangles: number;
   readonly sceneTriangles: number;
   readonly levelTriangles: number;
   /** GPU-Ressourcen laut three.js (Leck-Kontrolle bei Level-Wechseln). */
   readonly geometries: number;
   readonly textures: number;
   readonly programs: number;
+}
+
+/** Zuletzt erzeugter Renderer — nur für das Debug-Handle (__vel.snapshot/renderStats). */
+let active: PS2Renderer | null = null;
+
+/** Debug/Tools: der laufende Renderer (null = keiner). Nicht im Spielcode benutzen. */
+export function debugRenderer(): PS2Renderer | null {
+  return active;
 }
 
 /** Tempostufe: Sekunden pro Stufe beim Hoch- bzw. Runterblenden der Trim-Farbe. */
@@ -67,6 +79,10 @@ export class PS2Renderer implements RendererApi {
   private readonly worldMaterials = new Map<MaterialId, ShaderMaterial>();
   private readonly trimMaterial: ShaderMaterial;
   private readonly triggerMaterial: ShaderMaterial;
+  /** Tore einer Lektion (Plan 007): ein Mesh für alle, Auflösen über RenderFx.gateOpen. */
+  private readonly gateMaterial: ShaderMaterial;
+  private gateMesh: Mesh | null = null;
+  private gateCount = 0;
   private readonly scene = new Scene();
   private readonly levelGroup = new Group();
   private readonly sky: SkyLayers;
@@ -78,6 +94,10 @@ export class PS2Renderer implements RendererApi {
   /** View-Hand (Plan 006): eigene Szene/Kamera, nach der Welt ins selbe Target. */
   private readonly viewModel = new ViewModel();
   private lastVmCalls = 0;
+  private lastVmTriangles = 0;
+  /** HUD-Canvas (für das Foto ohne HUD) und Kamera des letzten Bildes (Selfie). */
+  private hudCanvas: HTMLCanvasElement | null = null;
+  private lastCamera: PerspectiveCamera | null = null;
   /** Niedrige Latenz aktiv (desynchronized-Kontext, beim Erzeugen festgelegt). */
   readonly lowLatency: boolean;
   private settings: RenderSettings = DEFAULT_RENDER_SETTINGS;
@@ -148,6 +168,7 @@ export class PS2Renderer implements RendererApi {
     this.voidGrid = new VoidGrid(this.scene, this.shared);
     this.trimMaterial = createTrimMaterial(this.shared);
     this.triggerMaterial = createTriggerMaterial(this.shared);
+    this.gateMaterial = createGateMaterial(this.shared);
     this.post = new PostPass(this.target.texture);
     this.ghostMaterial = createGhostMaterial(this.shared);
     this.ghost = new Mesh(createGhostGeometry(), this.ghostMaterial);
@@ -167,6 +188,7 @@ export class PS2Renderer implements RendererApi {
     this.layout = computeLowRes(w, h, this.settings.pixelHeight, 1);
     this.resize(w, h);
     this.setSettings(initial);
+    active = this;
   }
 
   get lowResWidth(): number {
@@ -192,6 +214,7 @@ export class PS2Renderer implements RendererApi {
     return {
       sceneCalls: this.lastCalls,
       viewModelCalls: this.lastVmCalls,
+      viewModelTriangles: this.lastVmTriangles,
       sceneTriangles: this.lastTriangles,
       levelTriangles: this.levelTriangles,
       geometries: info.memory.geometries,
@@ -253,6 +276,19 @@ export class PS2Renderer implements RendererApi {
       mesh.renderOrder = 5;
       this.levelGroup.add(mesh);
     }
+
+    // Tore (Plan 007): nur in Lektionen — ohne Tore kein Mesh, das Bild bleibt pixelgleich.
+    const gates = buildGateGeometry(level, env.trimColor);
+    if (gates) {
+      const mesh = new Mesh(gates, this.gateMaterial);
+      mesh.matrixAutoUpdate = false;
+      mesh.name = 'gates';
+      // Nach den Trigger-Säulen: beide additiv, das Tor ist das Nähere.
+      mesh.renderOrder = 6;
+      this.levelGroup.add(mesh);
+      this.gateMesh = mesh;
+      this.gateCount = level.gates.length;
+    }
   }
 
   setSettings(s: RenderSettings): void {
@@ -271,6 +307,7 @@ export class PS2Renderer implements RendererApi {
   }
 
   setHud(canvas: HTMLCanvasElement | null): void {
+    this.hudCanvas = canvas;
     this.post.setHud(canvas);
   }
 
@@ -292,6 +329,7 @@ export class PS2Renderer implements RendererApi {
       camera.updateProjectionMatrix();
     }
     camera.updateMatrixWorld();
+    this.lastCamera = camera;
 
     const s = this.shared;
     s.uTime.value = fx.time;
@@ -302,6 +340,8 @@ export class PS2Renderer implements RendererApi {
     this.sky.update(camera);
     this.voidGrid.update(camera.far);
     this.post.update(fx);
+    // Aufgelöste Tore gar nicht mehr zeichnen (kein leerer Draw-Call hinter jedem offenen Tor).
+    if (this.gateMesh) this.gateMesh.visible = applyGateOpen(this.gateMaterial, fx.gateOpen, this.gateCount);
 
     const r = this.renderer;
     r.setRenderTarget(this.target);
@@ -311,10 +351,15 @@ export class PS2Renderer implements RendererApi {
     const vm = fx.viewModel;
     if (vm && vm.visible) {
       this.viewModel.setTime(fx.time);
+      this.viewModel.setKick(fx.kick);
       this.viewModel.apply(vm);
       this.viewModel.render(r);
       this.lastVmCalls = r.info.render.calls;
-    } else this.lastVmCalls = 0;
+      this.lastVmTriangles = r.info.render.triangles;
+    } else {
+      this.lastVmCalls = 0;
+      this.lastVmTriangles = 0;
+    }
     r.setRenderTarget(null);
     r.render(this.post.scene, this.post.camera);
   }
@@ -324,15 +369,59 @@ export class PS2Renderer implements RendererApi {
     this.viewModel.prewarm(this.renderer, item, glove);
   }
 
+  /**
+   * Ziel-Foto (Plan 007 K7): Kopie des zuletzt gerenderten Low-Res-Bilds (Welt + Hand, gedithert),
+   * OHNE HUD — auf w×h, Seitenverhältnis per Beschnitt (Mitte), Nearest. Außerhalb des Frame-Pfads:
+   * der Post-Pass läuft einmal ohne HUD in den Canvas, wird sofort kopiert (gleicher Task, der
+   * Zeichenpuffer ist noch gültig) und danach mit HUD wiederholt, damit der Frame unverändert bleibt.
+   */
+  snapshot(w: number, h: number): HTMLCanvasElement | null {
+    if (this.disposed || this.lastCamera === null || typeof document === 'undefined') return null;
+    const W = Math.max(1, Math.round(Number.isFinite(w) ? w : this.layout.lowW));
+    const H = Math.max(1, Math.round(Number.isFinite(h) ? h : this.layout.lowH));
+    const out = document.createElement('canvas');
+    out.width = W;
+    out.height = H;
+    const ctx = out.getContext('2d');
+    if (!ctx) return null;
+    const r = this.renderer;
+    const hud = this.hudCanvas;
+    if (hud) this.post.setHud(null);
+    r.setRenderTarget(null);
+    r.render(this.post.scene, this.post.camera);
+    const lw = this.layout.lowW;
+    const lh = this.layout.lowH;
+    const want = W / H;
+    let sw = lw;
+    let sh = lh;
+    if (lw / lh > want) sw = Math.round(lh * want);
+    else sh = Math.round(lw / want);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.canvas, Math.floor((lw - sw) / 2), Math.floor((lh - sh) / 2), sw, sh, 0, 0, W, H);
+    if (hud) {
+      this.post.setHud(hud);
+      r.render(this.post.scene, this.post.camera);
+    }
+    return out;
+  }
+
+  /** Selfie (Plan 007): delegiert an render/selfie.ts (Phase 1: Schnittstelle, liefert null). */
+  selfie(w: number, h: number, vm: ViewModelFrame): HTMLCanvasElement | null {
+    if (this.disposed) return null;
+    return renderSelfie({ renderer: this.renderer, scene: this.scene, camera: this.lastCamera, viewModel: this.viewModel }, w, h, vm);
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    if (active === this) active = null;
     this.clearLevel();
     this.viewModel.dispose();
     for (const m of this.worldMaterials.values()) m.dispose();
     this.worldMaterials.clear();
     this.trimMaterial.dispose();
     this.triggerMaterial.dispose();
+    this.gateMaterial.dispose();
     this.ghost.geometry.dispose();
     this.ghostMaterial.dispose();
     this.sky.dispose();
@@ -404,6 +493,8 @@ export class PS2Renderer implements RendererApi {
     this.levelGroup.clear();
     for (const g of geometries) g.dispose();
     this.levelTriangles = 0;
+    this.gateMesh = null;
+    this.gateCount = 0;
   }
 
   private applyLayout(): void {

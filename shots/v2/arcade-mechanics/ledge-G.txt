@@ -1,0 +1,12 @@
+
+## G Volle Läufe (RouteFollower, Spiel-Uhr, Seeds 1–8): Median-Zeit, Ziel, Tode, Luft-Anpraller (Tempo −40 % in einem Luft-Tick), Lip-Steps/Restores
+
+- level1 {"sync":1}: Original: 22.242 s, 8/8, Tode 0, Anpraller 0 | Gedächtnis + Lip 5: 22.242 s, 8/8, Tode 0, Anpraller 0, Lip 0, Restore 0
+- level1 {"aimNoiseDeg":2}: Original: 28.938 s, 7/8, Tode 42, Anpraller 7 | Gedächtnis + Lip 5: 28.938 s, 7/8, Tode 42, Anpraller 6, Lip 0, Restore 3
+- level1 {"aimNoiseDeg":3}: Original: 34.453 s, 8/8, Tode 0, Anpraller 5 | Gedächtnis + Lip 5: 33.750 s, 8/8, Tode 0, Anpraller 5, Lip 0, Restore 3
+- level2 {"sync":1}: Original: 15.852 s, 8/8, Tode 0, Anpraller 0 | Gedächtnis + Lip 5: 15.852 s, 8/8, Tode 0, Anpraller 0, Lip 0, Restore 0
+- level2 {"aimNoiseDeg":2}: Original: 17.797 s, 8/8, Tode 0, Anpraller 0 | Gedächtnis + Lip 5: 17.797 s, 8/8, Tode 0, Anpraller 0, Lip 0, Restore 0
+- level2 {"aimNoiseDeg":3}: Original: 20.336 s, 8/8, Tode 0, Anpraller 0 | Gedächtnis + Lip 5: 20.336 s, 8/8, Tode 0, Anpraller 0, Lip 0, Restore 0
+
+→ shots/v2/arcade-mechanics/ledge.json
+exit 0

@@ -1,6 +1,8 @@
 node_modules
 dist
-shots
+shots/*
+# Plan 007: Messergebnisse der v2-Entwürfe bleiben als Referenz im Repo (tools/critique/v2).
+!shots/v2/
 *.log
 .vite
 tools/out

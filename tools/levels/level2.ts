@@ -86,7 +86,7 @@ const START_GLOW = '#46ff9e';
 const TIER1 = Math.round(0.9 * SpeedCurve.hand(3).top);
 
 /** Surf-Rampen: 60°-Flanken, breit genug für jede Linie zwischen Grat und Fuß. */
-const SURF_W = 768;
+const SURF_W = Number(process.env.L2_SURF_W ?? 768);
 const SURF_SLOPE = 10;
 /** Übergang: Folgerampe beginnt so weit vor dem Ende und so viel tiefer. */
 const DROP_OVERLAP = 96;
@@ -102,9 +102,9 @@ const LINE_DEPTH = 320;
  * Ausfahrt-Raster 11° schräg über die Flanke), und jede Stufe zwischen S0- und
  * S1-Flanke ist eine Kante, an der schnelle Einstiege abprallen.
  */
-const S0_AFTER_E1 = 672;
+const S0_AFTER_E1 = Number(process.env.L2_S0_LEN ?? 672);
 /** Achsgefälle von S0 hinter E1 (unter E1 liegt sie mit dessen 10°): flacher, Zeit zum Ausprobieren; jedes Grad weniger hebt die Kette dahinter um ~12 u. */
-const S0_SLOPE = 4;
+const S0_SLOPE = Number(process.env.L2_S0_SLOPE ?? 4);
 /**
  * Auffangfläche: so weit unter dem Fuß, so weit seitlich über die Füße hinaus; Bande
  * darauf. Unter dem Fuß wie an der L1-Rutsche, nicht höher an der Flanke: eine
@@ -387,7 +387,7 @@ export function buildLevel2(): LevelFile {
   // S0 (Einstiegsrampe) beginnt schon unter der E1-Vorderkante (First 24 u unter
   // E1, gleiches Gefälle): ihre Südkappe liegt unter E1/Vorfeld statt als Wand
   // neben E1 — wer westlich an E1 vorbeifällt, landet auf einer Flanke.
-  const ridgeX = XL - E1_W / 2 - 48;
+  const ridgeX = XL - E1_W / 2 - 48 + Number(process.env.L2_RIDGE ?? 0);
   // S1 hinter S0: zusammen 1024 u ab der E1-Kante wie vorher S1 allein — S2 … Ziel bleiben an ihrer Stelle.
   const S1_AFTER_S0 = 1024 - S0_AFTER_E1;
   // 32 u hinter der E1-Stirn, sonst läge die Südkappe koplanar auf ihr (Z-Fighting).

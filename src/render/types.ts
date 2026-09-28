@@ -79,6 +79,11 @@ export interface RenderFx {
    * Blitz treffen sie wie die Welt. Nur gelesen, nie gehalten. Fehlt/unsichtbar = keine Hand.
    */
   readonly viewModel?: ViewModelFrame;
+  /**
+   * Tore einer Lektion (Plan 007): 0..1 je Tor in CompiledLevel.gates-Reihenfolge (0 = zu, 1 = offen
+   * und aufgelöst). Nur gelesen. Fehlt = alle zu (bzw. keine Tore).
+   */
+  readonly gateOpen?: Float32Array;
 }
 
 export interface RendererApi {
@@ -88,6 +93,7 @@ export interface RendererApi {
   readonly lowResHeight: number;
   /** Seitenverhältnis des Low-Res-Bildes (lowResWidth / lowResHeight) — für CameraRig.setAspect. render() setzt camera.aspect ohnehin selbst. */
   readonly aspect: number;
+  /** Level setzen; baut auch die Tor-Visuals aus level.gates (Plan 007, ab Phase 2 — leer ohne Lektion). */
   setLevel(level: CompiledLevel): void;
   setSettings(s: RenderSettings): void;
   /** Fenstergröße in CSS-Pixeln. */
@@ -108,6 +114,17 @@ export interface RendererApi {
    */
   prewarmViewModel(item: ViewModelItem, glove: ViewModelGlove): void;
   render(camera: PerspectiveCamera, fx: RenderFx): void;
+  /**
+   * Ziel-Foto (Plan 007, Handy Stufe 1): Kopie des zuletzt gerenderten Low-Res-Bilds, auf w×h
+   * skaliert (Nearest). Außerhalb des Frame-Pfads aufrufen (einmal im Ziel). null = nicht verfügbar.
+   */
+  snapshot(w: number, h: number): HTMLCanvasElement | null;
+  /**
+   * Selfie (Plan 007, Handy Stufe 2): EIN zusätzlicher Welt-Durchgang aus der Kamera des letzten
+   * render() mit Yaw + π in w×h (z. B. 96×54), davor die Hand aus `vm` (zweiter Viewmodel-Durchgang).
+   * Außerhalb des Frame-Pfads, einmal im Ziel (Timer steht). null = nicht verfügbar.
+   */
+  selfie(w: number, h: number, vm: ViewModelFrame): HTMLCanvasElement | null;
   dispose(): void;
 }
 
@@ -140,8 +157,75 @@ export const VM_JOINT_COUNT = 23;
  */
 export const VM_ARM_BASE = { pitch: -0.855, twist: 2.05, roll: 0.8 } as const;
 
-export type ViewModelGlove = 'classic' | 'neon';
-export type ViewModelItem = 'none' | 'can' | 'card' | 'knife';
+/** Finger im Rig: Wurzel im Handgelenk-Raum, Radius des Grundglieds, drei Gliedlängen, Ruhe-Spreizung (rad). */
+export interface VmFingerRig {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly r: number;
+  readonly len: readonly [number, number, number];
+  readonly splay: number;
+}
+
+/** Daumen: Sattelgelenk (Wurzel), Ruhe-Ausrichtung (rad), drei Glieder mit Radius. */
+export interface VmThumbRig {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly baseX: number;
+  readonly baseY: number;
+  readonly baseZ: number;
+  readonly len: readonly [number, number, number];
+  readonly r: readonly [number, number, number];
+}
+
+/**
+ * Maße des Hand-Rigs (Plan 007, aus ViewModel.ts in den Vertrag verschoben): die UI rechnet damit
+ * Vorwärtskinematik (Schnur-Anker, Knöchel, Fingerspitzen im Handgelenk-Raum), der Renderer baut
+ * daraus die Hand. Konvention wie ViewModel.apply (Euler-Reihenfolge ZXY): Finger f = Gruppe an
+ * (x, y, z) mit rotation (−j[mcp], 0, j[spread] + splay), Mittel-/Endglied um x um −j[pip]/−j[dip],
+ * jeweils um die vorige Gliedlänge entlang +y versetzt; Daumen-Wurzel rotation
+ * (baseX − j[thumbOpp], baseY, baseZ + j[thumbAbd]), Glieder um x um −j[thumbMcp]/−j[thumbIp].
+ * Fingerglieder verjüngen sich (Radius × 1 / 0.95 / 0.9). Skins mit eigener Geometrie hängen an
+ * denselben Gliedern.
+ */
+export const VM_RIG: { readonly fingers: readonly VmFingerRig[]; readonly thumb: VmThumbRig } = {
+  fingers: [
+    { x: -3.15, y: 8.7, z: 0.2, r: 1.62, len: [3.2, 2.2, 1.9], splay: 0.07 },
+    { x: -0.95, y: 9.1, z: 0.25, r: 1.66, len: [3.5, 2.4, 2.0], splay: 0.0 },
+    { x: 1.25, y: 8.8, z: 0.2, r: 1.6, len: [3.3, 2.2, 1.9], splay: -0.06 },
+    { x: 3.25, y: 8.0, z: 0.1, r: 1.45, len: [2.6, 1.8, 1.7], splay: -0.13 },
+  ],
+  thumb: { x: -3.4, y: 2.4, z: -0.8, baseZ: 0.62, baseX: -0.3, baseY: -0.85, len: [3.3, 2.5, 2.1], r: [1.85, 1.6, 1.48] },
+};
+
+/**
+ * Hand-Skin (Plan 005/007), gleiche Werte wie GloveId in den Settings. Skins ohne Umsetzung zeichnet
+ * der Renderer als 'classic'.
+ */
+export type ViewModelGlove = 'classic' | 'neon' | 'gold' | 'robot' | 'skeleton' | 'cat';
+/** Gegenstand (Plan 006/007), gleiche Werte wie HeldItemId. Gegenstände ohne Umsetzung = 'none'. */
+export type ViewModelItem = 'none' | 'can' | 'card' | 'knife' | 'yoyo' | 'spinner' | 'coin' | 'lighter' | 'kendama' | 'phone';
+
+/** Punkte der Schnur (Jo-Jo, Kendama) in ViewModelFrame.stringPts. */
+export const VM_STRING_POINTS = 9;
+
+/**
+ * Kanäle von ViewModelFrame.propParam je Gegenstand (Plan 007). Andere Gegenstände nutzen keine.
+ *   spinner: Winkel (rad), Unschärfe 0..1, Nabe (−1 zurück / 0 / +1 vorn)
+ *   coin:    Seite (0 Kopf, 1 Zahl)
+ *   lighter: Deckel 0..1, Flamme 0..1, Windneigung −1..1, Rad-Winkel (rad)
+ *   phone:   Modus (VM_PHONE_MODE), Wert (u/s bzw. s), Scroll-Versatz, Blitz 0..1
+ */
+export const VM_PARAM = {
+  spinner: { angle: 0, blur: 1, hub: 2 },
+  coin: { side: 0 },
+  lighter: { lid: 0, flame: 1, wind: 2, wheel: 3 },
+  phone: { mode: 0, value: 1, scroll: 2, flash: 3 },
+} as const;
+
+/** Anzeige des Handys (propParam[VM_PARAM.phone.mode]). */
+export const VM_PHONE_MODE = { feed: 0, speedo: 1, split: 2, camera: 3, photo: 4 } as const;
 
 /**
  * Zustand der View-Hand für EINEN Frame (Plan 006). Die UI (ui/hand) füllt ein einmal
@@ -190,6 +274,21 @@ export interface ViewModelFrame {
   /** Zauber-"Poof": Phase 0..1, < 0 = aus; Ort im Handflächen-Raum. */
   poof: number;
   readonly poofPos: Float32Array;
+  /**
+   * Zweiter Körper im Handgelenk-Raum (Plan 007: Jo-Jo, Kendama-Kugel …): Mitte, Euler XYZ (rad),
+   * Drehung um die eigene Achse, Sichtbarkeit 0..1 (0 = kein zweiter Körper).
+   */
+  readonly subPos: Float32Array;
+  readonly subRot: Float32Array;
+  subSpin: number;
+  subVisible: number;
+  /** Schnur: VM_STRING_POINTS Punkte (xyz) im Handgelenk-Raum, Punkt 0 = Finger/Griff; stringCount 0 = keine. */
+  readonly stringPts: Float32Array;
+  stringCount: number;
+  /** Gegenstands-Kanäle, Bedeutung je Gegenstand in VM_PARAM. */
+  readonly propParam: Float32Array;
+  /** Skin-Effekt 0..1 (Katze: Krallen, Roboter: LED, Skelett: Klappern …), 0 = Ruhe. */
+  skinFx: number;
 }
 
 export function createViewModelFrame(): ViewModelFrame {
@@ -216,5 +315,13 @@ export function createViewModelFrame(): ViewModelFrame {
     knifeBite: -Math.PI,
     poof: -1,
     poofPos: new Float32Array(3),
+    subPos: new Float32Array(3),
+    subRot: new Float32Array(3),
+    subSpin: 0,
+    subVisible: 0,
+    stringPts: new Float32Array(VM_STRING_POINTS * 3),
+    stringCount: 0,
+    propParam: new Float32Array(4),
+    skinFx: 0,
   };
 }

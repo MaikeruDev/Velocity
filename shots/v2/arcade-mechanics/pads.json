@@ -1,0 +1,421 @@
+{
+  "p1": [
+    {
+      "vy": 500,
+      "top": 156.25,
+      "air": 1.25,
+      "cells": [
+        "320 → 320",
+        "320 → 500",
+        "320 → 462",
+        "320 → 403"
+      ]
+    },
+    {
+      "vy": 650,
+      "top": 264.0625,
+      "air": 1.625,
+      "cells": [
+        "320 → 320",
+        "320 → 537",
+        "320 → 495",
+        "320 → 438"
+      ]
+    },
+    {
+      "vy": 800,
+      "top": 400,
+      "air": 2,
+      "cells": [
+        "320 → 320",
+        "320 → 569",
+        "320 → 523",
+        "320 → 465"
+      ]
+    }
+  ],
+  "p3": [
+    {
+      "radius": 0,
+      "model": {
+        "sync": 1
+      },
+      "hits": 0,
+      "vEdge": 767.0934778521895,
+      "dead": 0
+    },
+    {
+      "radius": 0,
+      "model": {
+        "aimNoiseDeg": 2
+      },
+      "hits": 0,
+      "vEdge": 444.0206954456797,
+      "dead": 0
+    },
+    {
+      "radius": 0,
+      "model": {
+        "aimNoiseDeg": 3
+      },
+      "hits": 0,
+      "vEdge": 457.53150400957804,
+      "dead": 0
+    },
+    {
+      "radius": 64,
+      "model": {
+        "sync": 1
+      },
+      "hits": 6,
+      "vEdge": 0,
+      "dead": 8
+    },
+    {
+      "radius": 64,
+      "model": {
+        "aimNoiseDeg": 2
+      },
+      "hits": 7,
+      "vEdge": 385.0057717989883,
+      "dead": 0
+    },
+    {
+      "radius": 64,
+      "model": {
+        "aimNoiseDeg": 3
+      },
+      "hits": 6.875,
+      "vEdge": 519.3518452528486,
+      "dead": 0
+    },
+    {
+      "radius": 96,
+      "model": {
+        "sync": 1
+      },
+      "hits": 7,
+      "vEdge": 0,
+      "dead": 8
+    },
+    {
+      "radius": 96,
+      "model": {
+        "aimNoiseDeg": 2
+      },
+      "hits": 7,
+      "vEdge": 385.0057717989883,
+      "dead": 0
+    },
+    {
+      "radius": 96,
+      "model": {
+        "aimNoiseDeg": 3
+      },
+      "hits": 7,
+      "vEdge": 478.4365840234575,
+      "dead": 0
+    },
+    {
+      "radius": 128,
+      "model": {
+        "sync": 1
+      },
+      "hits": 7,
+      "vEdge": 0,
+      "dead": 8
+    },
+    {
+      "radius": 128,
+      "model": {
+        "aimNoiseDeg": 2
+      },
+      "hits": 7,
+      "vEdge": 385.0057717989883,
+      "dead": 0
+    },
+    {
+      "radius": 128,
+      "model": {
+        "aimNoiseDeg": 3
+      },
+      "hits": 7,
+      "vEdge": 478.4365840234575,
+      "dead": 0
+    }
+  ],
+  "p2": [
+    {
+      "cp": 1,
+      "floor": 0,
+      "model": {
+        "aimNoiseDeg": 3
+      },
+      "ok": 8,
+      "med": 8.15625,
+      "fails": []
+    },
+    {
+      "cp": 1,
+      "floor": 0,
+      "model": {
+        "sync": 0.8
+      },
+      "ok": 8,
+      "med": 8.046875,
+      "fails": []
+    },
+    {
+      "cp": 1,
+      "floor": 0,
+      "model": {
+        "sync": 1
+      },
+      "ok": 8,
+      "med": 6.515625,
+      "fails": []
+    },
+    {
+      "cp": 1,
+      "floor": 450,
+      "model": {
+        "aimNoiseDeg": 3
+      },
+      "ok": 8,
+      "med": 8.0859375,
+      "fails": []
+    },
+    {
+      "cp": 1,
+      "floor": 450,
+      "model": {
+        "sync": 0.8
+      },
+      "ok": 8,
+      "med": 7.953125,
+      "fails": []
+    },
+    {
+      "cp": 1,
+      "floor": 450,
+      "model": {
+        "sync": 1
+      },
+      "ok": 8,
+      "med": 6.421875,
+      "fails": []
+    },
+    {
+      "cp": 1,
+      "floor": 600,
+      "model": {
+        "aimNoiseDeg": 3
+      },
+      "ok": 8,
+      "med": 8.015625,
+      "fails": []
+    },
+    {
+      "cp": 1,
+      "floor": 600,
+      "model": {
+        "sync": 0.8
+      },
+      "ok": 8,
+      "med": 7.75,
+      "fails": []
+    },
+    {
+      "cp": 1,
+      "floor": 600,
+      "model": {
+        "sync": 1
+      },
+      "ok": 8,
+      "med": 6.359375,
+      "fails": []
+    },
+    {
+      "cp": 2,
+      "floor": 0,
+      "model": {
+        "aimNoiseDeg": 3
+      },
+      "ok": 8,
+      "med": 8.8359375,
+      "fails": []
+    },
+    {
+      "cp": 2,
+      "floor": 0,
+      "model": {
+        "sync": 0.8
+      },
+      "ok": 7,
+      "med": 8.6796875,
+      "fails": [
+        "s3:kill"
+      ]
+    },
+    {
+      "cp": 2,
+      "floor": 0,
+      "model": {
+        "sync": 1
+      },
+      "ok": 8,
+      "med": 7.8984375,
+      "fails": []
+    },
+    {
+      "cp": 2,
+      "floor": 450,
+      "model": {
+        "aimNoiseDeg": 3
+      },
+      "ok": 8,
+      "med": 8.75,
+      "fails": []
+    },
+    {
+      "cp": 2,
+      "floor": 450,
+      "model": {
+        "sync": 0.8
+      },
+      "ok": 8,
+      "med": 8.6328125,
+      "fails": []
+    },
+    {
+      "cp": 2,
+      "floor": 450,
+      "model": {
+        "sync": 1
+      },
+      "ok": 8,
+      "med": 7.8046875,
+      "fails": []
+    },
+    {
+      "cp": 2,
+      "floor": 600,
+      "model": {
+        "aimNoiseDeg": 3
+      },
+      "ok": 8,
+      "med": 9.328125,
+      "fails": []
+    },
+    {
+      "cp": 2,
+      "floor": 600,
+      "model": {
+        "sync": 0.8
+      },
+      "ok": 8,
+      "med": 8.8125,
+      "fails": []
+    },
+    {
+      "cp": 2,
+      "floor": 600,
+      "model": {
+        "sync": 1
+      },
+      "ok": 8,
+      "med": 6.96875,
+      "fails": []
+    },
+    {
+      "cp": 3,
+      "floor": 0,
+      "model": {
+        "aimNoiseDeg": 3
+      },
+      "ok": 8,
+      "med": 15.6015625,
+      "fails": []
+    },
+    {
+      "cp": 3,
+      "floor": 0,
+      "model": {
+        "sync": 0.8
+      },
+      "ok": 8,
+      "med": 15.21875,
+      "fails": []
+    },
+    {
+      "cp": 3,
+      "floor": 0,
+      "model": {
+        "sync": 1
+      },
+      "ok": 8,
+      "med": 11.4453125,
+      "fails": []
+    },
+    {
+      "cp": 3,
+      "floor": 450,
+      "model": {
+        "aimNoiseDeg": 3
+      },
+      "ok": 8,
+      "med": 16.3671875,
+      "fails": []
+    },
+    {
+      "cp": 3,
+      "floor": 450,
+      "model": {
+        "sync": 0.8
+      },
+      "ok": 8,
+      "med": 14.8359375,
+      "fails": []
+    },
+    {
+      "cp": 3,
+      "floor": 450,
+      "model": {
+        "sync": 1
+      },
+      "ok": 8,
+      "med": 11.28125,
+      "fails": []
+    },
+    {
+      "cp": 3,
+      "floor": 600,
+      "model": {
+        "aimNoiseDeg": 3
+      },
+      "ok": 8,
+      "med": 14.484375,
+      "fails": []
+    },
+    {
+      "cp": 3,
+      "floor": 600,
+      "model": {
+        "sync": 0.8
+      },
+      "ok": 8,
+      "med": 14.484375,
+      "fails": []
+    },
+    {
+      "cp": 3,
+      "floor": 600,
+      "model": {
+        "sync": 1
+      },
+      "ok": 8,
+      "med": 11.21875,
+      "fails": []
+    }
+  ]
+}

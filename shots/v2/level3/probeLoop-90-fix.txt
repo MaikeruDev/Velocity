@@ -1,0 +1,12 @@
+R 1500 (2356 u) 6° Bande 0: Raster 36/108 (0 Nähte; Fehlschläge je Tempo 400:12 550:12 700:12 850:12 1000:12 1400:12), Ziel bis 1488 u/s, v_trag 1442 | Bots ab Pad sync1/0.8/Hand3: ✗fell ✗fell ✗fell
+R 1500 (2356 u) 6° Bande 96: Raster 53/108 (1 Nähte; Fehlschläge je Tempo 400:11 550:10 700:9 850:10 1000:9 1400:6), Ziel bis 1515 u/s, v_trag 1442 | Bots ab Pad sync1/0.8/Hand3: ✗fell ✗fell ✗fell
+R 1500 (2356 u) 10° Bande 0: Raster 33/108 (0 Nähte; Fehlschläge je Tempo 400:13 550:13 700:13 850:13 1000:11 1400:12), Ziel bis 1571 u/s, v_trag 1442 | Bots ab Pad sync1/0.8/Hand3: ✗fell ✗fell ✗fell
+R 1500 (2356 u) 10° Bande 96: Raster 59/108 (0 Nähte; Fehlschläge je Tempo 400:10 550:9 700:9 850:9 1000:7 1400:5), Ziel bis 1603 u/s, v_trag 1442 | Bots ab Pad sync1/0.8/Hand3: ✗fell ✗fell ✗fell
+R 2000 (3142 u) 6° Bande 0: Raster 32/108 (0 Nähte; Fehlschläge je Tempo 400:14 550:13 700:12 850:13 1000:12 1400:12), Ziel bis 1560 u/s, v_trag 1665 | Bots ab Pad sync1/0.8/Hand3: ✗fell ✗fell ✗fell
+R 2000 (3142 u) 6° Bande 96: Raster 52/108 (0 Nähte; Fehlschläge je Tempo 400:12 550:10 700:9 850:10 1000:9 1400:6), Ziel bis 1576 u/s, v_trag 1665 | Bots ab Pad sync1/0.8/Hand3: ✗fell ✗fell ✗fell
+R 2000 (3142 u) 10° Bande 0: Raster 26/108 (0 Nähte; Fehlschläge je Tempo 400:14 550:14 700:14 850:14 1000:13 1400:13), Ziel bis 1639 u/s, v_trag 1665 | Bots ab Pad sync1/0.8/Hand3: ✗fell ✗fell ✗fell
+R 2000 (3142 u) 10° Bande 96: Raster 57/108 (0 Nähte; Fehlschläge je Tempo 400:10 550:9 700:9 850:9 1000:8 1400:6), Ziel bis 1670 u/s, v_trag 1665 | Bots ab Pad sync1/0.8/Hand3: ✗fell ✗fell ✗fell
+R 2500 (3927 u) 6° Bande 0: Raster 24/108 (0 Nähte; Fehlschläge je Tempo 400:15 550:14 700:14 850:14 1000:14 1400:13), Ziel bis 1621 u/s, v_trag 1861 | Bots ab Pad sync1/0.8/Hand3: ✗fell ✗fell ✗fell
+R 2500 (3927 u) 6° Bande 96: Raster 45/108 (0 Nähte; Fehlschläge je Tempo 400:13 550:11 700:11 850:11 1000:10 1400:7), Ziel bis 1621 u/s, v_trag 1861 | Bots ab Pad sync1/0.8/Hand3: ✗fell ✗fell ✗fell
+R 2500 (3927 u) 10° Bande 0: Raster 22/108 (0 Nähte; Fehlschläge je Tempo 400:15 550:15 700:15 850:14 1000:13 1400:14), Ziel bis 1733 u/s, v_trag 1861 | Bots ab Pad sync1/0.8/Hand3: ✗fell ✗fell ✗fell
+R 2500 (3927 u) 10° Bande 96: Raster 51/108 (1 Nähte; Fehlschläge je Tempo 400:11 550:10 700:11 850:10 1000:8 1400:7), Ziel bis 1734 u/s, v_trag 1861 | Bots ab Pad sync1/0.8/Hand3: ✗fell ✗fell ✗fell

@@ -84,6 +84,77 @@ export interface MovementConfig {
   readonly autoHopLandAirTime: number;
   /** Dauer der Kamera-Absenkung beim Ducken am Boden, s. */
   readonly duckTime: number;
+
+  // ---- Arcade-Pass (Plan 007, rules/movement.md, movement-tuning.md "Arcade-Pass"). Jede
+  // Abweichung von Source hat einen Schalter: 0/false = aus (CS2_CLASSIC, bitgleich zu Source-Port).
+  // Ausnahme ohne Schalter: der Knick-Projektion-Fix in tryPlayerMove (Bugfix, A1).
+
+  /**
+   * Lande-Gnade (s): so lange nach einer Landung aus ≥ 0.1 s Luft keine Friction (auch keine
+   * Rutsch-Reibung). Boden-Schub hebt |v_h| in der Zeit nicht über max(Tempo davor, wishspeed);
+   * Hop-Kette und Sync reißen erst danach; ein Sprung darin ist `jump.clean`. 0 = aus.
+   */
+  readonly landGraceTime: number;
+  /**
+   * Hang-Landung (0..1): bergab gewinnt man in jeder Tick-Phase, bergauf verliert man nichts, die
+   * Rampslide-Entscheidung ist phasenfest. Der erlassene Bergauf-Verlust wird gestundet und vom nächsten
+   * Bergab-Gewinn abgezogen (sonst pumpen Wellen). 0 = Source (Clip-Verlust hängt an der Tick-Phase).
+   */
+  readonly slopeLandGain: number;
+  /**
+   * Rampbug-Fix: trifft ein Surf-Move eine Gegen-Ebene (cos < −0.5, |v_h| > 100), wird der Weg
+   * 0.25/1/2 u entlang der letzten Surf-Normale angehoben nachgetraced. false = Source.
+   */
+  readonly surfSeamFix: boolean;
+  /**
+   * Kanten-Assist: frontaler (≤ 45°) Lip-Step in der Luft bis zu dieser Höhe (u), danach Landung auf der
+   * Kante (vel.y = 0; nicht, solange der Rest-Aufstieg die Kante klar selbst schafft). Hebt die Reichweite
+   * ohne Ducken auf 57 + ledgeStep, aus der Auto-Hop-Landung + 1.5 → Crouch-Kanten ≥ 66 u. 0 = aus.
+   */
+  readonly ledgeStep: number;
+  /**
+   * Kanten-Assist: Tempo vor einem frontalen Bonk kommt innerhalb so vieler Sekunden Luftzeit zurück,
+   * sobald die Hull höher frei ist (Steigen/Ducken) — nie seitlich, nie mehr als vorher. 0 = aus.
+   */
+  readonly ledgeMemory: number;
+  /**
+   * Rutschen: Eintritt geduckt am Boden ab diesem Horizontal-Tempo (u/s; Hull duckt sofort). Keine
+   * Bodenbeschleunigung, eigene Reibung, Lenken mit der Maus, Hangabtrieb, keine Schritte. Ende unter
+   * slideExitSpeed oder aufgestanden (unter einer Decke rutscht man weiter). 0 = kein Rutschen.
+   */
+  readonly slideMinSpeed: number;
+  /** Rutschen endet unter diesem Tempo (u/s). */
+  readonly slideExitSpeed: number;
+  /** Rutsch-Reibung (1/s, wirkt wie sv_friction) … */
+  readonly slideFriction: number;
+  /** … plus konstante Verzögerung (u/s²). */
+  readonly slideDecel: number;
+  /** Schub beim Rutsch-Eintritt (u/s), nur aus dem Lauf … */
+  readonly slideBoost: number;
+  /** … und nur bis zu diesem Tempo (u/s). */
+  readonly slideBoostCap: number;
+  /** Schub nur nach so viel Bodenzeit (s) — Landen + Ducken ist kein Schub-Farmen. */
+  readonly slideBoostMinGround: number;
+  /** Abklingzeit des Schubs (s). */
+  readonly slideBoostCooldown: number;
+  /** Lenken beim Rutschen (rad/s zur Blickrichtung, nur bis 90° neben der Fahrt; Betrag bleibt). */
+  readonly slideSteerRate: number;
+  /** Hangabtrieb beim Rutschen (0..1 × Gravitation entlang der Fläche). */
+  readonly slideSlopeGravity: number;
+  /** Augenhöhe fällt beim Rutsch-Eintritt in dieser Zeit (s) statt duckTime. */
+  readonly slideEyeTime: number;
+  /**
+   * Luftlenkung nur mit W (rad/s): v_h dreht zur Blickrichtung, der Betrag bleibt. Bis
+   * `airControlFadeFrom` gilt dieser Wert, bis `airControlFadeTo` linear auf `airControlHigh`.
+   * 0 = aus (CS2 und Einstellung "Luftlenkung mit W" aus, siehe movementConfigFor).
+   */
+  readonly airControl: number;
+  readonly airControlHigh: number;
+  readonly airControlFadeFrom: number;
+  readonly airControlFadeTo: number;
+  /** Luftlenkung ruht so lange (s) nach Kontakt mit einer steilen Fläche (Surf-Flanke). */
+  readonly airControlSurfGrace: number;
+
   readonly hull: HullConfig;
 }
 
@@ -125,6 +196,29 @@ export const CS2_CLASSIC: MovementConfig = {
   autoHopLandShare: 0,
   autoHopLandAirTime: 0.25,
   duckTime: 0.2,
+  // Arcade-Pass (Plan 007) aus: die Hauptschalter stehen auf 0/false. Die Nebenwerte (Rutsch-,
+  // Lenk-Parameter) sind nur Startpunkt fürs Tuning-Panel und wirken ohne Hauptschalter nicht.
+  landGraceTime: 0,
+  slopeLandGain: 0,
+  surfSeamFix: false,
+  ledgeStep: 0,
+  ledgeMemory: 0,
+  slideMinSpeed: 0,
+  slideExitSpeed: 160,
+  slideFriction: 0.3,
+  slideDecel: 80,
+  slideBoost: 50,
+  slideBoostCap: 380,
+  slideBoostMinGround: 0.25,
+  slideBoostCooldown: 2,
+  slideSteerRate: 1.4,
+  slideSlopeGravity: 1,
+  slideEyeTime: 0.06,
+  airControl: 0,
+  airControlHigh: 0.8,
+  airControlFadeFrom: 350,
+  airControlFadeTo: 700,
+  airControlSurfGrace: 0.5,
   hull: SOURCE_HULL,
 };
 
@@ -142,9 +236,10 @@ export const VELOCITY_DEFAULT: MovementConfig = {
   // Kalibriert auf CS2-Parität: gleiche Hand (2–3° Zielfehler) → gleicher Speed wie CS2 mit 64 Tick,
   // aber mit 128-Tick-Präzision. Perfekter Bot Hop 5/10/20 ≈ 584/787/1084 u/s. Siehe movement-tuning.md.
   airSpeedCap: 24,
-  // Tempoabhängig: 32 bis 350 u/s, linear auf 24 bei 700 — erste Strafes zahlen sich sofort aus,
-  // Decke +≤5 %, über 700 u/s CS2-Parität wie oben. movement-tuning.md "Tempoabhängiger Cap".
-  airSpeedCapLow: 32,
+  // Tempoabhängig: 40 bis 350 u/s, linear auf 24 bei 700 — erste Strafes zahlen sich sofort aus
+  // (Plan 007 A5: 4°-Hand bis 500 u/s 4.0 → 1.8 s), Decke +≤8 % gegenüber Cap 24, über 700 u/s
+  // CS2-Parität wie oben. movement-tuning.md "Tempoabhängiger Cap" und "Arcade-Pass".
+  airSpeedCapLow: 40,
   airSpeedCapFadeFrom: 350,
   airSpeedCapFadeTo: 700,
   // W zählt in der Luft nicht, solange A/D gedrückt ist (Schalter im Menü). movement-tuning.md.
@@ -161,6 +256,18 @@ export const VELOCITY_DEFAULT: MovementConfig = {
   autoHopLandShare: 0.75,
   autoHopLandAirTime: 0.25,
   duckTime: 0.15,
+  // Arcade-Pass (Plan 007, Werte aus den v2-Entwürfen; Abnahme-Zahlen: npm run sim -- --section arcade,
+  // movement-tuning.md "Arcade-Pass").
+  // 8 Ticks: Tipp-Hand ±20 ms H20 742 → 1166 u/s; > 12 Ticks wäre "Eis" auf Stopp-Landungen.
+  landGraceTime: 0.0625,
+  slopeLandGain: 1,
+  surfSeamFix: true,
+  // Crouch-Kanten brauchen damit ≥ 57 + 1.5 (Auto-Hop-Landehöhe) + 5 + 2 Reserve ≈ 66 u (Level-Regel).
+  ledgeStep: 5,
+  ledgeMemory: 0.2,
+  slideMinSpeed: 280,
+  // Luftlenkung an; die Einstellung "Luftlenkung mit W" (Default an) kann sie abschalten.
+  airControl: 1.6,
 };
 
 export const MOVEMENT_PRESETS = {

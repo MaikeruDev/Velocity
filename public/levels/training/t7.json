@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "id": "t7",
+  "name": "SURF: HALTEN",
+  "subtitle": "An der Rampe bleiben.",
+  "spawn": {
+    "pos": [140,480,560],
+    "yaw": 0
+  },
+  "killY": -1059,
+  "music": {
+    "bpm": 132
+  },
+  "environment": {
+    "skyTop": "#12061f",
+    "skyHorizon": "#6a2a8a",
+    "skyBottom": "#10061c",
+    "fogColor": "#3a1655",
+    "fogNear": 1800,
+    "fogFar": 10000,
+    "sunDir": [-0.3,0.5,-0.8],
+    "sunColor": "#ffd0f0",
+    "ambientSky": "#6a4ac0",
+    "ambientGround": "#1d0f2e",
+    "trimColor": "#ff3fd0",
+    "trimColorAlt": "#33f0ff",
+    "voidY": -2600
+  },
+  "brushes": [
+    {"type":"hull","points":[[0,600,0],[-384,-65.108,0],[384,-65.108,0],[0,285.553,-6000],[-384,-379.554,-6000],[384,-379.554,-6000]],"mat":"surf","tag":"rampe"},
+    {"type":"wedge","min":[-1400,-555,-6900],"max":[1400,18,2200],"rise":"+z","lowY":-459,"mat":"metal","tag":"auffang"},
+    {"type":"box","min":[-1464,-555,-6900],"max":[-1400,1000,2200],"mat":"wall","tag":"bande-w"},
+    {"type":"box","min":[1400,-555,-6900],"max":[1464,1000,2200],"mat":"wall","tag":"bande-o"},
+    {"type":"box","min":[-1464,-555,-6964],"max":[1464,1000,-6900],"mat":"wall","tag":"bande-n"},
+    {"type":"box","min":[108,416,0],"max":[412,480,1920],"mat":"start","tag":"start-ost"},
+    {"type":"box","min":[-412,416,0],"max":[-108,480,1920],"mat":"start","tag":"start-west"},
+    {"type":"wedge","min":[444,-127,500],"max":[764,480,1920],"rise":"+z","lowY":-63,"mat":"floor","tag":"rueckweg"},
+    {"type":"box","min":[-412,416,1920],"max":[764,480,2200],"mat":"floor","tag":"quersteg"},
+    {"type":"box","min":[-1464,-555,2200],"max":[-192,1000,2264],"mat":"wall","tag":"bande-s1"},
+    {"type":"box","min":[192,-555,2200],"max":[1464,1000,2264],"mat":"wall","tag":"bande-s2"},
+    {"type":"box","min":[-192,416,2200],"max":[192,480,2620],"mat":"floor","tag":"nische"},
+    {"type":"box","min":[-256,416,2264],"max":[-192,1000,2684],"mat":"wall","tag":"nische-w"},
+    {"type":"box","min":[192,416,2264],"max":[256,1000,2684],"mat":"wall","tag":"nische-o"},
+    {"type":"box","min":[-192,416,2620],"max":[192,1000,2684],"mat":"wall","tag":"nische-s"},
+    {"type":"box","min":[-160,480,2484],"max":[-128,704,2516],"mat":"dark","collide":false,"trim":false},
+    {"type":"box","min":[128,480,2484],"max":[160,704,2516],"mat":"dark","collide":false,"trim":false},
+    {"type":"box","min":[-160,704,2484],"max":[160,736,2516],"mat":"light","tint":"#9dff5c","collide":false,"trim":false},
+    {"type":"hull","points":[[260,480,468.373],[260,476,468.373],[214.745,480,513.627],[214.745,476,513.627],[214.745,480,531.627],[214.745,476,531.627],[260,480,486.373],[260,476,486.373]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[260,480,468.373],[260,476,468.373],[305.255,480,513.627],[305.255,476,513.627],[305.255,480,531.627],[305.255,476,531.627],[260,480,486.373],[260,476,486.373]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[-260,480,468.373],[-260,476,468.373],[-305.255,480,513.627],[-305.255,476,513.627],[-305.255,480,531.627],[-305.255,476,531.627],[-260,480,486.373],[-260,476,486.373]],"mat":"marking","tint":"#ff3fd0","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[-260,480,468.373],[-260,476,468.373],[-214.745,480,513.627],[-214.745,476,513.627],[-214.745,480,531.627],[-214.745,476,531.627],[-260,480,486.373],[-260,476,486.373]],"mat":"marking","tint":"#ff3fd0","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[260,480,328.373],[260,476,328.373],[214.745,480,373.627],[214.745,476,373.627],[214.745,480,391.627],[214.745,476,391.627],[260,480,346.373],[260,476,346.373]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[260,480,328.373],[260,476,328.373],[305.255,480,373.627],[305.255,476,373.627],[305.255,480,391.627],[305.255,476,391.627],[260,480,346.373],[260,476,346.373]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[-260,480,328.373],[-260,476,328.373],[-305.255,480,373.627],[-305.255,476,373.627],[-305.255,480,391.627],[-305.255,476,391.627],[-260,480,346.373],[-260,476,346.373]],"mat":"marking","tint":"#ff3fd0","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[-260,480,328.373],[-260,476,328.373],[-214.745,480,373.627],[-214.745,476,373.627],[-214.745,480,391.627],[-214.745,476,391.627],[-260,480,346.373],[-260,476,346.373]],"mat":"marking","tint":"#ff3fd0","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[260,480,188.373],[260,476,188.373],[214.745,480,233.627],[214.745,476,233.627],[214.745,480,251.627],[214.745,476,251.627],[260,480,206.373],[260,476,206.373]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[260,480,188.373],[260,476,188.373],[305.255,480,233.627],[305.255,476,233.627],[305.255,480,251.627],[305.255,476,251.627],[260,480,206.373],[260,476,206.373]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[-260,480,188.373],[-260,476,188.373],[-305.255,480,233.627],[-305.255,476,233.627],[-305.255,480,251.627],[-305.255,476,251.627],[-260,480,206.373],[-260,476,206.373]],"mat":"marking","tint":"#ff3fd0","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[-260,480,188.373],[-260,476,188.373],[-214.745,480,233.627],[-214.745,476,233.627],[-214.745,480,251.627],[-214.745,476,251.627],[-260,480,206.373],[-260,476,206.373]],"mat":"marking","tint":"#ff3fd0","collide":false,"tag":"chevron","trim":false}
+  ],
+  "triggers": [
+    {"kind":"finish","min":[-128,480,2436],"max":[128,680,2564],"tag":"finish"}
+  ],
+  "route": [
+    {"pos":[0,480,2500],"note":"portal"},
+    {"pos":[140,480,2060]},
+    {"pos":[140,480,1800]},
+    {"pos":[140,480,560],"note":"spawn"},
+    {"pos":[140,480,40]},
+    {"pos":[102.603,431.875,-400],"surf":true},
+    {"pos":[102.603,389.949,-1200],"surf":true},
+    {"pos":[102.603,348.023,-2000],"surf":true},
+    {"pos":[102.603,306.097,-2800],"surf":true},
+    {"pos":[102.603,264.171,-3600],"surf":true},
+    {"pos":[102.603,222.244,-4400],"surf":true},
+    {"pos":[102.603,180.318,-5200],"surf":true}
+  ],
+  "training": {
+    "lesson": 7,
+    "short": "T7",
+    "group": "advanced",
+    "zones": [{"id":"west0","min":[-384,-143.719,-1620],"max":[-8,529.388,-1380]},{"id":"west1","min":[-384,-222.331,-3120],"max":[-8,450.777,-2880]},{"id":"west2","min":[-384,-300.943,-4620],"max":[-8,372.165,-4380]},{"id":"hoch0","min":[8,277.111,-1350],"max":[166,545.111,-1050]},{"id":"hoch1","min":[8,214.221,-2550],"max":[166,482.221,-2250]},{"id":"hoch2","min":[8,151.332,-3750],"max":[166,419.332,-3450]},{"id":"hoch3","min":[8,88.443,-4950],"max":[166,356.443,-4650]},{"id":"grube","min":[-1400,-467,-6000],"max":[1400,3,0]}],
+    "gates": [{"id":"ausgang","min":[-192,480,2200],"max":[192,1000,2224],"tint":"#ffb347"}],
+    "stages": [{"id":"halten3","title":"HALTEN","text":"LAUF AB, DANN A IN DIE RAMPE\nW LOS, BLICK ENTLANG DER RAMPE","task":{"kind":"surfHold","seconds":3},"spawn":{"pos":[140,480,560],"yaw":0},"demo":{"kind":"route","from":3,"to":11,"seconds":14},"tips":[{"on":"surf","after":0.4,"text":"JETZT A HALTEN: DIE TASTE\nZUR RAMPE HIN HÄLT DICH OBEN"},{"on":"zone","zone":"grube","text":"RUNTERGERUTSCHT? A SCHON IM FALL\nDRÜCKEN. [F] = ZURÜCK NACH OBEN"}]},{"id":"halten6","title":"LÄNGER","text":"6 SEKUNDEN AM STÜCK SURFEN\nRUHIG BLEIBEN, NICHT LENKEN","task":{"kind":"surfHold","seconds":6},"opens":["ausgang"],"demo":{"kind":"route","from":3,"to":11,"seconds":14},"tips":[{"on":"zone","zone":"grube","text":"A GEDRÜCKT HALTEN BIS ZUM ENDE\n[F] = ZURÜCK NACH OBEN"}]},{"id":"west","title":"WESTFLANKE","text":"BONUS: VON DER WESTPLATTFORM\nJETZT MIT D DURCH DIE DREI MARKEN","task":{"kind":"course","zones":["west0","west1","west2"],"minSpeed":200,"airborne":true,"groundGrace":0.1},"rank":"bonus","spawn":{"pos":[-140,480,560],"yaw":0}},{"id":"oben","title":"MEISTER: OBEN","text":"MEISTER: HOCH UND SCHNELL SURFEN\nDURCH DIE 4 OBEREN MARKEN, ÜBER 300","task":{"kind":"course","zones":["hoch0","hoch1","hoch2","hoch3"],"minSpeed":300,"airborne":true,"groundGrace":0.1},"rank":"master","spawn":{"pos":[140,480,560],"yaw":0}}],
+    "hud": {"forceKeys":true}
+  }
+}

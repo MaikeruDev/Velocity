@@ -127,6 +127,7 @@ Die Module sprechen nur über diese Typen miteinander:
 | Movement-Konstanten | `src/player/MovementConfig.ts` |
 | Tick-Eingabe, Spieler-Snapshot, Movement-Events | `src/player/types.ts` |
 | Spiel-Events | `src/engine/events.ts` |
+| Trainingsmodus (Session, Urteile, Fortschritt) | `src/engine/trainingTypes.ts` |
 | Einstellungen | `src/engine/settingsTypes.ts` |
 | Audio-API | `src/audio/types.ts` |
 | Renderer-API | `src/render/types.ts` |
@@ -269,6 +270,63 @@ Admin-Menü (Nutzerwunsch 28.09.) — alle Nutzer nachgezogen:
 - **UI** (`ui/types`): `MenuScreen` 'admin', `MenuEvents.adminBest {levelId}` (Game löscht den
   Ghost des Levels inkl. Cache, zieht Bestzeit/Nächstes Ziel im laufenden Level nach).
   `Menu.showAdmin()`. Kosmetik-Menü markiert die wirksame Wahl (gesperrt → Standard/Nichts).
+
+Plan 007 Verträge (Phase 0, 28.09.) — alle Nutzer nachgezogen, **verhaltensneutral**: die Physik
+liest keines der neuen Felder (Phase 1), Level ohne Lektion kompilieren bitgleich, neue Skins/
+Gegenstände zeichnen als classic/none. Abschluss (Leiter, Doku) in Phase 3.
+- **MovementConfig**: Hauptschalter (VELOCITY / CS2) `landGraceTime` 0.0625/0, `slopeLandGain` 1/0,
+  `surfSeamFix` true/false, `ledgeStep` 5/0, `ledgeMemory` 0.2/0, `slideMinSpeed` 280/0 (0 = kein
+  Rutschen), `airControl` 1.6/0 (rad/s). Nebenwerte in beiden Presets gleich (nur Startpunkt fürs Panel):
+  `slideExitSpeed` 160, `slideFriction` 0.3, `slideDecel` 80, `slideBoost` 50, `slideBoostCap` 380,
+  `slideBoostMinGround` 0.25, `slideBoostCooldown` 2, `slideSteerRate` 1.4, `slideSlopeGravity` 1,
+  `slideEyeTime` 0.06, `airControlHigh` 0.8, `airControlFadeFrom`/`To` 350/700, `airControlSurfGrace` 0.5.
+  `airSpeedCapLow` bleibt 32 (40 setzt Phase 1). TuningPanel: Gruppen "Arcade (Plan 007)" und
+  "Rutschen", Schalter "Rampbug-Fix"; Luftlenkung ↔ Einstellung synchron (an = > 0).
+- **player/types**: `PlayerSnapshot.sliding` (diskret, Interpolation nimmt den neueren; bis Phase 1
+  immer false). `MovementEvent` 'jump' + `clean` (perfect ODER in der Lande-Gnade; Phase 0 = perfect).
+  Neu: `slideStart {speed, boost}`, `slideEnd {speed}`, `ledge {kind: 'step'|'vault', speed, dy}`.
+- **LevelFormat**: `LevelFile.safeRoute?` (sichere Linie einer Gabel; Bronze/Silber dort gemessen),
+  `prepLessons?` (+ `LevelIndexEntry.prepLessons?`), `training?: TrainingDef` (nie mit medals/parTime).
+  Typen `TrainingDef`, `StageDef`, `StageTipDef`, `TaskDef` (reach, hopChain, goodHops, speed, surfHold,
+  surfSpeed, crouchLand, course, event — `event` ist ein `GameEventType`), `DemoDef` (hand | route),
+  `TrainingZoneDef`, `GateDef`, `HopSide`, `StageRank`, `TrainingGroup`, `TrainingIndexEntry`
+  (`public/levels/training/index.json`).
+- **compileLevel**: `CompiledLevel.gates: CompiledGate[]` ({id, brush, bounds, tint: string|null};
+  brush.index = brushes.length + i; **nicht** in `world`, Reihenfolge = Index für Render/Kollision),
+  `CompiledLevel.zones: ReadonlyMap<string, Box3>`. Doppelte Tor-/Zonen-ids werfen.
+  `BrushWorld`: `clipBoxToBrush` exportiert (für die GatedWorld in Phase 2).
+- **events**: RunEvent `lessonHop {verdict, gain, counted, count, goal}`, `lessonStage {index, total,
+  rank, lessonDone}`, `gate {id, open}`.
+- **engine/trainingTypes** (neu): `VERDICTS`/`Verdict` (good, wOnly, noSide, noMouse, against, wHeld,
+  tooFast, late, tooSlow, weak), `LessonStars`, `TrainingSpawn`, `TurnBand`, `TrainingSessionApi`
+  (tick(dt, prev, cur, cmd, hullH, out), onEvent, update, respawnPoint, skipStage, restartLesson,
+  turnBand; hud, gateOpen, suspended, done, stars, completedStageIds), `TrainingProgressView`.
+- **Einstellungen**: `GloveId` + gold/robot/skeleton/cat, `HeldItemId` + yoyo/spinner/coin/lighter/
+  kendama/phone, `GameSettings.airControl` (Default an; fehlt → folgt dem gespeicherten Preset wie
+  strafeAssist), `BindAction` + 'demo' (Default `['KeyH']`; kollidiert H mit einer alten Belegung,
+  bleibt demo leer). `movementConfigFor`: airControl aus → 0, an → Preset-Wert. `SettingsStore.update`:
+  Preset-Wechsel ohne ausdrücklichen Wert setzt airControl auf den Preset (CS2 aus). Menü "Movement":
+  Schalter "Luftlenkung mit W" (die Tasten-Zeile für 'demo' baut training-ui).
+- **InputState**: `InputAction` + 'demo' (Druck auf einen `KeyBinds.demo`-Code, kein gehaltener Knopf);
+  Game ignoriert sie bis Phase 2.
+- **Freischaltungen** (`engine/Unlocks`): 14 `UnlockId` (Tabelle Plan 007 §7, UNLOCKS in Leiter-
+  Reihenfolge), `UnlockRequirement` = `MedalRequirement {kind:'medal', levelId, medal}` |
+  `TrainingRequirement {kind:'training', group:'basics'|'all', minStars:1|3}` (ohne Lektionen nie
+  erfüllt), `requirementMet`, `deriveUnlocks(levels, best, training?)`, `sync(levels, best, training?)`,
+  `grantEarnedFor` nur für Medaillen dieses Levels. **`PENDING_UNLOCKS`**: die 10 neuen werden bis Phase 3
+  NICHT abgeleitet (sonst bekäme L1-Silber ein unsichtbares Jo-Jo angelegt); Admin/`unlockAll` setzen
+  alle 14. Phase 3 leert die Menge. Speicherformat v3 unverändert.
+- **Renderer** (`render/types`): `ViewModelGlove`/`ViewModelItem` wie GloveId/HeldItemId (unbekannte
+  zeichnen als classic/none), `VM_RIG` (Finger-/Daumenmaße, aus ViewModel.ts verschoben; Konvention im
+  Kommentar), `VM_STRING_POINTS` = 9, `VM_PARAM` (Kanäle je Gegenstand), `VM_PHONE_MODE`.
+  `ViewModelFrame` + `subPos`, `subRot`, `subSpin`, `subVisible`, `stringPts` (27), `stringCount`,
+  `propParam` (4), `skinFx` — alle neutral 0. `RendererApi.snapshot(w, h)`, `selfie(w, h, vm)`
+  (Phase 0: null), `RenderFx.gateOpen?`; `setLevel` baut Tore ab Phase 2.
+- **UI** (`ui/types`): `HudData.lesson?: LessonHud | null` (`LessonHud`), `HudKeys.turnBand?`,
+  `MenuScreen` + 'training' | 'lessonDone' (Menü: Stub → Titel), `LessonResult`, `MenuEvents` + demo,
+  skipStage, `FinishResult.photo?`.
+- **Audio**: `MusicDrive.sliding?`.
+- **Tests**: `tests/contracts.test.ts` (neu), Plan-007-Blöcke in settings/cosmetics.
 
 ### 3.5 Musik folgt dem Movement
 Der Techno-Track (132 BPM) ist aus Oszillatoren und Rauschen gebaut. Er bekommt

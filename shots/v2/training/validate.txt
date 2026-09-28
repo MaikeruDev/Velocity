@@ -1,0 +1,108 @@
+
+T2 AUTO-HOP (Stufen: Kette ×6, Gräben bis ans Ende)
+  W+Space gehalten (Sprint)          bestanden 1/1 · kette 4.7 s (100 %, max 4.7) · graeben 20.3 s (100 %, max 20.3) · Urteile: wOnly 100%
+  W+Space gehalten (ohne Sprint)     bestanden 1/1 · kette 4.7 s (100 %, max 4.7) · graeben 25.6 s (100 %, max 25.6) · Urteile: wOnly 100%
+  Mausrad-Spam je Landung            bestanden 0/1 · kette 3.8 s (100 %, max 3.8) · graeben – s (0 %, max –)
+
+T3 AIR-STRAFE Arena (Stufen: 5 links, 5 rechts, 6 im Wechsel; gut = +8 u/s mit ≥ 50 % A/D)
+  Demo-Hand (120 °/s, 0.1 s, fehlerfrei) bestanden 20/20 · links 4.7 s (100 %, max 4.7) · rechts 8.5 s (100 %, max 8.5) · wechsel 17.5 s (100 %, max 17.5) · Urteile: good 100%
+  ordentlicher Anfänger (60 °/s)     bestanden 19/20 · links 5.5 s (100 %, max 11.0) · rechts 12.3 s (95 %, max 17.0) · wechsel 24.4 s (95 %, max 44.8) · Urteile: good 63%, weak 13%, against 8%, noMouse 7%, wOnly 5%, tooSlow 3%, late 1%
+  geübter Anfänger (100 °/s)         bestanden 20/20 · links 4.7 s (100 %, max 6.4) · rechts 10.0 s (100 %, max 13.1) · wechsel 20.6 s (100 %, max 30.0) · Urteile: good 83%, weak 7%, against 5%, noMouse 3%, wOnly 2%
+  zaghaft (30 °/s)                   bestanden 0/20 · links 10.8 s (90 %, max 16.8) · rechts – s (0 %, max –) · wechsel – s (0 %, max –) · Urteile: tooSlow 46%, weak 16%, good 13%, against 9%, noMouse 8%, wOnly 5%, late 4%
+  sehr zaghaft (20 °/s, 0.3 s spät)  bestanden 0/20 · links – s (0 %, max –) · rechts – s (0 %, max –) · wechsel – s (0 %, max –) · Urteile: late 43%, tooSlow 27%, noMouse 15%, against 7%, wOnly 5%, good 2%, weak 1%
+  Fehler: nur W + Maus               bestanden 0/20 · links – s (0 %, max –) · rechts – s (0 %, max –) · wechsel – s (0 %, max –) · Urteile: good 76%, wOnly 24%
+  Fehler: Taste gegen Maus           bestanden 0/20 · links – s (0 %, max –) · rechts – s (0 %, max –) · wechsel – s (0 %, max –) · Urteile: against 99%, good 1%
+  Fehler: A/D ohne Maus              bestanden 0/20 · links – s (0 %, max –) · rechts – s (0 %, max –) · wechsel – s (0 %, max –) · Urteile: noMouse 100%
+  Neuling W+Space                    bestanden 0/20 · links – s (0 %, max –) · rechts – s (0 %, max –) · wechsel – s (0 %, max –) · Urteile: wOnly 100%
+
+  Diagnose-Treffsicherheit (Fehlerhände, zigzag, nur nicht-gute Hops):
+    nur W + Maus               erwartet wOnly/noSide: 100 % der Fehl-Hops (good 1087, wOnly 464)
+    gegen die Maus             erwartet against: 100 % der Fehl-Hops (against 1454)
+    A/D ohne Maus              erwartet noMouse: 100 % der Fehl-Hops (noMouse 1454, good 58)
+    zu spät (0.45 s)           erwartet late/tooSlow: 93 % der Fehl-Hops (late 1388, good 73, wOnly 63, noMouse 38)
+    zu langsam (12–20 °/s)     erwartet tooSlow/noMouse: 100 % der Fehl-Hops (tooSlow 1459, noMouse 52, good 41)
+
+T4 SPEED (Stufen: 400 erreichen, 5 Landungen ≥ 400 in Folge, Bonus 500)
+  ordentlicher Anfänger              bestanden 19/20 · v400 6.0 s (100 %, max 64.8) · halten 15.3 s (95 %, max 70.9) · v500 31.0 s (80 %, max 88.8) · Urteile: good 44%, weak 32%, against 8%, noMouse 7%, wOnly 5%, tooSlow 4%, late 1%
+  geübter Anfänger                   bestanden 19/20 · v400 3.8 s (100 %, max 20.8) · halten 7.7 s (95 %, max 48.7) · v500 16.4 s (95 %, max 48.7) · Urteile: good 60%, weak 31%, against 5%, noMouse 3%, wOnly 1%, tooSlow 0%
+  zaghaft (30 °/s)                   bestanden 20/20 · v400 12.7 s (100 %, max 46.4) · halten 17.5 s (100 %, max 82.6) · v500 44.0 s (70 %, max 89.8) · Urteile: tooSlow 44%, good 28%, against 8%, noMouse 8%, weak 5%, wOnly 4%, late 4%
+  Neuling W+Space                    bestanden 0/20 · v400 – s (0 %, max –) · halten – s (0 %, max –) · v500 – s (0 %, max –) · Urteile: wOnly 100%
+
+T4 SPEED OVAL (Mittelinsel, gegen den Uhrzeigersinn; Wegpunkte auf der Mittellinie)
+  ordentlicher Anfänger              bestanden 20/20 · v400 6.6 s (100 %, max 18.4) · halten 15.3 s (100 %, max 41.4) · v500 41.0 s (80 %, max 71.1) · Urteile: good 54%, weak 20%, against 9%, noMouse 7%, wOnly 5%, tooSlow 4%, late 2%
+  geübter Anfänger                   bestanden 20/20 · v400 3.9 s (100 %, max 13.2) · halten 11.7 s (100 %, max 52.8) · v500 12.4 s (100 %, max 52.9) · Urteile: good 67%, weak 24%, against 4%, noMouse 2%, wOnly 1%, tooSlow 0%
+  zaghaft (30 °/s)                   bestanden 18/20 · v400 12.8 s (100 %, max 45.1) · halten 43.1 s (90 %, max 83.0) · v500 87.8 s (5 %, max 87.8) · Urteile: tooSlow 37%, good 32%, noMouse 8%, against 8%, weak 6%, wOnly 5%, late 3%
+
+T5 KURVEN (Stufen: 380 aufbauen, 7 Luft-Tore auf 180°-Bogen R 900, nie unter 330)
+  ordentlicher Anfänger (Hand)       bestanden 4/20 · anlauf 5.0 s (100 %, max 16.7) · bogen 61.7 s (20 %, max 89.0) · Urteile: good 65%, weak 11%, against 8%, noMouse 8%, wOnly 5%, tooSlow 3%, late 1%
+  geübter Anfänger (Hand)            bestanden 11/20 · anlauf 3.4 s (100 %, max 5.2) · bogen 52.3 s (55 %, max 118.3) · Urteile: good 84%, weak 6%, noMouse 4%, against 4%, wOnly 2%
+  RouteFollower Hand 3°              bestanden 20/20 · anlauf 0.6 s (100 %, max 1.0) · bogen 11.0 s (100 %, max 12.0) · Urteile: good 72%, weak 27%, tooFast 1%
+  RouteFollower Hand 4°              bestanden 20/20 · anlauf 0.7 s (100 %, max 1.3) · bogen 12.5 s (100 %, max 14.1) · Urteile: good 65%, weak 32%, tooFast 2%
+  RouteFollower Hand 5°              bestanden 20/20 · anlauf 0.9 s (100 %, max 2.2) · bogen 13.9 s (100 %, max 72.5) · Urteile: good 59%, weak 37%, tooFast 3%, noMouse 1%, against 0%
+
+T6 CROUCH (Stufe: 3× oben auf dem Block landen, geduckt aus der Luft)
+    h 48: Abstand\Duck  0.05 0.15 0.25 0.35 0.45 0.55   | ohne Ducken
+                 20   ·    ·    ✓    ✓    ✓    ✓     | ✓
+                 60   ·    ·    ✓    ✓    ✓    ✓     | ✓
+                100   ·    ·    ·    ·    ·    ✓     | ✓
+                140   ✓    ✓    ✓    ✓    ✓    ✓     | ✓
+                180   ✓    ✓    ✓    ✓    ✓    ✓     | ✓
+                220   ✓    ✓    ✓    ✓    ✓    ✓     | ·
+                260   ·    ·    ·    ·    ·    ·     | ·
+                300   ·    ·    ·    ·    ·    ·     | ·
+  h 48: Anfänger (Absprung 40–260, Duck 0.05–0.45 s) bestanden 20/20 · block 23.4 s (100 %, max 53.4) · Urteile: wOnly 100%
+  h 48: Anfänger mit Markierung (80–200, Duck 0.05–0.35) bestanden 20/20 · block 17.3 s (100 %, max 23.8) · Urteile: wOnly 100%
+  h 48: Vor-Ducken (C vor dem Sprung halten) bestanden 11/20 · block 35.7 s (55 %, max 59.7)
+  h 48: ohne Ducken                  bestanden 0/20 · block – s (0 %, max –) · Urteile: wOnly 100%
+    h 64: Abstand\Duck  0.05 0.15 0.25 0.35 0.45 0.55   | ohne Ducken
+                 20   ✓    ✓    ·    ·    ·    ·     | ·
+                 60   ✓    ✓    ·    ·    ·    ·     | ·
+                100   ✓    ✓    ✓    ✓    ✓    ·     | ·
+                140   ✓    ✓    ✓    ✓    ✓    ·     | ·
+                180   ✓    ✓    ✓    ✓    ✓    ·     | ·
+                220   ·    ·    ·    ·    ·    ·     | ·
+                260   ·    ·    ·    ·    ·    ·     | ·
+                300   ·    ·    ·    ·    ·    ·     | ·
+  h 64: Anfänger (Absprung 40–260, Duck 0.05–0.45 s) bestanden 19/20 · block 23.0 s (95 %, max 58.9) · Urteile: wOnly 94%, good 6%
+  h 64: Anfänger mit Markierung (80–200, Duck 0.05–0.35) bestanden 20/20 · block 16.9 s (100 %, max 28.5) · Urteile: wOnly 89%, good 11%
+  h 64: Vor-Ducken (C vor dem Sprung halten) bestanden 10/20 · block 41.1 s (50 %, max 47.6) · Urteile: good 67%, wOnly 33%
+  h 64: ohne Ducken                  bestanden 0/20 · block – s (0 %, max –) · Urteile: wOnly 100%
+    h 72: Abstand\Duck  0.05 0.15 0.25 0.35 0.45 0.55   | ohne Ducken
+                 20   ✓    ✓    ✓    ·    ·    ·     | ·
+                 60   ✓    ✓    ✓    ✓    ✓    ·     | ·
+                100   ✓    ✓    ✓    ✓    ✓    ·     | ·
+                140   ✓    ✓    ✓    ✓    ✓    ·     | ·
+                180   ·    ·    ·    ·    ·    ·     | ·
+                220   ·    ·    ·    ·    ·    ·     | ·
+                260   ·    ·    ·    ·    ·    ·     | ·
+                300   ·    ·    ·    ·    ·    ·     | ·
+  h 72: Anfänger (Absprung 40–260, Duck 0.05–0.45 s) bestanden 19/20 · block 28.7 s (95 %, max 53.6) · Urteile: wOnly 95%, good 5%
+  h 72: Anfänger mit Markierung (80–200, Duck 0.05–0.35) bestanden 20/20 · block 22.7 s (100 %, max 53.4) · Urteile: wOnly 86%, good 14%
+  h 72: Vor-Ducken (C vor dem Sprung halten) bestanden 5/20 · block 41.1 s (25 %, max 48.3) · Urteile: good 100%
+  h 72: ohne Ducken                  bestanden 0/20 · block – s (0 %, max –) · Urteile: wOnly 100%
+
+T8 SURF-SPEED (10°-Rampe: 800 u/s surfend, dann 1000 u/s surfend)
+  Grundtechnik (Blick ±3°, 0.3 s Reaktion) bestanden 20/20 · v800 6.3 s (100 %, max 7.8) · v1000 8.3 s (100 %, max 9.6)
+  Grundtechnik (Blick ±6°, 0.6 s Reaktion) bestanden 0/20 · v800 – s (0 %, max –) · v1000 – s (0 %, max –)
+  Fehler: nur W                      bestanden 0/20 · v800 – s (0 %, max –) · v1000 – s (0 %, max –)
+  Fehler: nichts drücken             bestanden 0/20 · v800 – s (0 %, max –) · v1000 – s (0 %, max –)
+
+T7 SURF (Stufen: 3 s halten, 6 s halten) — Rampe 60°, 768 breit, Achsgefälle 3° bzw. 0°/10°
+  3°: Grundtechnik (Blick ±3°, 0.3 s Reaktion) bestanden 20/20 · halten3 5.5 s (100 %, max 5.5) · halten6 11.5 s (100 %, max 11.5)
+  3°: Grundtechnik (Blick ±6°, 0.6 s Reaktion) bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  3°: W + D (Strafe-Assist)          bestanden 20/20 · halten3 5.5 s (100 %, max 5.5) · halten6 11.5 s (100 %, max 11.5)
+  3°: Fehler: nur W                  bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  3°: Fehler: nichts drücken         bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  3°: Fehler: Taste von der Rampe weg bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  0°: Grundtechnik (Blick ±3°, 0.3 s Reaktion) bestanden 20/20 · halten3 5.5 s (100 %, max 5.5) · halten6 11.5 s (100 %, max 11.5)
+  0°: Grundtechnik (Blick ±6°, 0.6 s Reaktion) bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  0°: W + D (Strafe-Assist)          bestanden 20/20 · halten3 5.5 s (100 %, max 5.5) · halten6 11.5 s (100 %, max 11.5)
+  0°: Fehler: nur W                  bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  0°: Fehler: nichts drücken         bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  0°: Fehler: Taste von der Rampe weg bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  10°: Grundtechnik (Blick ±3°, 0.3 s Reaktion) bestanden 0/20 · halten3 5.6 s (100 %, max 5.6) · halten6 – s (0 %, max –)
+  10°: Grundtechnik (Blick ±6°, 0.6 s Reaktion) bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  10°: W + D (Strafe-Assist)         bestanden 0/20 · halten3 5.6 s (100 %, max 5.6) · halten6 – s (0 %, max –)
+  10°: Fehler: nur W                 bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  10°: Fehler: nichts drücken        bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)
+  10°: Fehler: Taste von der Rampe weg bestanden 0/20 · halten3 – s (0 %, max –) · halten6 – s (0 %, max –)

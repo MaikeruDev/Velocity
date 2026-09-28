@@ -1,0 +1,8 @@
+fast  {"sync":1}           Kehre 8.38 s, Tempo CP1 457 → CP2 936 (min 457, max 936), frei in der Luft 1.59 s
+fast  {"sync":0.8}         Kehre 8.48 s, Tempo CP1 474 → CP2 882 (min 472, max 905), frei in der Luft 1.61 s
+fast  {"aimNoiseDeg":2}    Kehre 8.57 s, Tempo CP1 520 → CP2 771 (min 520, max 840), frei in der Luft 1.54 s
+fast  {"aimNoiseDeg":3}    Kehre 9.69 s, Tempo CP1 471 → CP2 672 (min 471, max 745), frei in der Luft 1.71 s
+safe  {"sync":1}           Kehre 9.72 s, Tempo CP1 515 → CP2 925 (min 471, max 949), frei in der Luft 1.76 s
+safe  {"sync":0.8}         Kehre 10.16 s, Tempo CP1 340 → CP2 851 (min 340, max 1027), frei in der Luft 1.79 s
+safe  {"aimNoiseDeg":2}    Kehre 10.72 s, Tempo CP1 464 → CP2 838 (min 415, max 838), frei in der Luft 1.41 s
+safe  {"aimNoiseDeg":3}    Kehre 12.06 s, Tempo CP1 471 → CP2 739 (min 402, max 739), frei in der Luft 1.41 s

@@ -1,0 +1,19 @@
+level3-safe.json w1 → CP1: 88/108, 0 Nähte — 550/-150/2° kill; 550/-90/0° kill; 550/-90/2° kill
+level3-safe.json outer1a → CP2: 71/90, 6 Nähte — 550/-90/2° timeout; 400/-30/2° timeout; 550/-30/2° timeout
+level3-safe.json outer2b → CP2: 96/108, 5 Nähte — 400/-90/2° timeout; 550/-90/2° timeout; 400/-30/2° timeout
+level3-safe.json outer3b → CP2: 107/108, 5 Nähte — 400/120/2° timeout
+level3-safe.json outer4b → CP2: 108/108, 1 Nähte
+level3-safe.json r1 → Ziel: 13/108, 22 Nähte — 400/-150/-2° kill; 400/-150/0° kill; 400/-150/2° timeout
+level3-safe.json z → Ziel: 20/108, 23 Nähte — 400/-150/-2° kill; 400/-150/2° kill; 550/-150/-2° kill
+level3-safe.json finalea → Ziel: 43/108, 18 Nähte — 400/-150/-2° kill; 400/-150/0° kill; 550/-150/-2° kill
+level3-fast.json w1 → CP1: 88/108, 0 Nähte — 550/-150/2° kill; 550/-90/0° kill; 550/-90/2° kill
+level3-fast.json inner1a → CP2: 12/36, 1 Nähte — 400/-30/-2° kill; 400/-30/0° kill; 400/-30/2° timeout
+level3-fast.json inner3a → CP2: 24/54, 0 Nähte — 400/-90/-2° kill; 400/-90/0° kill; 550/-90/-2° kill
+level3-fast.json r1 → Ziel: 15/108, 20 Nähte — 400/-150/-2° fell; 400/-150/0° fell; 400/-150/2° kill
+level3-fast.json z → Ziel: 23/108, 21 Nähte — 400/-150/-2° kill; 400/-150/2° fell; 550/-150/-2° kill
+level3-fast.json finalea → Ziel: 49/108, 14 Nähte — 400/-150/-2° kill; 400/-150/0° timeout; 400/-150/2° kill
+level1.json chutea → Ziel: 62/90, 1 Nähte — 400/-90/2° timeout; 700/-90/2° kill; 850/-90/2° kill
+level2.json surf0b → CP3: 58/108, 8 Nähte — 400/-150/-2° kill; 550/-150/-2° kill; 550/-150/0° kill
+level2.json surf2 → CP3: 106/108, 0 Nähte — 700/-90/2° kill; 850/30/2° kill
+level2.json surf3 → CP4: 90/90, 0 Nähte
+level2.json surf4a → Ziel: 33/90, 1 Nähte — 400/-90/-2° kill; 400/-90/0° kill; 400/-90/2° kill

@@ -10,6 +10,11 @@ import { Spring, approach, clamp, fin } from './anim';
  * Gefühl vor Show: alle Auslenkungen weich gesättigt und hart geklemmt, Bhop-Landungen und
  * Kettensprünge nur leicht (50 Hops sollen nicht nerven), Landungen einen Tick zurückgehalten
  * (fallen.md #54).
+ *
+ * Zeitpunkt der Events (Plan 007 K9): sie kommen aus den Ticks DIESES Frames, gelten also am
+ * Frame-Ende (fallen.md #77) — Impulse wirken nach dem Federschritt, Zustände aus Events (Rutschen,
+ * Einfahren) ab dem nächsten Frame, die Lande-Verzögerung wird per Spring.impulse exakt nachgeholt.
+ * Am Frame-Anfang angesetzt lief die Hand bei 30 Hz einen Frame vor (6.6 px gegen 2400 Hz).
  */
 
 /** Grenzen der Auslenkung (Bildhöhen, Grad) — Tests prüfen genau diese. */
@@ -91,6 +96,20 @@ const SURF_X = 0.022;
 const SURF_Y = -0.02;
 const SURF_YAW = 0.1;
 
+/** Rutschen (Plan 007 K8): Hand tief und nach außen, leicht nach hinten gekippt ("Tuck"). */
+const SLIDE_Y = 0.055;
+const SLIDE_X = 0.03;
+const SLIDE_TILT = -7;
+const SLIDE_PITCH = -0.08;
+/** Rutsch-Zustand ohne slideEnd löschen, wenn man länger in der Luft ist (Absicherung). */
+const SLIDE_AIR_CLEAR = 0.25;
+/** Kanten-Assist: Lip-Step = kurzer Griff (Hand taucht leicht ab), Vault = Abdrücken (kräftig nach unten). */
+const STEP_KICK = 0.55;
+const STEP_PITCH = -0.6;
+const VAULT_KICK = 1.3;
+const VAULT_SQUASH = 1.6;
+const VAULT_PITCH = -1.4;
+
 const TARGET_TAU = 0.07;
 const ENTER_TAU = 0.11;
 const FIST_KICK = -0.8;
@@ -143,6 +162,34 @@ export class HandMotion {
   private landPending = -1;
   private landAge = 0;
   private landHop = false;
+  /** Landung kam in diesem Frame: die Verzögerung läuft erst ab seinem Ende. */
+  private landFresh = false;
+  private enterFresh = false;
+  private slide = 0;
+  private sliding = false;
+  /** Rutschen, wie es während dieses Frames galt (slideStart/-End wirken ab Frame-Ende). */
+  private slideWas = 0;
+  /** Impulse aus Events dieses Frames (y, Squash, Pitch pro s) — wirken am Ende des nächsten update(). */
+  private qy = 0;
+  private qsq = 0;
+  private qpitch = 0;
+  /** dt des laufenden update() (Feld statt Argument: kein Boxing, falls V8 nicht inlinet). */
+  private frameDt = 0;
+  /**
+   * Zustands-Eingaben, die WÄHREND dieses Frames galten = Stand am Ende des letzten: ein Wechsel
+   * (Absprung, A/D, Ducken) kommt wie die Events aus den Ticks dieses Frames und gilt ab seinem Ende
+   * (#77). Das Blick-Delta ist ein Intervall-Maß und gilt sofort. Erster Frame = aktuelle Eingabe
+   * (gleichbleibende Eingaben rechnen bitgleich wie vorher).
+   */
+  private readonly held: HandFrameInput = makeHandInput();
+  private heldPrimed = false;
+  /** Tempo aus `held` (für die Vibration in writeOutput, nach hold()). */
+  private heldSpeed = 0;
+
+  /** Rutscht der Spieler gerade (slideStart … slideEnd)? */
+  get isSliding(): boolean {
+    return this.sliding;
+  }
 
   /** Neigungsrate der Hand (°/s) — Tricks (Balancieren) lesen sie. */
   get tiltRate(): number {
@@ -162,7 +209,16 @@ export class HandMotion {
     this.surf = 0;
     this.surfSide = 0;
     this.enter = 0;
+    this.enterFresh = false;
     this.landPending = -1;
+    this.landFresh = false;
+    this.slide = 0;
+    this.sliding = false;
+    this.slideWas = 0;
+    this.qy = 0;
+    this.qsq = 0;
+    this.qpitch = 0;
+    this.heldPrimed = false;
     this.x = 0;
     this.y = 0;
     this.tilt = 0;
@@ -171,10 +227,25 @@ export class HandMotion {
     this.pitch = 0;
   }
 
-  /** Impulse von außen (Tricks): y in Bildhöhen/s (nach unten), Squash/s. */
+  /**
+   * Impuls JETZT (y in Bildhöhen/s nach unten, Squash/s): für Aufrufer nach update() — Tricks und
+   * Posenwechsel dieses Frames, deren Marke am Frame-Ende liegt. Aus dem Tick-Pfad: queueKick.
+   */
   kick(y: number, sq: number): void {
     this.sy.v += fin(y);
     this.sq.v += fin(sq);
+  }
+
+  /** Wie kick(), aber aus einem Objekt gelesen (Trick-Impulse): keine Kommazahl-Argumente, kein Boxing. */
+  kickFrom(o: { readonly kickY: number; readonly kickSq: number }): void {
+    this.sy.v += fin(o.kickY);
+    this.sq.v += fin(o.kickSq);
+  }
+
+  /** Impuls aus dem Tick-Pfad (Event dieses Frames): wirkt am Ende des nächsten update(). */
+  queueKick(y: number, sq: number): void {
+    this.qy += fin(y);
+    this.qsq += fin(sq);
   }
 
   /** Tick-Pfad (EventBus): nur Zahlen, nichts allokieren. */
@@ -182,26 +253,46 @@ export class HandMotion {
     switch (e.type) {
       case 'jump': {
         if (this.landPending >= 0) this.landHop = true;
+        // Ein Sprung beendet die Rutsche immer (PlayerMovement schickt slideEnd erst NACH dem jump).
+        this.sliding = false;
         const k = e.chain >= 2 ? JUMP_CHAIN_SHARE : 1;
-        this.sy.v += JUMP_KICK * k;
-        this.sq.v += JUMP_STRETCH * k;
-        this.spitch.v += JUMP_PITCH * k;
+        this.qy += JUMP_KICK * k;
+        this.qsq += JUMP_STRETCH * k;
+        this.qpitch += JUMP_PITCH * k;
         break;
       }
       case 'land': {
         this.landPending = clamp(fin(e.impact) / LAND_REF, 0, 1.6);
         this.landAge = 0;
+        this.landFresh = true;
         this.landHop = e.jumpQueued;
         break;
       }
       case 'checkpoint':
       case 'finish':
-        this.sy.v += FIST_KICK;
+        this.qy += FIST_KICK;
+        break;
+      case 'slideStart':
+        this.sliding = true;
+        break;
+      case 'slideEnd':
+        this.sliding = false;
+        break;
+      case 'ledge':
+        if (e.kind === 'vault') {
+          this.qy += VAULT_KICK;
+          this.qsq -= VAULT_SQUASH;
+          this.qpitch += VAULT_PITCH;
+        } else {
+          this.qy += STEP_KICK;
+          this.qpitch += STEP_PITCH;
+        }
         break;
       case 'respawn':
       case 'levelLoaded':
         this.reset();
         this.enter = 1;
+        this.enterFresh = true;
         break;
       default:
         break;
@@ -212,48 +303,81 @@ export class HandMotion {
     const dt = Number.isFinite(dtRaw) ? clamp(dtRaw, 0, 0.1) : 0;
     if (dt <= 0) return;
     this.t += dt;
-    const speed = Math.max(0, fin(inp.speed));
-    const ground = inp.onGround && !inp.surfing;
-
-    if (this.landPending >= 0) {
-      this.landAge += dt;
-      if (this.landHop || this.landAge >= LAND_HOLD) {
-        const k = this.landPending * (this.landHop ? LAND_HOP_SHARE : 1);
-        this.sy.v += LAND_KICK * k;
-        this.sq.v -= LAND_SQUASH * k;
-        this.spitch.v += LAND_PITCH * k;
-        this.landPending = -1;
-      }
+    this.frameDt = dt;
+    if (!this.heldPrimed) {
+      this.hold(inp);
+      this.heldPrimed = true;
     }
+    // Kleine Methoden ohne Kommazahl-Argumente (dt als Feld): ein großes update() sprengte das
+    // Inlining-Budget von V8, dann boxt jeder Aufruf von step/approach seine Zahlen (Dauer-Müll).
+    this.updateStates();
+    this.stepSprings(inp);
+    this.frameEndImpulses();
+    this.sy.x = clamp(this.sy.x, -HAND_LIMITS.yUp * 1.5, HAND_LIMITS.yDown * 1.5);
+    this.sq.x = clamp(this.sq.x, HAND_LIMITS.squashMin - 0.1, HAND_LIMITS.squashMax + 0.1);
+    this.writeOutput(inp);
+  }
 
-    const bobTarget = ground ? clamp(speed / BOB_REF_SPEED, 0, BOB_MAX) : 0;
+  /** Geglättete Zustände aus den Eingaben, die während dieses Frames galten (held). */
+  private updateStates(): void {
+    const dt = this.frameDt;
+    const s = this.held;
+    const speed = Math.max(0, fin(s.speed));
+    this.heldSpeed = speed;
+    const ground = s.onGround && !s.surfing;
+    if (this.sliding && !s.onGround && fin(s.airTime) > SLIDE_AIR_CLEAR) this.sliding = false;
+    this.slide = approach(this.slide, this.slideWas, TARGET_TAU, dt);
+    this.slideWas = this.sliding ? 1 : 0;
+    // Beim Rutschen kein Lauf-Bob (keine Schritte).
+    const bobTarget = ground && !this.sliding ? clamp(speed / BOB_REF_SPEED, 0, BOB_MAX) : 0;
     this.bob = approach(this.bob, bobTarget, BOB_FADE, dt);
-    this.duck = approach(this.duck, inp.ducked ? 1 : 0, TARGET_TAU, dt);
+    this.duck = approach(this.duck, s.ducked ? 1 : 0, TARGET_TAU, dt);
     const windTarget = clamp((speed - WIND_FROM) / (WIND_FULL - WIND_FROM), 0, 1);
     this.wind = approach(this.wind, windTarget, TARGET_TAU * 3, dt);
-    this.surf = approach(this.surf, inp.surfing ? 1 : 0, TARGET_TAU, dt);
-    if (inp.surfing) this.surfSide = approach(this.surfSide, clamp(fin(inp.surfSide), -1, 1), TARGET_TAU, dt);
-    this.enter = approach(this.enter, 0, ENTER_TAU, dt);
+    this.surf = approach(this.surf, s.surfing ? 1 : 0, TARGET_TAU, dt);
+    if (s.surfing) this.surfSide = approach(this.surfSide, clamp(fin(s.surfSide), -1, 1), TARGET_TAU, dt);
+    if (this.enterFresh) this.enterFresh = false;
+    else this.enter = approach(this.enter, 0, ENTER_TAU, dt);
+  }
 
+  /** Federziele (Zustand + Maus-Sway dieses Frames) und Federschritt; merkt danach die neue Eingabe. */
+  private stepSprings(inp: HandFrameInput): void {
+    const dt = this.frameDt;
+    const s = this.held;
     // Maus-Sway: Trägheit gegen die Drehung (links drehen → Hand bleibt rechts zurück).
     const swX = Math.tanh(fin(inp.yawDelta) / dt / SWAY_RATE_REF);
     const swY = Math.tanh(fin(inp.pitchDelta) / dt / SWAY_RATE_REF);
+    const air = !s.onGround && !s.surfing;
+    const sink = air ? AIR_LIFT + clamp((fin(s.airTime) - AIR_SINK_FROM) * AIR_SINK_RATE, 0, AIR_SINK_MAX - AIR_LIFT) : 0;
+    const yTarget = SWAY_Y * swY + sink + DUCK_Y * this.duck + WIND_Y * this.wind + SURF_Y * this.surf + SLIDE_Y * this.slide;
+    const xTarget = SWAY_X * swX + DUCK_X * this.duck + WIND_X * this.wind - SURF_X * this.surf * this.surfSide + SLIDE_X * this.slide;
+    const side = clamp(fin(s.side), -1, 1);
+    const tiltTarget = -STRAFE_TILT * side * (air ? 1 : 0.5) + SWAY_TILT * swX + SURF_TILT * this.surf * this.surfSide + SLIDE_TILT * this.slide;
+    this.hold(inp);
+    // Ziel/Schrittweite als Felder (Spring.stepGoal): kein Aufruf mit Kommazahlen im Frame-Pfad.
+    this.sy.goal = yTarget;
+    this.sx.goal = xTarget;
+    this.st.goal = tiltTarget;
+    this.sq.goal = 1;
+    this.syaw.goal = SWAY_YAW * swX + SURF_YAW * this.surf * this.surfSide;
+    this.spitch.goal = -SWAY_PITCH * swY + WIND_PITCH * this.wind + SLIDE_PITCH * this.slide;
+    this.sy.h = dt;
+    this.sx.h = dt;
+    this.st.h = dt;
+    this.sq.h = dt;
+    this.syaw.h = dt;
+    this.spitch.h = dt;
+    this.sy.stepGoal();
+    this.sx.stepGoal();
+    this.st.stepGoal();
+    this.sq.stepGoal();
+    this.syaw.stepGoal();
+    this.spitch.stepGoal();
+  }
 
-    const air = !inp.onGround && !inp.surfing;
-    const sink = air ? AIR_LIFT + clamp((fin(inp.airTime) - AIR_SINK_FROM) * AIR_SINK_RATE, 0, AIR_SINK_MAX - AIR_LIFT) : 0;
-    const yTarget = SWAY_Y * swY + sink + DUCK_Y * this.duck + WIND_Y * this.wind + SURF_Y * this.surf;
-    const xTarget = SWAY_X * swX + DUCK_X * this.duck + WIND_X * this.wind - SURF_X * this.surf * this.surfSide;
-    const side = clamp(fin(inp.side), -1, 1);
-    const tiltTarget = -STRAFE_TILT * side * (air ? 1 : 0.5) + SWAY_TILT * swX + SURF_TILT * this.surf * this.surfSide;
-    this.sy.step(yTarget, dt);
-    this.sx.step(xTarget, dt);
-    this.st.step(tiltTarget, dt);
-    this.sq.step(1, dt);
-    this.syaw.step(SWAY_YAW * swX + SURF_YAW * this.surf * this.surfSide, dt);
-    this.spitch.step(-SWAY_PITCH * swY + WIND_PITCH * this.wind, dt);
-    this.sy.x = clamp(this.sy.x, -HAND_LIMITS.yUp * 1.5, HAND_LIMITS.yDown * 1.5);
-    this.sq.x = clamp(this.sq.x, HAND_LIMITS.squashMin - 0.1, HAND_LIMITS.squashMax + 0.1);
-
+  /** Ausgabe: Federn + Lauf-Bob, Atmen, Fahrtwind-Vibration, geklemmt und × motionFx. */
+  private writeOutput(inp: HandFrameInput): void {
+    const speed = this.heldSpeed;
     const ph = TAU * fin(inp.stridePhase);
     const bw = this.bob;
     const bobX = BOB_X * bw * Math.sin(ph);
@@ -283,5 +407,51 @@ export class HandMotion {
     this.squash = 1 + m * (clamp(this.sq.x, L.squashMin, L.squashMax) - 1);
     this.yaw = m * clamp(this.syaw.x, -L.yaw, L.yaw);
     this.pitch = m * clamp(this.spitch.x, -L.pitch, L.pitch);
+  }
+
+  /**
+   * Nach dem Federschritt: Impulse der Events dieses Frames (Frame-Ende = τ 0) und die fällige
+   * Lande-Verzögerung (12 ms ab Frame-Ende der Landung) — die liegt meist mitten in einem Frame
+   * und wird mit ihrem Alter exakt nachgeholt (bei 30 Hz sonst bis 21 ms zu spät). Bhop-Landung
+   * (Sprung folgt) wirkt mit dem Sprung.
+   */
+  private frameEndImpulses(): void {
+    if (this.landPending >= 0) {
+      if (this.landHop) this.landImpulse(LAND_HOP_SHARE, 0);
+      else if (this.landFresh) this.landAge = 0;
+      else {
+        this.landAge += this.frameDt;
+        if (this.landAge >= LAND_HOLD) this.landImpulse(1, this.landAge - LAND_HOLD);
+      }
+    }
+    this.landFresh = false;
+    if (this.qy !== 0 || this.qsq !== 0 || this.qpitch !== 0) {
+      this.sy.v += this.qy;
+      this.sq.v += this.qsq;
+      this.spitch.v += this.qpitch;
+      this.qy = 0;
+      this.qsq = 0;
+      this.qpitch = 0;
+    }
+  }
+
+  /** Zustands-Eingaben für den nächsten Frame merken (nur Kopie, keine Allokation). */
+  private hold(inp: HandFrameInput): void {
+    const h = this.held;
+    h.speed = inp.speed;
+    h.onGround = inp.onGround;
+    h.surfing = inp.surfing;
+    h.ducked = inp.ducked;
+    h.airTime = inp.airTime;
+    h.side = inp.side;
+    h.surfSide = inp.surfSide;
+  }
+
+  private landImpulse(share: number, age: number): void {
+    const k = this.landPending * share;
+    this.sy.impulse(LAND_KICK * k, age);
+    this.sq.impulse(-LAND_SQUASH * k, age);
+    this.spitch.impulse(LAND_PITCH * k, age);
+    this.landPending = -1;
   }
 }

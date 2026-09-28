@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "id": "t1",
+  "name": "ERSTE SCHRITTE",
+  "subtitle": "Laufen, springen, rutschen.",
+  "spawn": {
+    "pos": [0,0,0],
+    "yaw": 0
+  },
+  "killY": -698,
+  "music": {
+    "bpm": 132
+  },
+  "environment": {
+    "skyTop": "#060a24",
+    "skyHorizon": "#1d3f7a",
+    "skyBottom": "#070b1f",
+    "fogColor": "#16305e",
+    "fogNear": 1800,
+    "fogFar": 9000,
+    "sunDir": [0.35,0.55,-0.75],
+    "sunColor": "#d6ecff",
+    "ambientSky": "#4a6ad0",
+    "ambientGround": "#141a3a",
+    "trimColor": "#33f0ff",
+    "trimColorAlt": "#ff3fd0",
+    "voidY": -1400
+  },
+  "brushes": [
+    {"type":"box","min":[-384,-64,-1500],"max":[384,0,256],"mat":"floor","tag":"start"},
+    {"type":"wedge","min":[-384,-64,-1596],"max":[384,0,-1500],"rise":"-z","lowY":-40,"mat":"metal","tag":"mulde1"},
+    {"type":"box","min":[-384,-64,-1980],"max":[384,0,-1596],"mat":"floor","tag":"insel1"},
+    {"type":"wedge","min":[-384,-64,-2108],"max":[384,0,-1980],"rise":"-z","lowY":-40,"mat":"metal","tag":"mulde2"},
+    {"type":"box","min":[-384,-64,-2492],"max":[384,0,-2108],"mat":"floor","tag":"insel2"},
+    {"type":"wedge","min":[-384,-64,-2652],"max":[384,0,-2492],"rise":"-z","lowY":-40,"mat":"metal","tag":"mulde3"},
+    {"type":"box","min":[-384,-64,-3800],"max":[384,0,-2652],"mat":"floor","tag":"anlauf-stufe"},
+    {"type":"box","min":[-384,-16,-5900],"max":[384,48,-3800],"mat":"accent","tint":"#2a3d7a","tag":"stufe"},
+    {"type":"wedge","min":[-384,-362,-6500],"max":[384,48,-5900],"rise":"+z","lowY":-298,"mat":"floor","tag":"hang"},
+    {"type":"box","min":[-16,-354,-6492],"max":[16,320,-5908],"mat":"wall","tag":"rinne-wand"},
+    {"type":"hull","points":[[16,128,-5900],[16,192,-5900],[384,128,-5900],[384,192,-5900],[16,-218,-6500],[16,-154,-6500],[384,-218,-6500],[384,-154,-6500]],"mat":"hazard","tag":"rinne-dach"},
+    {"type":"box","min":[-384,-362,-7200],"max":[384,-298,-6500],"mat":"finish","tag":"platz"},
+    {"type":"box","min":[-384,108,-5516],"max":[384,320,-5324],"mat":"hazard","tag":"tunnel"},
+    {"type":"box","min":[-448,-362,-7200],"max":[-384,320,256],"mat":"wall","tag":"bande-w"},
+    {"type":"box","min":[384,-362,-7200],"max":[448,320,256],"mat":"wall","tag":"bande-o"},
+    {"type":"box","min":[-448,-362,256],"max":[448,320,320],"mat":"wall","tag":"bande-s"},
+    {"type":"box","min":[-448,-362,-7264],"max":[448,320,-7200],"mat":"wall","tag":"bande-n"},
+    {"type":"hull","points":[[-352,0,-762],[-352,-4,-762],[-352,0,-778],[-352,-4,-778],[352,0,-778],[352,-4,-778],[352,0,-762],[352,-4,-762]],"mat":"marking","tint":"#33f0ff","collide":false,"tag":"linie","trim":false},
+    {"type":"hull","points":[[-352,0,-1476],[-352,-4,-1476],[-352,0,-1492],[-352,-4,-1492],[352,0,-1492],[352,-4,-1492],[352,0,-1476],[352,-4,-1476]],"mat":"marking","tint":"#ffb347","collide":false,"tag":"kante","trim":false},
+    {"type":"hull","points":[[-352,0,-1956],[-352,-4,-1956],[-352,0,-1972],[-352,-4,-1972],[352,0,-1972],[352,-4,-1972],[352,0,-1956],[352,-4,-1956]],"mat":"marking","tint":"#ffb347","collide":false,"tag":"kante","trim":false},
+    {"type":"hull","points":[[-352,0,-2468],[-352,-4,-2468],[-352,0,-2484],[-352,-4,-2484],[352,0,-2484],[352,-4,-2484],[352,0,-2468],[352,-4,-2468]],"mat":"marking","tint":"#ffb347","collide":false,"tag":"kante","trim":false},
+    {"type":"hull","points":[[0,48,-4957.284],[0,44,-4957.284],[-56.569,48,-4900.716],[-56.569,44,-4900.716],[-56.569,48,-4882.716],[-56.569,44,-4882.716],[0,48,-4939.284],[0,44,-4939.284]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[0,48,-4957.284],[0,44,-4957.284],[56.569,48,-4900.716],[56.569,44,-4900.716],[56.569,48,-4882.716],[56.569,44,-4882.716],[0,48,-4939.284],[0,44,-4939.284]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[0,48,-5067.284],[0,44,-5067.284],[-56.569,48,-5010.716],[-56.569,44,-5010.716],[-56.569,48,-4992.716],[-56.569,44,-4992.716],[0,48,-5049.284],[0,44,-5049.284]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[0,48,-5067.284],[0,44,-5067.284],[56.569,48,-5010.716],[56.569,44,-5010.716],[56.569,48,-4992.716],[56.569,44,-4992.716],[0,48,-5049.284],[0,44,-5049.284]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[0,48,-5177.284],[0,44,-5177.284],[-56.569,48,-5120.716],[-56.569,44,-5120.716],[-56.569,48,-5102.716],[-56.569,44,-5102.716],[0,48,-5159.284],[0,44,-5159.284]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"chevron","trim":false},
+    {"type":"hull","points":[[0,48,-5177.284],[0,44,-5177.284],[56.569,48,-5120.716],[56.569,44,-5120.716],[56.569,48,-5102.716],[56.569,44,-5102.716],[0,48,-5159.284],[0,44,-5159.284]],"mat":"marking","tint":"#9dff5c","collide":false,"tag":"chevron","trim":false},
+    {"type":"box","min":[-192,-298,-6916],"max":[-160,-74,-6884],"mat":"dark","collide":false,"trim":false},
+    {"type":"box","min":[160,-298,-6916],"max":[192,-74,-6884],"mat":"dark","collide":false,"trim":false},
+    {"type":"box","min":[-192,-74,-6916],"max":[192,-42,-6884],"mat":"light","tint":"#9dff5c","collide":false,"trim":false}
+  ],
+  "triggers": [
+    {"kind":"finish","min":[-160,-298,-6964],"max":[160,-98,-6836],"tag":"finish"}
+  ],
+  "route": [
+    {"pos":[0,0,0]},
+    {"pos":[0,0,-770],"note":"linie"},
+    {"pos":[0,0,-1480],"jump":true},
+    {"pos":[0,0,-1706]},
+    {"pos":[0,0,-1960],"jump":true},
+    {"pos":[0,0,-2218]},
+    {"pos":[0,0,-2472],"jump":true},
+    {"pos":[0,0,-2802],"note":"drueben"},
+    {"pos":[0,0,-3690],"jump":true},
+    {"pos":[0,48,-3860]},
+    {"pos":[0,48,-3980],"note":"oben"},
+    {"pos":[0,48,-4650],"note":"rutsch-start"},
+    {"pos":[0,48,-5420],"note":"tunnel"},
+    {"pos":[-192,48,-5860]},
+    {"pos":[-192,-298,-6580]},
+    {"pos":[0,-298,-6900],"note":"portal"}
+  ],
+  "training": {
+    "lesson": 1,
+    "short": "T1",
+    "group": "basics",
+    "zones": [{"id":"linie","min":[-384,0,-820],"max":[384,200,-720]},{"id":"drueben","min":[-384,0,-2952],"max":[384,200,-2752]},{"id":"oben","min":[-384,48,-4100],"max":[384,248,-3900]},{"id":"tunnel-rein","min":[-384,48,-5356],"max":[384,108,-5324]},{"id":"tunnel-raus","min":[-384,48,-5516],"max":[384,108,-5484]},{"id":"rinne-mess","min":[16,-264,-6440],"max":[384,-149,-6380]}],
+    "gates": [{"id":"tor1","min":[-384,0,-1024],"max":[384,320,-1000],"tint":"#ffb347"},{"id":"tor2","min":[-384,0,-3188],"max":[384,320,-3164],"tint":"#ffb347"},{"id":"tor3","min":[-384,48,-4524],"max":[384,320,-4500],"tint":"#ffb347"},{"id":"tunnel","min":[-384,48,-5324],"max":[384,108,-5300],"tint":"#9dff5c"}],
+    "stages": [{"id":"laufen","title":"LAUFEN","text":"MAUS = UMSEHEN, W = LAUFEN\nLAUF BIS ZUR LEUCHTLINIE","task":{"kind":"reach","zone":"linie"},"opens":["tor1"],"spawn":{"pos":[0,0,0],"yaw":0},"demo":{"kind":"route","from":0,"to":1,"seconds":6}},{"id":"springen","title":"SPRINGEN","text":"LEERTASTE = SPRINGEN\nSPRING ÜBER DIE DREI LÜCKEN","task":{"kind":"reach","zone":"drueben"},"opens":["tor2"],"spawn":{"pos":[0,0,-1150],"yaw":0},"demo":{"kind":"route","from":1,"to":7,"seconds":12},"tips":[{"on":"stuck","after":15,"text":"AN DER LEUCHTKANTE SPRINGEN\nZU KURZ? EINFACH WEITERLAUFEN"}]},{"id":"stufe","title":"AUF DIE STUFE","text":"SPRING AUF DIE STUFE\nNORMAL SPRINGEN REICHT HIER","task":{"kind":"reach","zone":"oben"},"opens":["tor3"],"spawn":{"pos":[0,0,-3314],"yaw":0},"demo":{"kind":"route","from":7,"to":10,"seconds":8}},{"id":"rutschen","title":"RUTSCHEN","text":"VOLLES TEMPO, DANN C DRÜCKEN:\nSO RUTSCHST DU DURCH DEN TUNNEL","task":{"kind":"event","event":"slideStart","count":1},"opens":["tunnel"],"spawn":{"pos":[0,48,-4650],"yaw":0},"demo":{"kind":"route","from":11,"to":12,"seconds":6},"tips":[{"on":"stuck","after":10,"text":"ERST ANLAUFEN, DANN C:\nRUTSCHEN GEHT NUR MIT TEMPO"}]},{"id":"flink","title":"FLINK DURCH","text":"C ERST KURZ VOR DEM TUNNEL:\nMIT TEMPO DURCH DEN TUNNEL","task":{"kind":"course","zones":["tunnel-rein","tunnel-raus"],"minSpeed":200},"rank":"bonus"},{"id":"rinne","title":"RUTSCH-RINNE","text":"RECHTS DURCH DIE RINNE RUTSCHEN\nUNTEN SCHNELLER ALS 450","task":{"kind":"course","zones":["rinne-mess"],"minSpeed":450},"rank":"master","spawn":{"pos":[192,48,-5556],"yaw":0},"tips":[{"on":"stuck","after":15,"text":"ANLAUFEN, VOR DER RINNE C DRÜCKEN\nDER HANG MACHT DICH SCHNELLER"}]}],
+    "hud": {"forceKeys":true}
+  }
+}

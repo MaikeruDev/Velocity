@@ -1,4 +1,6 @@
 import type { MovementEvent } from '../player/types';
+import type { StageRank } from '../world/level/LevelFormat';
+import type { Verdict } from './trainingTypes';
 
 /**
  * Alles, worauf Audio, Kamera, HUD und Renderer reagieren. Bewegungs-
@@ -18,7 +20,23 @@ export type RunEvent =
   | { readonly type: 'respawn'; readonly reason: RespawnReason }
   /** Geschwindigkeitsschwelle erstmals in diesem Luftabschnitt überschritten (500, 750, 1000, …). */
   | { readonly type: 'speedMilestone'; readonly speed: number }
-  | { readonly type: 'levelLoaded'; readonly id: string; readonly name: string; readonly subtitle?: string };
+  | { readonly type: 'levelLoaded'; readonly id: string; readonly name: string; readonly subtitle?: string }
+  /**
+   * Trainingsmodus (Plan 007, aus TrainingSessionApi.tick): Urteil über einen Hop. counted = zählt
+   * für die Aufgabe der Stufe; count/goal = Stand danach (für HUD-Pips und Hand).
+   */
+  | {
+      readonly type: 'lessonHop';
+      readonly verdict: Verdict;
+      readonly gain: number;
+      readonly counted: boolean;
+      readonly count: number;
+      readonly goal: number;
+    }
+  /** Stufe index (ab 0) von total erledigt; lessonDone = damit sind alle Pflichtstufen erledigt. */
+  | { readonly type: 'lessonStage'; readonly index: number; readonly total: number; readonly rank: StageRank; readonly lessonDone: boolean }
+  /** Tor (GateDef.id) geht auf oder wieder zu (Lektion neu). */
+  | { readonly type: 'gate'; readonly id: string; readonly open: boolean };
 
 export type RespawnReason = 'fall' | 'kill' | 'restart' | 'manual';
 

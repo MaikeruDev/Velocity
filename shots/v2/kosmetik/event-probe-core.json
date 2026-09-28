@@ -1,0 +1,140 @@
+{
+  "level1 · sync1.0": {
+    "runs": 3,
+    "finishes": 3,
+    "deaths": 0,
+    "seconds": 71.2,
+    "surfShare": 3.4,
+    "props": {
+      "lighter": {
+        "busyShare": 32.5,
+        "busyShareFree": 34.1,
+        "tricksPerMin": 30.3,
+        "surfShown": 100,
+        "starts": {
+          "lidFlick": 6,
+          "strike": 6,
+          "twirl": 6,
+          "tossOpen": 15,
+          "finale": 3
+        }
+      },
+      "phone": {
+        "busyShare": 36,
+        "busyShareFree": 37.7,
+        "tricksPerMin": 30.3,
+        "surfShown": 100,
+        "starts": {
+          "tap": 6,
+          "buzz": 9,
+          "flipCatch": 3,
+          "spinToss": 15,
+          "photo": 3
+        }
+      }
+    }
+  },
+  "level1 · Hand 1.5°": {
+    "runs": 3,
+    "finishes": 3,
+    "deaths": 0,
+    "seconds": 100.4,
+    "surfShare": 7.1,
+    "props": {
+      "lighter": {
+        "busyShare": 27,
+        "busyShareFree": 29.4,
+        "tricksPerMin": 28.7,
+        "surfShown": 100,
+        "starts": {
+          "lidFlick": 16,
+          "strike": 8,
+          "twirl": 16,
+          "tossOpen": 5,
+          "finale": 3
+        }
+      },
+      "phone": {
+        "busyShare": 31.1,
+        "busyShareFree": 33.8,
+        "tricksPerMin": 28.7,
+        "surfShown": 100,
+        "starts": {
+          "tap": 18,
+          "buzz": 7,
+          "flipCatch": 16,
+          "spinToss": 4,
+          "photo": 3
+        }
+      }
+    }
+  },
+  "level2 · sync1.0": {
+    "runs": 3,
+    "finishes": 3,
+    "deaths": 0,
+    "seconds": 49,
+    "surfShare": 22.8,
+    "props": {
+      "lighter": {
+        "busyShare": 20.5,
+        "busyShareFree": 28.8,
+        "tricksPerMin": 25.7,
+        "surfShown": 100,
+        "starts": {
+          "lidFlick": 7,
+          "strike": 6,
+          "twirl": 2,
+          "tossOpen": 3,
+          "finale": 3
+        }
+      },
+      "phone": {
+        "busyShare": 24.3,
+        "busyShareFree": 34,
+        "tricksPerMin": 25.7,
+        "surfShown": 100,
+        "starts": {
+          "tap": 7,
+          "buzz": 6,
+          "flipCatch": 2,
+          "spinToss": 3,
+          "photo": 3
+        }
+      }
+    }
+  },
+  "level2 · Hand 1.5°": {
+    "runs": 3,
+    "finishes": 3,
+    "deaths": 0,
+    "seconds": 53.6,
+    "surfShare": 28.7,
+    "props": {
+      "lighter": {
+        "busyShare": 17.6,
+        "busyShareFree": 26.3,
+        "tricksPerMin": 23.5,
+        "surfShown": 100,
+        "starts": {
+          "lidFlick": 9,
+          "strike": 6,
+          "twirl": 3,
+          "finale": 3
+        }
+      },
+      "phone": {
+        "busyShare": 20.3,
+        "busyShareFree": 30.3,
+        "tricksPerMin": 23.5,
+        "surfShown": 100,
+        "starts": {
+          "tap": 9,
+          "buzz": 6,
+          "flipCatch": 3,
+          "photo": 3
+        }
+      }
+    }
+  }
+}

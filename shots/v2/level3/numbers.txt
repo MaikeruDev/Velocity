@@ -1,0 +1,19 @@
+w1         both  B 768 60° H 665 | Länge 1536 | Grat 0 → -271 | Start (0, 0) yaw 0.0 → Ende (0, -1536) yaw 0.0 | Stücke 1
+outer1     right B 768 60° H 665 | Länge 1827 | Grat -382 → -770 | Start (0, -1440) yaw 0.0 → Ende (-586, -3110) yaw 43.1 | Stücke 13
+inner1     left  B 384 60° H 333 | Länge 1827 | Grat -382 → -770 | Start (0, -1440) yaw 0.0 → Ende (-586, -3110) yaw 43.1 | Stücke 13
+outer2     right B 768 60° H 665 | Länge 1571 | Grat -814 → -1148 | Start (-520, -3040) yaw 45.0 → Ende (-1915, -3672) yaw 86.3 | Stücke 12
+inner2     left  B 384 60° H 333 | Länge 1571 | Grat -814 → -1148 | Start (-520, -3040) yaw 45.0 → Ende (-1915, -3672) yaw 86.3 | Stücke 12
+outer3     right B 768 60° H 665 | Länge 1571 | Grat -1191 → -1525 | Start (-1819, -3666) yaw 88.1 → Ende (-3269, -3174) yaw 129.4 | Stücke 12
+inner3     left  B 384 60° H 333 | Länge 1571 | Grat -1191 → -1525 | Start (-1819, -3666) yaw 88.1 → Ende (-3269, -3174) yaw 129.4 | Stücke 12
+outer4     right B 768 60° H 665 | Länge 1827 | Grat -1569 → -1957 | Start (-3195, -3235) yaw 131.3 → Ende (-3941, -1630) yaw 174.4 | Stücke 13
+inner4     left  B 384 60° H 333 | Länge 1827 | Grat -1569 → -1957 | Start (-3195, -3235) yaw 131.3 → Ende (-3941, -1630) yaw 174.4 | Stücke 13
+r1         both  B 1536 50° H 915 | Länge 1536 | Grat -2193 → -2463 | Start (-3932, -1725) yaw 174.4 → Ende (-4083, -197) yaw 174.4 | Stücke 1
+z          both  B 1536 50° H 915 | Länge 1536 | Grat -2575 → -2845 | Start (-4073, -292) yaw 174.4 → Ende (-4224, 1236) yaw 174.4 | Stücke 1
+finale     both  B 1536 50° H 915 | Länge 2112 | Grat -2956 → -3416 | Start (-4214, 1141) yaw 174.4 → Ende (-4421, 3243) yaw 174.4 | Stücke 5
+Kehre: Grat R 2000, 4 × 45° à 1571 u, 12°, Drops 64; innen 3 Lücken à 224 u (Bogen am Grat), Linie innen ≈ 5655 u, Kehle außen ≈ 7490 u; Innen-Rampe gesamt 6283 u; Enden Grat außen -1957 / innen -1957
+Strand: Oberseite -4516 (1100 unter dem Kicker), Lücke 896 u bei unterem Band 700 u/s, Flugzeit 1.40 s
+Kill-Kacheln: 45
+cp1: Spawn 40, -362, -1696 yaw 0 | Trigger -384,-1118,-1962 … 384,-42,-1116
+cp2: Spawn -2074, -1172, -3714 yaw 88.125 | Trigger -2367,-1927,-4466 … -1445,-852,-3230
+cp3: Spawn -3917, -2170, -1467 yaw 174.375 | Trigger -4779,-3160,-2126 … -3104,-1850,-1127
+Kill-Zonen 45, Brushes 296 (Kollision 259)

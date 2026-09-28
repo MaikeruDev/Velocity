@@ -9,7 +9,14 @@ import { BufferAttribute, BufferGeometry } from 'three';
  * die Inverted-Hull-Kontur braucht glatte Normalen — mit Facetten-Normalen reißt die
  * ausgestülpte Hülle an jeder Kante auf. Die UV-Naht hat doppelte Vertices; deren Normalen
  * werden gemittelt, sonst klafft die Kontur genau dort.
+ *
+ * Plan 007 (Kosmetik v2): Superellipsen-Querschnitt (Metallhülsen, Feuerzeug, Handy), Lappen-
+ * Profil (Spinner), Fell-Zacken (nur für Kontur-Geometrie), Vertex-Farbe und Zusammenführen
+ * mehrerer Teile zu EINER Geometrie je Gelenk-Slot (gleiche Draw-Call-Zahl wie der Handschuh).
+ * Ohne diese Optionen ist die Ausgabe bitgleich zu Plan 006 (Pixelvergleich K1/K2).
  */
+
+export type Rgb = readonly [number, number, number];
 
 export interface Ring {
   readonly y: number;
@@ -19,6 +26,8 @@ export interface Ring {
   /** Mittelpunkt-Versatz (Standard 0). */
   readonly cx?: number;
   readonly cz?: number;
+  /** Superellipsen-Exponent: 2 (Standard) = Ellipse, 4–8 = abgerundetes Rechteck. */
+  readonly n?: number;
 }
 
 export interface TubeOptions {
@@ -27,6 +36,14 @@ export interface TubeOptions {
   readonly poleEnd?: number;
   /** v-Koordinate linear über y (für Etiketten), sonst über den Ringindex. */
   readonly uvByY?: boolean;
+  /** Lappen: r(a) = r·(1 − depth + depth·max(0, cos(k·a))^0.6) — Spinner-Profil. */
+  readonly lobes?: { readonly k: number; readonly depth: number };
+  /** Jeder zweite Ring-Vertex um diesen Anteil weiter außen — Fell-Silhouette, nur für Hüllen (seg gerade). */
+  readonly fur?: number;
+  /** Vertex-Farbe (0..1, Anzeige-Werte); ohne color/colorAt bekommt die Geometrie kein color-Attribut. */
+  readonly color?: Rgb;
+  /** Farbe je Vertex aus der Position (Startwert = color bzw. Weiß). */
+  readonly colorAt?: (x: number, y: number, z: number, out: [number, number, number]) => void;
 }
 
 export function tubeGeometry(rings: readonly Ring[], seg: number, opts: TubeOptions = {}): BufferGeometry {
@@ -40,15 +57,26 @@ export function tubeGeometry(rings: readonly Ring[], seg: number, opts: TubeOpti
   const y0 = rings[0].y;
   const y1 = rings[n - 1].y;
   const span = Math.abs(y1 - y0) > 1e-6 ? y1 - y0 : 1;
+  const lobes = opts.lobes;
+  const fur = opts.fur ?? 0;
+  // Naht-Vertex k = seg ist die Kopie von k = 0: bei ungeradem seg stünde er außen, k = 0 innen → Riss.
+  if (fur > 0 && seg % 2 !== 0) throw new Error(`tubeGeometry: fur braucht gerades seg (${seg})`);
   for (let r = 0; r < n; r++) {
     const R = rings[r];
+    // Exponent 2/n; bei der Ellipse exakt sin/cos (bitgleicher Pfad wie vor Plan 007).
+    const e = R.n !== undefined && R.n !== 2 ? 2 / R.n : 0;
     for (let k = 0; k <= seg; k++) {
       // Winkel 0 zeigt nach +z (vorn), damit die Naht hinten (−z) liegt.
       const a = (k / seg) * Math.PI * 2;
       const i = r * row + k;
-      pos[i * 3] = (R.cx ?? 0) + Math.sin(a) * R.rx;
+      const sa = e > 0 ? sgnPow(Math.sin(a), e) : Math.sin(a);
+      const ca = e > 0 ? sgnPow(Math.cos(a), e) : Math.cos(a);
+      let s = 1;
+      if (lobes) s = 1 - lobes.depth + lobes.depth * Math.pow(Math.max(0, Math.cos(lobes.k * a)), 0.6);
+      if (fur > 0 && k % 2 === 1) s *= 1 + fur;
+      pos[i * 3] = (R.cx ?? 0) + sa * R.rx * s;
       pos[i * 3 + 1] = R.y;
-      pos[i * 3 + 2] = (R.cz ?? 0) + Math.cos(a) * R.rz;
+      pos[i * 3 + 2] = (R.cz ?? 0) + ca * R.rz * s;
       uv[i * 2] = k / seg;
       uv[i * 2 + 1] = opts.uvByY ? (R.y - y0) / span : r / Math.max(1, n - 1);
     }
@@ -120,8 +148,13 @@ export function tubeGeometry(rings: readonly Ring[], seg: number, opts: TubeOpti
   if (ps >= 0) setAxisNormal(na, ps, rings[0].y > (opts.poleStart ?? 0) ? -1 : 1);
   if (pe >= 0) setAxisNormal(na, pe, (opts.poleEnd ?? 0) > rings[n - 1].y ? 1 : -1);
   nrm.needsUpdate = true;
+  if (opts.color || opts.colorAt) paint(g, opts.color ?? WHITE, opts.colorAt);
   g.computeBoundingSphere();
   return g;
+}
+
+function sgnPow(v: number, p: number): number {
+  return Math.sign(v) * Math.pow(Math.abs(v), p);
 }
 
 function normalize3(a: Float32Array, i: number): void {
@@ -140,31 +173,140 @@ function setAxisNormal(a: Float32Array, i: number, s: number): void {
   a[i * 3 + 2] = 0;
 }
 
+const WHITE: Rgb = [1, 1, 1];
+
+/** Hex → 0..1 ohne Farbraum-Umrechnung (wie hexVec der Materialien). */
+export function rgb(hex: number): [number, number, number] {
+  return [((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255];
+}
+
+/** Vertex-Farbe setzen (einfarbig oder je Position). Ladezeit, nicht im Frame-Pfad. */
+export function paint(g: BufferGeometry, c: Rgb, at?: TubeOptions['colorAt']): BufferGeometry {
+  const p = g.getAttribute('position');
+  const col = new Float32Array(p.count * 3);
+  const tmp: [number, number, number] = [c[0], c[1], c[2]];
+  for (let i = 0; i < p.count; i++) {
+    tmp[0] = c[0];
+    tmp[1] = c[1];
+    tmp[2] = c[2];
+    if (at) at(p.getX(i), p.getY(i), p.getZ(i), tmp);
+    col[i * 3] = tmp[0];
+    col[i * 3 + 1] = tmp[1];
+    col[i * 3 + 2] = tmp[2];
+  }
+  g.setAttribute('color', new BufferAttribute(col, 3));
+  return g;
+}
+
 /**
  * Kapsel-Ringe für ein Glied von y = 0 bis `len`: Kugelkappen mit r0 unten und r1 oben,
  * `squash` < 1 macht den Querschnitt flacher (z). Die Kappen überlappen die Nachbarglieder —
- * so sieht die Kette wie ein durchgehender, pummeliger Handschuhfinger aus.
+ * so sieht die Kette wie ein durchgehender, pummeliger Handschuhfinger aus. `n` = Superellipse.
  */
-export function capsuleRings(len: number, r0: number, r1: number, squash = 1, capSteps = 2): { rings: Ring[]; poleStart: number; poleEnd: number } {
+export function capsuleRings(len: number, r0: number, r1: number, squash = 1, capSteps = 2, n?: number): { rings: Ring[]; poleStart: number; poleEnd: number } {
   const rings: Ring[] = [];
+  const ring = (y: number, rx: number, rz: number): Ring => (n === undefined ? { y, rx, rz } : { y, rx, rz, n });
   for (let i = capSteps; i >= 1; i--) {
     const th = (i / (capSteps + 1)) * (Math.PI / 2);
-    rings.push({ y: -r0 * Math.sin(th), rx: r0 * Math.cos(th), rz: r0 * Math.cos(th) * squash });
+    rings.push(ring(-r0 * Math.sin(th), r0 * Math.cos(th), r0 * Math.cos(th) * squash));
   }
-  rings.push({ y: 0, rx: r0, rz: r0 * squash });
+  rings.push(ring(0, r0, r0 * squash));
   const mid = (r0 + r1) * 0.5 * 1.02;
-  rings.push({ y: len * 0.5, rx: mid, rz: mid * squash });
-  rings.push({ y: len, rx: r1, rz: r1 * squash });
+  rings.push(ring(len * 0.5, mid, mid * squash));
+  rings.push(ring(len, r1, r1 * squash));
   for (let i = 1; i <= capSteps; i++) {
     const th = (i / (capSteps + 1)) * (Math.PI / 2);
-    rings.push({ y: len + r1 * Math.sin(th), rx: r1 * Math.cos(th), rz: r1 * Math.cos(th) * squash });
+    rings.push(ring(len + r1 * Math.sin(th), r1 * Math.cos(th), r1 * Math.cos(th) * squash));
   }
   return { rings, poleStart: -r0 * 0.96, poleEnd: len + r1 * 0.96 };
 }
 
-export function capsuleGeometry(len: number, r0: number, r1: number, seg: number, squash = 1, capSteps = 2): BufferGeometry {
-  const c = capsuleRings(len, r0, r1, squash, capSteps);
-  return tubeGeometry(c.rings, seg, { poleStart: c.poleStart, poleEnd: c.poleEnd });
+/** Zusatz-Optionen für Kapseln/Knochen (Pole setzt die Form selbst). */
+export type ShapeOptions = Omit<TubeOptions, 'poleStart' | 'poleEnd' | 'uvByY'> & { readonly n?: number };
+
+export function capsuleGeometry(len: number, r0: number, r1: number, seg: number, squash = 1, capSteps = 2, opts: ShapeOptions = {}): BufferGeometry {
+  const c = capsuleRings(len, r0, r1, squash, capSteps, opts.n);
+  return tubeGeometry(c.rings, seg, { ...opts, poleStart: c.poleStart, poleEnd: c.poleEnd });
+}
+
+/** Knochen/Stab: dicke Gelenkknöpfe an beiden Enden, schmaler Schaft (Skelett, Kendama-Griff). */
+export function boneGeometry(len: number, knob: number, shaft: number, seg: number, opts: ShapeOptions = {}): BufferGeometry {
+  const rings: Ring[] = [
+    { y: -knob * 0.55, rx: knob * 0.6, rz: knob * 0.55 },
+    { y: -knob * 0.1, rx: knob, rz: knob * 0.85 },
+    { y: knob * 0.55, rx: shaft * 1.15, rz: shaft },
+    { y: len * 0.5, rx: shaft, rz: shaft * 0.9 },
+    { y: len - knob * 0.55, rx: shaft * 1.15, rz: shaft },
+    { y: len + knob * 0.1, rx: knob, rz: knob * 0.85 },
+    { y: len + knob * 0.55, rx: knob * 0.6, rz: knob * 0.55 },
+  ];
+  return tubeGeometry(rings, seg, { ...opts, poleStart: -knob * 0.8, poleEnd: len + knob * 0.8 });
+}
+
+/**
+ * Mehrere Teile (position, normal, color, uv, Index) zu EINER Geometrie — je Gelenk-Slot ein
+ * Mesh plus eine Hülle. Teile ohne color-Attribut werden `fallback` (Standard Weiß). Hat ein Teil das
+ * Krallen-Attribut `aClaw` (Katze), bekommt die Geometrie es für alle (fehlend = 0); sonst wie vorher.
+ */
+export function mergeGeometries(parts: readonly BufferGeometry[], fallback: Rgb = WHITE): BufferGeometry {
+  let vc = 0;
+  let ic = 0;
+  for (const p of parts) {
+    const P = p.getAttribute('position');
+    vc += P.count;
+    ic += p.getIndex()?.count ?? P.count;
+  }
+  const pos = new Float32Array(vc * 3);
+  const nrm = new Float32Array(vc * 3);
+  const col = new Float32Array(vc * 3);
+  const uv = new Float32Array(vc * 2);
+  const idx = new Uint32Array(ic);
+  const hasClaw = parts.some((p) => p.getAttribute('aClaw') !== undefined);
+  const claw = hasClaw ? new Float32Array(vc) : null;
+  let vo = 0;
+  let io = 0;
+  for (const p of parts) {
+    const P = p.getAttribute('position');
+    const N = p.getAttribute('normal');
+    const C = p.getAttribute('color');
+    const U = p.getAttribute('uv');
+    const K = p.getAttribute('aClaw');
+    if (claw && K) for (let i = 0; i < P.count; i++) claw[vo + i] = K.getX(i);
+    for (let i = 0; i < P.count; i++) {
+      const k = (vo + i) * 3;
+      pos[k] = P.getX(i);
+      pos[k + 1] = P.getY(i);
+      pos[k + 2] = P.getZ(i);
+      nrm[k] = N ? N.getX(i) : 0;
+      nrm[k + 1] = N ? N.getY(i) : 1;
+      nrm[k + 2] = N ? N.getZ(i) : 0;
+      col[k] = C ? C.getX(i) : fallback[0];
+      col[k + 1] = C ? C.getY(i) : fallback[1];
+      col[k + 2] = C ? C.getZ(i) : fallback[2];
+      uv[(vo + i) * 2] = U ? U.getX(i) : 0;
+      uv[(vo + i) * 2 + 1] = U ? U.getY(i) : 0;
+    }
+    const I = p.getIndex();
+    if (I) for (let i = 0; i < I.count; i++) idx[io + i] = I.getX(i) + vo;
+    else for (let i = 0; i < P.count; i++) idx[io + i] = vo + i;
+    vo += P.count;
+    io += I?.count ?? P.count;
+  }
+  const g = new BufferGeometry();
+  g.setAttribute('position', new BufferAttribute(pos, 3));
+  g.setAttribute('normal', new BufferAttribute(nrm, 3));
+  g.setAttribute('color', new BufferAttribute(col, 3));
+  g.setAttribute('uv', new BufferAttribute(uv, 2));
+  if (claw) g.setAttribute('aClaw', new BufferAttribute(claw, 1));
+  g.setIndex(new BufferAttribute(idx, 1));
+  g.computeBoundingSphere();
+  return g;
+}
+
+/** Krallen-Gewicht für alle Vertices setzen (1 = fährt mit uClaw aus/ein). Ladezeit. */
+export function markClaw(g: BufferGeometry, w = 1): BufferGeometry {
+  g.setAttribute('aClaw', new BufferAttribute(new Float32Array(g.getAttribute('position').count).fill(w), 1));
+  return g;
 }
 
 /**
@@ -216,6 +358,40 @@ export function discGeometry(r: number, seg: number, y = 0): BufferGeometry {
   for (let i = 0; i <= seg; i++) nrm[i * 3 + 1] = 1;
   const idx: number[] = [];
   for (let k = 0; k < seg; k++) idx.push(0, k + 1, ((k + 1) % seg) + 1);
+  const g = new BufferGeometry();
+  g.setAttribute('position', new BufferAttribute(pos, 3));
+  g.setAttribute('normal', new BufferAttribute(nrm, 3));
+  g.setAttribute('uv', new BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeBoundingSphere();
+  return g;
+}
+
+/** Ring (Kreisband) in der xz-Ebene zwischen r0 und r1, Normale +y — Unschärfe-Ring des Spinners. */
+export function annulusGeometry(r0: number, r1: number, seg: number): BufferGeometry {
+  const pos = new Float32Array((seg + 1) * 2 * 3);
+  const nrm = new Float32Array((seg + 1) * 2 * 3);
+  const uv = new Float32Array((seg + 1) * 2 * 2);
+  for (let k = 0; k <= seg; k++) {
+    const a = (k / seg) * Math.PI * 2;
+    const s = Math.sin(a);
+    const c = Math.cos(a);
+    const i = k * 2;
+    pos[i * 3] = s * r0;
+    pos[i * 3 + 2] = c * r0;
+    pos[(i + 1) * 3] = s * r1;
+    pos[(i + 1) * 3 + 2] = c * r1;
+    nrm[i * 3 + 1] = 1;
+    nrm[(i + 1) * 3 + 1] = 1;
+    uv[i * 2] = k / seg;
+    uv[(i + 1) * 2] = k / seg;
+    uv[(i + 1) * 2 + 1] = 1;
+  }
+  const idx: number[] = [];
+  for (let k = 0; k < seg; k++) {
+    const a = k * 2;
+    idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  }
   const g = new BufferGeometry();
   g.setAttribute('position', new BufferAttribute(pos, 3));
   g.setAttribute('normal', new BufferAttribute(nrm, 3));

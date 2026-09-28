@@ -8,7 +8,8 @@ import { DEFAULT_KEYBINDS } from './settingsTypes';
  * ihn mit Browser-Events; Tests und Tools können ihn direkt benutzen.
  */
 
-export type InputAction = 'restart' | 'respawn' | 'pause' | 'toggleTuning' | 'toggleMute' | 'confirm';
+/** 'demo' (Plan 007) kommt aus der Belegung (KeyBinds.demo, Default H), die übrigen aus ACTION_CODES. */
+export type InputAction = 'restart' | 'respawn' | 'pause' | 'toggleTuning' | 'toggleMute' | 'confirm' | 'demo';
 
 export type InputOverride = (tickIndex: number, ticksThisFrame: number) => PlayerInput;
 
@@ -133,6 +134,8 @@ export class InputState {
   private buttonCodes: string[][] = [];
   /** Code → Bitmaske der Knöpfe, die er auslöst (ein Code darf mehrere Aktionen haben). */
   private codeMask = new Map<string, number>();
+  /** Codes der Vorführung (KeyBinds.demo): lösen die Aktion 'demo' aus, kein gehaltener Knopf. */
+  private demoCodes: ReadonlySet<string> = new Set<string>();
   private binds: KeyBinds = DEFAULT_KEYBINDS;
   /**
    * Tipp-Klammer: Knöpfe, die seit dem letzten Tick gedrückt wurden. Gelten im
@@ -208,6 +211,7 @@ export class InputState {
     }
     this.buttonCodes = codes;
     this.codeMask = mask;
+    this.demoCodes = new Set(binds.demo);
   }
 
   /** Auto-Sprint an/aus (Einstellung autoSprint). */
@@ -221,7 +225,7 @@ export class InputState {
 
   /** true, wenn die Taste zum Spiel gehört (Aufrufer entscheidet über preventDefault). */
   isGameCode(code: string): boolean {
-    return this.codeMask.has(code) || ACTION_CODES[code] !== undefined;
+    return this.codeMask.has(code) || this.demoCodes.has(code) || ACTION_CODES[code] !== undefined;
   }
 
   /** Strg ist einer Aktion zugewiesen, zählt aber gerade nicht (Fenstermodus ohne Keyboard Lock). */
@@ -235,8 +239,10 @@ export class InputState {
       if (!repeat) this.actions.push(action);
       return true;
     }
+    const demo = this.demoCodes.has(code);
+    if (demo && !repeat) this.actions.push('demo');
     const mask = this.codeMask.get(code);
-    if (mask === undefined) return false;
+    if (mask === undefined) return demo;
     if (!repeat) {
       // Jede echte Druck-Flanke zählt — auch wenn ein keyup verloren ging und die Taste noch als gehalten gilt.
       const live = isCtrl(code) && !this.ctrlCrouch ? 0 : mask;

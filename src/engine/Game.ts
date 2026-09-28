@@ -17,17 +17,26 @@ import type { TuningPanel } from '../ui/TuningPanel';
 import { ViewHand } from '../ui/hand/ViewHand';
 import type { ViewHandState } from '../ui/hand/ViewHand';
 import { makeHandInput } from '../ui/hand/handMotion';
-import type { FinishResult, HudData, HudKeys } from '../ui/types';
+import type { FinishResult, HudData, HudKeys, LessonResult } from '../ui/types';
+import type { LessonPauseInfo, MenuTraining } from '../ui/Menu';
 import { BrushWorld } from '../world/collision/BrushWorld';
+import { GatedWorld } from '../world/collision/GatedWorld';
 import { makeTraceResult } from '../world/collision/types';
+import type { CollisionWorld } from '../world/collision/types';
 import type { CompiledLevel } from '../world/level/compileLevel';
 import { loadLevel } from '../world/level/compileLevel';
-import type { LevelIndexEntry, LevelMedals } from '../world/level/LevelFormat';
+import type { LevelIndexEntry, LevelMedals, StageDef, TrainingDef, TrainingIndexEntry } from '../world/level/LevelFormat';
 import { EventBus } from './events';
 import type { GameEvent, RunEvent } from './events';
-import type { HudLayoutInfo } from './debug';
-import { Coach } from './Coach';
+import type { HudLayoutInfo, TrainingDebugInfo } from './debug';
+import { Coach, hintText } from './Coach';
 import type { HintId } from './Coach';
+import { TrainingSession, createDemo } from './Training';
+import type { DemoRunner } from './Training';
+import { TrainingProgress } from './TrainingProgress';
+import type { TrainingSessionApi, Verdict } from './trainingTypes';
+import { CENTER_BAND_BOTTOM, CENTER_BAND_TOP, stageLabel } from '../ui/hudLogic';
+import { HUD_RECTS } from '../ui/Hud';
 import { keyShortLabel } from './InputState';
 import type { InputManager } from './Input';
 import type { InputAction } from './InputState';
@@ -50,6 +59,13 @@ import { nextMedal } from '../ui/medals';
  * auf den Bus → Lauf-Logik (Trigger, Timer, Respawn).
  * Pro Frame: Aktionen, Interpolation, Kamera mit dem AKTUELLEN Blick,
  * Musik, HUD, Renderer. Im Frame- und Tick-Pfad wird nichts allokiert.
+ *
+ * Trainingsmodus (Plan 007): ein Level mit `training` (Lektion aus levels/training/) läuft mit einer
+ * TrainingSession und einer GatedWorld (Movement, Bots und Vorbeizieh-Proben teilen sie). Kein Timer,
+ * keine Bestzeit, kein Ghost; F/Fall setzt an den Start der Stufe, R startet die Lektion neu. Taste H
+ * spielt die Vorführung der Stufe (Bot in Ich-Perspektive, Session angehalten), jede Taste beendet sie.
+ * Der Fortschritt (Sterne) liegt in TrainingProgress (velocity.training.v1) und schaltet über
+ * deriveUnlocks Kosmetik frei.
  */
 
 export type GameState = 'title' | 'loading' | 'playing' | 'paused' | 'finished';
@@ -97,6 +113,8 @@ export interface GameDeps {
   readonly notify: (message: string) => void;
   /** URL-Basis mit abschließendem Slash (import.meta.env.BASE_URL). */
   readonly baseUrl: string;
+  /** Trainings-Fortschritt (Plan 007). Fehlt = Game legt ihn selbst an (localStorage). */
+  readonly training?: TrainingProgress;
 }
 
 export interface GhostDebugInfo {
@@ -129,6 +147,18 @@ type MutableFx = { -readonly [K in keyof RenderFx]: RenderFx[K] };
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 type FinishEvent = Mutable<Extract<RunEvent, { type: 'finish' }>>;
 
+/**
+ * Laufende Lektion aus Sicht von Game: der Vertrag (TrainingSessionApi) plus zwei Extras der
+ * Implementierung (engine/Training, Strang training-core) — Tipps im Moment (Text + Zähler) und die
+ * Config (Strafe-Assist ändert das Urteil 'wHeld'). Mehr nicht: Stufe/Stufen kommen aus dem Level
+ * (LessonHud.stageIndex → TrainingDef.stages), damit Game gegen den Vertrag gebaut bleibt.
+ */
+interface LessonSession extends TrainingSessionApi {
+  /** kind 'verdict' = wiederholtes Fehlurteil — nur in Stufen, die Strafen bewerten (siehe lessonJudge). */
+  readonly tip: { readonly text: string; readonly kind: 'stage' | 'verdict' | 'demo'; readonly serial: number };
+  setConfig(c: MovementConfig): void;
+}
+
 interface ActiveBot {
   readonly kind: BotKind;
   readonly route: RouteFollower | null;
@@ -150,6 +180,20 @@ const FLASH_FINISH_TIME = 0.8;
 const FINISH_RGB: readonly [number, number, number] = [1, 0.25, 0.82];
 /** So lange nach dem Ziel fliegt man weiter und sieht die Zeit im HUD, bevor das Ergebnis-Menü kommt. */
 const FINISH_MENU_DELAY = 1.1;
+/** Lektion: nach der letzten Stufe so lange "ALLES GESCHAFFT!" im HUD, dann das Ergebnis (s). */
+const LESSON_RESULT_DELAY = 1.4;
+/** Lektion: durchs Portal (Ziel-Trigger der Lektion) → so lange Blitz, dann das Ergebnis (s). */
+const PORTAL_RESULT_DELAY = 0.5;
+/** Vorführung hat die Aufgabe der Stufe erfüllt → so lange "SO GEHT'S!", dann zurück an den Stufen-Spawn (s, Tick-Zeit). */
+const DEMO_GOAL_HOLD = 1;
+/**
+ * Vorführung steht: nachdem der Bot einmal DEMO_STILL_SPEED erreicht hat, so lange (s) am Stück darunter → Ende.
+ * Sonst stand er nach dem Stufenziel bis zum Ablauf von DemoDef.seconds vor dem geschlossenen Tor (51–64 %).
+ */
+const DEMO_STILL_END = 0.5;
+const DEMO_STILL_SPEED = 40;
+/** Tempo, mit dem lessonJudge die Session fragt (turnBand ist je Stufe null oder nicht; der Wert ist egal). */
+const JUDGE_PROBE_SPEED = 300;
 /** speed01 für Renderer: 0 bei Laufgeschwindigkeit, 1 bei sehr hohem Tempo. */
 const SPEED01_LO = 250;
 const SPEED01_HI = 1100;
@@ -258,7 +302,8 @@ export class Game {
   /** W zusammen mit A/D in der Luft gehalten, s. */
   private forwardAirTime = 0;
   private prevFrameYaw = 0;
-  private readonly coach = new Coach();
+  /** Im Konstruktor mit der echten Config gebaut (Strafe-Assist → Urteil 'wHeld'). */
+  private readonly coach: Coach;
   private overrideActive = false;
   private bot: ActiveBot | null = null;
   private botOpts: BotOptions = {};
@@ -290,6 +335,60 @@ export class Game {
   // Flow-Feedback im Renderer (Landewelle, Tempostufe)
   private readonly landPos = new Vector3();
   private speedTier = 0;
+  // Trainingsmodus (Plan 007)
+  private readonly progress: TrainingProgress;
+  private readonly menuTraining: MenuTraining;
+  private lessons: readonly TrainingIndexEntry[] = [];
+  private readonly lessonDefs = new Map<string, TrainingDef>();
+  private session: LessonSession | null = null;
+  /** Kollisionswelt des laufenden Levels (Lektion: GatedWorld) — Movement, Bots und Proben teilen sie. */
+  private world: CollisionWorld = new BrushWorld([]);
+  private readonly lessonEvents: RunEvent[] = [];
+  /** Vorführung (Taste H): Bot der Stufe; null = keine. */
+  private demo: DemoRunner | null = null;
+  /** Rest der Vorführung (s, Tick-Zeit). */
+  private demoLeft = 0;
+  /** Tools: der Bot spielt die Lektion wirklich (Session läuft weiter, nächste Stufe → nächste Vorführung). */
+  private demoPlays = false;
+  private demoStage = -1;
+  /** Vorführung nach dem Fortsetzen starten (Pause-Menü "Vorführung ansehen"). */
+  private pendingDemo = false;
+  /**
+   * Schatten der Vorführung: eigene Session (ohne Welt, an der Stufe der Vorführung), die die Ticks des Bots
+   * bewertet — die echte Session ist angehalten und zählt nichts. Wechselt ihre Stufe, hat der Bot die Aufgabe
+   * erfüllt. null = keine Vorführung, Ziel schon erreicht oder Tools spielen wirklich (demoPlays).
+   */
+  private demoShadow: TrainingSessionApi | null = null;
+  private readonly shadowEvents: RunEvent[] = [];
+  /** Vorführung hat das Stufenziel erreicht; Rest der "SO GEHT'S"-Phase (s). */
+  private demoGoal = false;
+  private demoGoalLeft = 0;
+  /** Stillstand der Vorführung: Bot fuhr schon; so lange steht er am Stück (s). */
+  private demoMoved = false;
+  private demoStill = 0;
+  /**
+   * Die aktive Stufe bewertet Strafen (Urteile am Gain-Popup, Urteils-Tipps, SYNC-Zeile). Kriterium der Session:
+   * turnBand() ≠ null (Stufe mit Strafe-Aufgabe in einer Lektion mit Zielband) — T1/T2/T6/T7/T8 und Prestrafe
+   * nicht: dort widersprach "W LOS" der Anweisung "W + LEERTASTE HALTEN". Je Stufe einmal bestimmt.
+   */
+  private lessonJudge = false;
+  private judgeStage = -1;
+  /**
+   * Übersprungene Stufen, deren 'lessonStage' noch aussteht: so viele dieser Ereignisse gehen nicht auf den
+   * Bus (kein Blitz/Akkord/Faust), siehe skipStage. Zähler statt Merker: zweimal Überspringen vor einem Tick
+   * (Pause → Lock scheitert → zweiter Klick) schickt zwei Ereignisse in denselben Tick.
+   */
+  private skipPending = 0;
+  /** Sekunden bis zum Lektions-Ergebnis (nach der letzten Stufe), −1 = keins. */
+  private lessonEndIn = -1;
+  private progressDirty = false;
+  private tipSerial = 0;
+  private lessonResult: LessonResult | null = null;
+  private showKeysSetting = true;
+  /** Lektion mit TrainingDef.hud.forceKeys (beim Laden gesetzt). */
+  private lessonForceKeys = false;
+  private demoKey: string | null = 'H';
+  private readonly band = { lo: 0, hi: 0 };
   // View-Hand (Plan 004): Blick des letzten Frames für den Maus-Sway.
   private readonly hand = new ViewHand();
   private readonly handIn = makeHandInput();
@@ -318,6 +417,7 @@ export class Game {
     strafeSync: 0,
     airTime: 0,
     surfing: false,
+    sliding: false,
     active: false,
     nearL: Infinity,
     nearR: Infinity,
@@ -335,6 +435,14 @@ export class Game {
   private fpsStart = -1;
   private fpsValue = 0;
   private lastFrameDt = 0;
+  /** Messung (Tools): CPU-Zeit des Frame-Callbacks (ms), Summe und Anzahl seit dem letzten Abruf. */
+  private frameCpuSum = 0;
+  private frameCpuN = 0;
+  /** Messung (Tools): davon die Frame-Arbeit der Lektion (updateLesson), ms. */
+  private lessonCpuSum = 0;
+  /** Messung (Tools): Session-Ticks der Lektion (ms, Summe); nur nach dem ersten takeFrameCost() aktiv. */
+  private lessonTickCpuSum = 0;
+  private costProbe = false;
 
   /** Debug: letzte Events mitschreiben (nur wenn eingeschaltet — kopiert, allokiert also). */
   eventRecorder: ((e: GameEvent) => void) | null = null;
@@ -354,6 +462,25 @@ export class Game {
     this.baseUrl = deps.baseUrl;
 
     this.config = deps.tuning.getConfig();
+    this.coach = new Coach(this.config);
+    this.progress = deps.training ?? new TrainingProgress();
+    const progress = this.progress;
+    // Was das Menü vom Training braucht; Admin-Abhaken kennt die Stufen erst, wenn die Lektion geladen ist.
+    this.menuTraining = {
+      lessons: () => progress.lessons(),
+      stars: (id) => progress.stars(id),
+      get started() {
+        return progress.started;
+      },
+      playable: true,
+      complete: (id) => {
+        const def = this.lessonDefs.get(id);
+        if (!def) return false;
+        progress.complete(id, def.stages);
+        return true;
+      },
+      reset: (id) => progress.reset(id),
+    };
     this.rig = new CameraRig(this.camera);
     // Leere Welt bis zum ersten Level — Movement tickt vorher ohnehin nicht.
     this.movement = new PlayerMovement(new BrushWorld([]), this.config);
@@ -384,6 +511,7 @@ export class Game {
       ghostDiff: null,
       ghostOverHud: false,
       nextMedal: null,
+      lesson: null,
     };
     this.fx = {
       time: 0,
@@ -407,8 +535,13 @@ export class Game {
     this.bus.on((e) => this.eventRecorder?.(e));
     this.bus.on((e) => this.coach.onEvent(e));
     this.bus.on((e) => this.onGameEvent(e));
-    this.coach.onHint = (id) => this.showHint(id);
+    this.bus.on((e) => this.session?.onEvent(e));
+    // Ereignis-Aufgaben (T1 Rutschen: slideStart) zählt der Schatten der Vorführung über denselben Weg.
+    this.bus.on((e) => this.demoShadow?.onEvent(e));
+    this.coach.onHint = (id, verdict) => this.showHint(id, verdict);
     this.menu.setRawStatusProvider(() => this.input.rawStatus);
+    // Fortschritt geändert (Lektion, Admin): offene Menü-Screens nachziehen.
+    this.progress.onChange(() => this.menu.setTraining(this.menuTraining));
 
     this.renderer.setHud(this.hud.canvas);
     this.hud.setMovement(this.config);
@@ -533,7 +666,21 @@ export class Game {
 
   /** HUD-Geometrie für Mess-Tools (window.__vel.hudLayout). */
   hudLayout(): HudLayoutInfo {
-    return { width: this.hud.width, height: this.hud.height, speedRows: this.hud.speedBlockRows(), speedHalfWidth: SPEED_BLOCK_HALF_W };
+    const h = this.hud.height;
+    const rects: Record<string, readonly [number, number, number, number]> = {};
+    for (const name of HUD_RECTS) rects[name] = this.hud.rect(name);
+    return {
+      width: this.hud.width,
+      height: h,
+      speedRows: this.hud.speedBlockRows(),
+      speedHalfWidth: SPEED_BLOCK_HALF_W,
+      centerBand: [Math.round(h * CENTER_BAND_TOP), Math.round(h * CENTER_BAND_BOTTOM)],
+      rects,
+      verdict: this.hud.currentVerdict,
+      verdictSerial: this.hud.verdictSerial,
+      verdictDrawn: this.hud.verdictDrawn,
+      judge: this.hud.judge,
+    };
   }
 
   /** Levelliste laden, Titel zeigen, Loop starten. Das Titel-Level lädt im Hintergrund. */
@@ -550,10 +697,55 @@ export class Game {
       this.notify(`Levelliste konnte nicht geladen werden (${errorText(err)}).`);
     }
     // Freischaltungen aus den Bestzeiten nachtragen (verlorener Unlock-Stand kostet nichts).
-    this.unlocks.sync(this.levels, (id) => this.best.get(id));
+    this.unlocks.sync(this.levels, (id) => this.best.get(id), this.progress);
     this.menu.setLevels(this.levels);
     const first = this.levels[0];
     if (first && this.gameState === 'title') void this.prepareBackdrop(first.id);
+    await this.loadLessons();
+  }
+
+  /**
+   * Lektionsliste (levels/training/index.json) laden; fehlt sie, gibt es eben kein Training. Danach die
+   * Lektionen selbst im Hintergrund (klein; Admin-Abhaken und Sterne brauchen ihre Stufen) und die
+   * Freischaltungen aus dem Training nachtragen.
+   */
+  private async loadLessons(): Promise<void> {
+    try {
+      const res = await fetch(`${this.baseUrl}levels/training/index.json`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: unknown = await res.json();
+      this.lessons = parseTrainingIndex(data);
+    } catch {
+      // Ohne Lektionen (z. B. Build ohne Training): das Menü zeigt "Keine Lektionen".
+      this.lessons = [];
+    }
+    this.progress.setLessons(this.lessons);
+    this.menu.setTraining(this.menuTraining);
+    // Sterne liegen im Fortschritt — die Freischaltungen gehen schon ohne die Lektionen selbst.
+    this.unlocks.sync(this.levels, (id) => this.best.get(id), this.progress);
+    void this.preloadLessons();
+  }
+
+  /** Lektionen im Hintergrund laden (Admin-Abhaken braucht ihre Stufen); blockiert den Start nicht. */
+  private async preloadLessons(): Promise<void> {
+    for (const e of this.lessons) {
+      try {
+        const lv = await this.getLevel(e.id);
+        if (lv.def.training) this.lessonDefs.set(e.id, lv.def.training);
+      } catch {
+        // Kaputte Lektion: sie fehlt beim Abhaken; der Start meldet den Fehler selbst.
+      }
+    }
+  }
+
+  /** Lektionen (Tools/Menü): Liste mit Sternen. */
+  lessonList(): { readonly id: string; readonly name: string; readonly short: string; readonly stars: number; readonly loaded: boolean }[] {
+    return this.lessons.map((l) => ({ id: l.id, name: l.name, short: l.short, stars: this.progress.stars(l.id), loaded: this.lessonDefs.has(l.id) }));
+  }
+
+  /** Laufende Lektion (null = normales Level). */
+  get lessonSession(): TrainingSessionApi | null {
+    return this.session;
   }
 
   /**
@@ -591,7 +783,20 @@ export class Game {
     }
     if (token !== this.loadToken) return false;
 
-    this.applyLevel(id, level);
+    try {
+      this.applyLevel(id, level);
+    } catch (err) {
+      // Kaputte Lektion (TrainingSession wirft bei ungültiger Def): zurück ins Menü statt halb geladen.
+      this.session = null;
+      this.level = null;
+      this.input.exitLock();
+      this.gameState = 'title';
+      this.hud.visible = false;
+      if (this.lessons.some((l) => l.id === id)) this.menu.showTraining();
+      else this.menu.showTitle();
+      this.notify(`Level "${id}" konnte nicht gestartet werden: ${errorText(err)}`);
+      return false;
+    }
     this.gameState = 'playing';
     if (this.lockless) return true;
     if (lock === null) {
@@ -605,11 +810,15 @@ export class Game {
     return true;
   }
 
-  /** Lauf neu starten (R): Timer, Checkpoints, Position — alles auf Anfang. */
+  /** Lauf neu starten (R): Timer, Checkpoints, Position — alles auf Anfang. In einer Lektion: Lektion neu. */
   restartRun(): void {
     const level = this.level;
     const run = this.run;
     if (!level || !run) return;
+    if (this.session) {
+      this.restartLesson();
+      return;
+    }
     this.bestSplitsAtStart = this.best.getSplits(this.levelId);
     this.bestTime = this.best.get(this.levelId);
     run.reset(this.bestSplitsAtStart);
@@ -624,17 +833,25 @@ export class Game {
     this.menu.hide();
   }
 
-  /** Zurück ins Titelmenü. */
+  /** Zurück ins Titelmenü — aus einer Lektion in die Lektionsliste. */
   toTitle(): void {
+    const fromLesson = this.session !== null;
+    if (fromLesson) {
+      // Verdientes nachtragen (z. B. Lektion bestanden und über die Pause verlassen), still.
+      this.saveProgress();
+      this.unlocks.sync(this.levels, (id) => this.best.get(id), this.progress);
+    }
     this.loadToken++;
     this.clearBot();
     this.gameState = 'title';
     this.coasting = false;
+    this.lessonEndIn = -1;
     this.input.exitLock();
     this.tuning.hide();
     this.hud.visible = false;
-    if (this.levelId) this.menu.select(this.levelId);
-    this.menu.showTitle();
+    if (this.levelId && !fromLesson) this.menu.select(this.levelId);
+    if (fromLesson) this.menu.showTraining();
+    else this.menu.showTitle();
     this.backdropT = 0;
   }
 
@@ -646,10 +863,12 @@ export class Game {
     // Sonst interpoliert der erste Frame nach dem Fortsetzen zwischen den letzten
     // beiden Ticks vor der Pause — die Kamera spränge einen Tick zurück.
     copySnap(this.cur, this.prev);
+    // Vorführung endet mit der Pause (Esc ist auch "eine Taste"); der Spieler steht wieder am Stufen-Spawn.
+    if (this.demo) this.endDemo(true);
     this.input.exitLock();
     if (kind === 'menu') {
       this.tuning.hide();
-      this.menu.showPause();
+      this.menu.showPause(this.lessonPauseInfo());
     } else {
       this.menu.hide();
       this.tuning.show();
@@ -719,6 +938,87 @@ export class Game {
       out.pitch = p.pitch ?? this.lastPitch;
       return out;
     });
+  }
+
+  // --- Training (Debug-Handle, Tools)
+
+  /** Zustand der laufenden Lektion (null = keine) für __vel.training(). */
+  trainingInfo(): TrainingDebugInfo | null {
+    const s = this.session;
+    if (!s) return null;
+    const hud = s.hud;
+    const world = this.world;
+    const gates = this.level?.gates ?? [];
+    return {
+      lessonId: this.levelId,
+      name: this.hudData.levelName,
+      stageIndex: hud.stageIndex,
+      stageTotal: hud.stageTotal,
+      stageId: this.currentStage()?.id ?? null,
+      stageTitle: hud.stageTitle,
+      text: hud.text,
+      count: hud.count,
+      goal: hud.goal,
+      style: hud.style,
+      rank: hud.rank,
+      done: s.done,
+      stars: s.stars,
+      completed: [...s.completedStageIds],
+      savedStars: this.progress.stars(this.levelId),
+      demo: this.demo !== null,
+      demoPlays: this.demoPlays,
+      demoLeft: Math.max(0, this.demoLeft),
+      suspended: s.suspended,
+      gateOpen: Array.from(s.gateOpen),
+      gateBlocked: gates.map((_, i) => (world instanceof GatedWorld ? !world.isOpen(i) : false)),
+      gates: gates.map((g) => ({ id: g.id, min: vecOf(g.bounds.min), max: vecOf(g.bounds.max) })),
+      zones: this.level ? [...this.level.zones.entries()].map(([id, z]) => ({ id, min: vecOf(z.min), max: vecOf(z.max) })) : [],
+      hasDemo: this.currentStage()?.demo !== undefined,
+      demoGoal: this.demoGoal,
+      demoStill: this.demoStill,
+      judge: this.lessonJudge,
+      task: this.currentStage()?.task ?? null,
+      stages: (this.level?.def.training?.stages ?? []).map((st) => ({ id: st.id, title: st.title, rank: st.rank ?? 'required', hasDemo: st.demo !== undefined })),
+      tip: s.tip.serial > 0 ? s.tip.text : null,
+      tipKind: s.tip.serial > 0 ? s.tip.kind : null,
+      tipSerial: s.tip.serial,
+      notice: this.hud.currentNotice,
+      spawn: { ...vecOf(s.respawnPoint().pos), yaw: s.respawnPoint().yaw },
+      result: this.lessonResult,
+      resultIn: this.lessonEndIn,
+    };
+  }
+
+  /** Aktive Stufe der Lektion (aus LessonHud.stageIndex), null = keine Lektion oder alle durch. */
+  private currentStage(): StageDef | null {
+    const s = this.session;
+    const def = this.level?.def.training;
+    if (s === null || !def) return null;
+    return def.stages[s.hud.stageIndex] ?? null;
+  }
+
+  /** Aktuelle Stufe überspringen (zählt nicht) und an ihren Nachfolger setzen. */
+  skipStage(): void {
+    const s = this.session;
+    if (!s || this.currentStage() === null) return;
+    this.endDemo(false);
+    // Die Session meldet auch das Überspringen als 'lessonStage' (mit dem nächsten Tick) — das ist kein
+    // "GESCHAFFT!": kein Blitz, kein Akkord, keine Faust. onTick fängt je Überspringen genau ein Ereignis ab.
+    this.skipPending++;
+    s.skipStage();
+    this.respawn('manual');
+  }
+
+  /**
+   * Vorführung starten/stoppen (Taste H). play = der Bot spielt die Lektion wirklich (Tools, TU6):
+   * die Session läuft weiter, jede neue Stufe startet ihre eigene Vorführung. false = nicht möglich.
+   */
+  setDemo(on: boolean, play = false): boolean {
+    if (!on) {
+      this.endDemo(true);
+      return true;
+    }
+    return this.startDemo(play);
   }
 
   /** Bot übernimmt die Eingabe (null = zurück zum Menschen). */
@@ -799,6 +1099,37 @@ export class Game {
     });
     m.on('fullscreen', () => void this.input.toggleFullscreen());
     m.on('adminBest', ({ levelId }) => this.adminBestChanged(levelId));
+    // Lektion (Pause-Menü): Vorführung erst nach dem Fortsetzen (Lock aus derselben Klick-Geste).
+    m.on('demo', () => {
+      if (!this.session) return;
+      this.pendingDemo = true;
+      this.requestResume();
+    });
+    m.on('skipStage', () => {
+      if (!this.session) return;
+      this.skipStage();
+      this.requestResume();
+    });
+  }
+
+  /** Pause-Info der laufenden Lektion (null = normales Level). */
+  private lessonPauseInfo(): LessonPauseInfo | null {
+    const s = this.session;
+    if (!s) return null;
+    const st = this.currentStage();
+    const ranks = (this.level?.def.training?.stages ?? []).map((x) => x.rank ?? 'required');
+    return {
+      name: this.hudData.levelName,
+      stageTitle: st?.title ?? 'ALLES GESCHAFFT',
+      stageLabel: stageLabel(ranks, Math.min(s.hud.stageIndex, s.hud.stageTotal - 1)),
+      demo: st?.demo !== undefined,
+      done: s.done,
+      respawnStage: () => {
+        this.respawn('manual');
+        this.requestResume();
+      },
+      showResult: () => this.showLessonResult(),
+    };
   }
 
   /**
@@ -864,9 +1195,11 @@ export class Game {
   }
 
   private lockFailedInPause(): void {
+    // "Vorführung ansehen" gilt nur für dieses Fortsetzen — wer danach "Weiter" klickt, will selbst spielen.
+    this.pendingDemo = false;
     this.tuning.hide();
     this.pausedFor = 'menu';
-    this.menu.showPause();
+    this.menu.showPause(this.lessonPauseInfo());
     this.menu.setLockStatus({ pending: false, error: this.input.lockError ?? 'pointerlockerror' });
   }
 
@@ -874,6 +1207,10 @@ export class Game {
     this.gameState = 'playing';
     this.menu.hide();
     this.tuning.hide();
+    if (this.pendingDemo) {
+      this.pendingDemo = false;
+      this.startDemo(false);
+    }
   }
 
   private unlockAudio(): void {
@@ -892,8 +1229,10 @@ export class Game {
     let p = this.levelCache.get(id);
     if (!p) {
       const entry = this.levels.find((l) => l.id === id);
-      // Nicht im Index (z. B. sandbox): Dateiname = id.
-      const file = entry?.file ?? `${id}.json`;
+      const lesson = entry ? undefined : this.lessons.find((l) => l.id === id);
+      // Lektionen liegen unter training/ (file relativ zu training/index.json); nicht im Index
+      // (z. B. sandbox): Dateiname = id.
+      const file = entry?.file ?? (lesson ? `training/${lesson.file}` : `${id}.json`);
       p = loadLevel(`${this.baseUrl}levels/${file}`);
       this.levelCache.set(id, p);
       // Fehlschlag nicht cachen — ein zweiter Versuch soll neu laden.
@@ -929,26 +1268,61 @@ export class Game {
     this.setRenderedLevel(level);
     this.level = level;
     this.levelId = id;
-    this.movement.setWorld(level.world);
+    // Lektion: Session + GatedWorld (die Session öffnet die Tore darin); sonst die statische Welt.
+    let session: LessonSession | null = null;
+    let world: CollisionWorld = level.world;
+    if (level.def.training) {
+      const gated = new GatedWorld(level.world, level.gates);
+      world = gated;
+      session = new TrainingSession(level, this.config, { world: gated });
+      this.lessonDefs.set(id, level.def.training);
+    }
+    this.session = session;
+    this.lessonForceKeys = level.def.training?.hud?.forceKeys === true;
+    this.world = world;
+    this.demo = null;
+    this.demoPlays = false;
+    this.resetDemoWatch();
+    // Vor dem ersten Frame gesetzt (Tools spulen Ticks auch ohne Frame vor).
+    this.lessonJudge = session !== null && session.turnBand(JUDGE_PROBE_SPEED) !== null;
+    this.judgeStage = session !== null ? session.hud.stageIndex : -1;
+    this.hud.judge = this.lessonJudge;
+    this.pendingDemo = false;
+    this.skipPending = 0;
+    this.lessonEndIn = -1;
+    this.lessonResult = null;
+    this.progressDirty = false;
+    this.tipSerial = session ? session.tip.serial : 0;
+    this.movement.setWorld(world);
     this.run = new RunState(level);
-    this.bestSplitsAtStart = this.best.getSplits(id);
-    this.bestTime = this.best.get(id);
+    // Lektionen: keine Bestzeit, kein Ghost (Plan 007).
+    this.bestSplitsAtStart = session ? null : this.best.getSplits(id);
+    this.bestTime = session ? null : this.best.get(id);
     this.run.reset(this.bestSplitsAtStart);
     this.finishResult = null;
     this.coasting = false;
     this.levelSig = levelSignature(level.def);
-    this.loadGhost();
-    this.placeAt(level.spawnPos, level.spawnYaw);
+    if (session) this.clearGhost();
+    else this.loadGhost();
+    if (session) {
+      const sp = session.respawnPoint();
+      this.placeAt(sp.pos, sp.yaw);
+    } else this.placeAt(level.spawnPos, level.spawnYaw);
     this.fadeT = FADE_TIME;
     this.flashTime = this.flashDur;
 
     const entry = this.levels.find((l) => l.id === id);
+    const lesson = session ? this.lessons.find((l) => l.id === id) : undefined;
     const def = level.def;
-    this.hudData.levelName = entry?.name ?? def.name;
-    this.hudData.levelSubtitle = entry?.subtitle ?? def.subtitle ?? null;
-    this.hudData.nextMedal = def.medals ? nextMedal(this.bestTime, def.medals) : null;
+    // Lektion: "T3 AIR-STRAFE" (Kürzel + Name) — Intro, Pause und Ergebnis.
+    this.hudData.levelName = lesson ? (lesson.name.startsWith(lesson.short) ? lesson.name : `${lesson.short} ${lesson.name}`) : (entry?.name ?? def.name);
+    this.hudData.levelSubtitle = lesson?.subtitle ?? entry?.subtitle ?? def.subtitle ?? null;
+    this.hudData.nextMedal = def.medals && !session ? nextMedal(this.bestTime, def.medals) : null;
+    this.hudData.lesson = session ? session.hud : null;
+    this.hud.setLessonStages(def.training ? def.training.stages.map((st) => st.rank ?? 'required') : null);
     this.hudCp.total = this.run.total;
     this.hudCp.index = 0;
+    this.coach.lesson = session !== null;
     this.coach.setLevel(def.route);
     this.hud.visible = true;
     this.syncLayout();
@@ -961,7 +1335,7 @@ export class Game {
    * berühren = startSolid), Blick = yaw (Grad), Pitch 0, Kamera-Effekte neu.
    */
   private placeAt(pos: Vector3, yawDeg: number): void {
-    const world = this.level?.world;
+    const world = this.level ? this.world : undefined;
     this.placeA.set(pos.x, pos.y + SPAWN_LIFT, pos.z);
     if (world) {
       this.placeB.set(pos.x, pos.y - SPAWN_LIFT, pos.z);
@@ -1016,13 +1390,34 @@ export class Game {
 
     copySnap(this.cur, this.prev);
     const events = this.movement.tick(cmd);
+    // Kamera kennt die Tick-Grenze (Lip-Step-Versatz gegen die Interpolation), vor den Events des Ticks.
+    this.rig.onTick();
     for (let k = 0; k < events.length; k++) this.bus.emit(events[k]);
     this.movement.copySnapshot(this.cur);
     this.mirrorStrafe(dt, dYaw, cmd);
     this.coach.tick(dt, this.prev, this.cur, cmd);
+    const session = this.session;
+    if (session !== null) {
+      const hullH = this.movement.hullMaxs.y - this.movement.hullMins.y;
+      const out = this.lessonEvents;
+      out.length = 0;
+      const t0 = this.costProbe ? performance.now() : 0;
+      session.tick(dt, this.prev, this.cur, cmd, hullH, out);
+      if (this.costProbe) this.lessonTickCpuSum += performance.now() - t0;
+      for (let k = 0; k < out.length; k++) {
+        const e = out[k];
+        // Übersprungen-Ereignisse stehen vorn (Session-Warteschlange geht vor dem Tick raus).
+        if (e.type === 'lessonStage' && this.skipPending > 0) this.stageSkipped();
+        else this.bus.emit(e);
+      }
+      if (this.demo !== null) {
+        this.demoLeft -= dt;
+        if (!this.demoPlays) this.watchDemo(dt, cmd, hullH);
+      }
+    }
     this.runTick(dt);
     const run = this.run;
-    if (run !== null && run.running) this.ghostRec.sample(run.time ?? 0, this.cur.pos, this.lastYaw);
+    if (session === null && run !== null && run.running) this.ghostRec.sample(run.time ?? 0, this.cur.pos, this.lastYaw);
     if (++this.nearTick >= NEAR_EVERY) {
       this.nearTick = 0;
       this.probeNear();
@@ -1034,7 +1429,7 @@ export class Game {
    * Geometrie links/rechts für den Vorbeizieh-Whoosh. Infinity = nichts in Reichweite.
    */
   private probeNear(): void {
-    const world = this.level?.world;
+    const world = this.level ? this.world : undefined;
     const s = this.cur;
     if (!world || !this.nearProbeEnabled || s.speed < NEAR_MIN_SPEED) {
       this.nearL = Infinity;
@@ -1056,7 +1451,7 @@ export class Game {
     }
   }
 
-  private nearDist(world: CompiledLevel['world'], dx: number, dz: number): number {
+  private nearDist(world: CollisionWorld, dx: number, dz: number): number {
     const p = this.cur.pos;
     this.nearEnd.set(p.x + dx * NEAR_RANGE, p.y, p.z + dz * NEAR_RANGE);
     const tr = world.traceBox(p, this.nearEnd, this.nearMins, this.nearMaxs, this.tr);
@@ -1077,9 +1472,20 @@ export class Game {
       case 'respawn':
         if (e.reason === 'restart') this.hudData.ghostDiff = null;
         break;
+      case 'lessonStage': {
+        // Tick-Pfad: nur Merker; Speichern und Ergebnis im Frame.
+        this.progressDirty = true;
+        this.startFlash(this.cpFlashRgb, FLASH_CP, FLASH_CP_TIME);
+        const s = this.session;
+        // Letzte Stufe geschafft → kurz feiern, dann das Ergebnis. Nach "bestanden" mit offenen
+        // Bonus-/Meisterstufen geht es weiter (Enter zeigt das Ergebnis jederzeit).
+        if (s !== null && s.hud.stageIndex >= s.hud.stageTotal) this.lessonEndIn = LESSON_RESULT_DELAY;
+        break;
+      }
       case 'jump':
-        // Landewelle nur für gute Hops: perfekt, synchron und mit Gewinn. Ursprung = Füße beim Absprung.
-        if (e.perfect && e.sync > WAVE_MIN_SYNC && e.gain > 0) {
+        // Landewelle nur für gute Hops: verlustfrei (perfekt oder in der Lande-Gnade), synchron und mit Gewinn.
+        // Ursprung = Füße beim Absprung.
+        if (e.clean && e.sync > WAVE_MIN_SYNC && e.gain > 0) {
           this.landPos.copy(this.prev.pos);
           this.fx.landTime = this.time;
           this.fx.landPower = Math.min(1, e.sync * Math.min(1, e.gain / WAVE_FULL_GAIN));
@@ -1111,16 +1517,10 @@ export class Game {
     else if (this.cur.speed > this.prev.speed + 1e-3) this.strafeGoodTicks++;
   }
 
-  private showHint(id: HintId): void {
+  private showHint(id: HintId, verdict: Verdict | null): void {
     const crouch = this.settings.get().keybinds.crouch[0];
     const key = crouch !== undefined ? keyShortLabel(crouch) : '?';
-    const text =
-      id === 'crouch'
-        ? `IN DER LUFT DUCKEN [${key}]\nZIEHT DIE FÜSSE 18 u HÖHER`
-        : id === 'surf'
-          ? 'W LOS · A/D IN DIE RAMPE · MAUS ENTLANG'
-          : 'MAUS UND A/D IN DIESELBE RICHTUNG\nA + MAUS LINKS · D + MAUS RECHTS';
-    this.hud.showNotice(text, 'coach');
+    this.hud.showNotice(hintText(id, verdict, key), 'coach');
   }
 
   private runTick(dt: number): void {
@@ -1129,6 +1529,23 @@ export class Game {
     const s = this.movement.state;
     const outcome = run.tick(dt, s.pos, this.movement.hullMins, this.movement.hullMaxs, s.speed, s.onGround, this.runEvents);
     const evs = this.runEvents;
+    const session = this.session;
+    if (session !== null) {
+      // Lektion: kein Timer, keine Checkpoints — nur Tempo-Meilensteine, Absturz und das Portal.
+      for (let k = 0; k < evs.length; k++) if (evs[k].type === 'speedMilestone') this.bus.emit(evs[k]);
+      if (outcome === 'fall' || outcome === 'kill') {
+        if (this.demo !== null) this.endDemo(false);
+        this.respawn(outcome);
+      } else if (outcome === 'finish') {
+        // Ziel-Trigger = Portal hinter dem Ausgangstor: bestanden → Ergebnis (kurzer Blitz vorher).
+        // Vorher (Tor zu, sollte nicht erreichbar sein) zählt es nicht und bleibt scharf.
+        if (session.done && this.lessonEndIn < 0 && this.demo === null) {
+          this.startFlash(FINISH_RGB, FLASH_FINISH, FLASH_FINISH_TIME);
+          this.lessonEndIn = PORTAL_RESULT_DELAY;
+        } else run.reset(null);
+      }
+      return;
+    }
     for (let k = 0; k < evs.length; k++) {
       const e = evs[k];
       this.bus.emit(e);
@@ -1146,6 +1563,15 @@ export class Game {
   private respawn(reason: 'fall' | 'kill' | 'manual'): void {
     const run = this.run;
     if (!run) return;
+    const session = this.session;
+    if (session !== null) {
+      // Lektion: immer an den Start der aktuellen Stufe (kein Tod, kein Timer).
+      const sp = session.respawnPoint();
+      this.placeAt(sp.pos, sp.yaw);
+      this.bus.emit(reason === 'kill' ? RESPAWN_KILL : reason === 'manual' ? RESPAWN_MANUAL : RESPAWN_FALL);
+      this.startFade();
+      return;
+    }
     if (reason !== 'manual') this.bot?.route?.fail(reason === 'kill' ? 'kill' : 'fell', this.movement.state);
     // Vor dem ersten Checkpoint zurück an den Start = neuer Versuch, Timer aus.
     if (run.checkpoint === 0) run.reset(this.bestSplitsAtStart);
@@ -1166,7 +1592,7 @@ export class Game {
     this.bestTime = this.best.get(this.levelId);
     this.hudData.nextMedal = level.def.medals ? nextMedal(this.bestTime, level.def.medals) : null;
     // Neue Freischaltung? Groß im Ergebnis zeigen und gleich anlegen — das ist der Belohnungsmoment.
-    const fresh = this.unlocks.sync(this.levels, (id) => this.best.get(id));
+    const fresh = this.unlocks.sync(this.levels, (id) => this.best.get(id), this.progress);
     if (fresh.length > 0) {
       // Die neueste Freischaltung gleich anlegen (Reihenfolge wie UNLOCKS: späteres gewinnt).
       let patch: SettingsPatch = {};
@@ -1215,6 +1641,7 @@ export class Game {
   // ================================================================== Frame
 
   private readonly onFrame = (alpha: number, frameDtRaw: number, now: number): void => {
+    const cpu0 = performance.now();
     // Große Sprünge (stepTicks, Ruckler) nicht an Effekte und Musik weiterreichen.
     const frameDt = Math.min(Math.max(frameDtRaw, 0), 0.1);
     this.lastFrameDt = frameDt;
@@ -1226,6 +1653,11 @@ export class Game {
       const a = actions[k];
       if (this.menu.visible && this.menu.handleAction(a)) continue;
       this.handleAction(a);
+    }
+    if (this.session !== null) {
+      const l0 = performance.now();
+      this.updateLesson(frameDt);
+      this.lessonCpuSum += performance.now() - l0;
     }
 
     if (this.gameState === 'finished' && this.coasting) {
@@ -1243,7 +1675,26 @@ export class Game {
     this.updateHud(frameDt);
     this.updateFx(frameDt);
     this.renderer.render(this.camera, this.fx);
+    this.frameCpuSum += performance.now() - cpu0;
+    this.frameCpuN++;
   };
+
+  /**
+   * Mittlere CPU-Zeit des Frame-Callbacks (ms) seit dem letzten Aufruf, davon die Frame-Arbeit der
+   * Lektion (lessonMs), und Anzahl Frames; setzt zurück.
+   */
+  takeFrameCost(): { readonly ms: number; readonly lessonMs: number; readonly lessonTickMs: number; readonly frames: number } {
+    const n = this.frameCpuN;
+    // lessonTickMs = Session-Ticks je Frame (Tick-Pfad, läuft im selben rAF-Callback vor onFrame).
+    const ticks = this.lessonTickCpuSum;
+    const r = { ms: n > 0 ? this.frameCpuSum / n : 0, lessonMs: n > 0 ? this.lessonCpuSum / n : 0, lessonTickMs: n > 0 ? ticks / n : 0, frames: n };
+    this.frameCpuSum = 0;
+    this.lessonCpuSum = 0;
+    this.lessonTickCpuSum = 0;
+    this.costProbe = true;
+    this.frameCpuN = 0;
+    return r;
+  }
 
   private handleAction(a: InputAction): void {
     const st = this.gameState;
@@ -1253,7 +1704,7 @@ export class Game {
         else if (st === 'paused' && this.pausedFor === 'tuning') {
           this.tuning.hide();
           this.pausedFor = 'menu';
-          this.menu.showPause();
+          this.menu.showPause(this.lessonPauseInfo());
         } else if (st === 'finished' && !this.menu.visible) this.showFinishMenu();
         break;
       case 'restart':
@@ -1268,6 +1719,8 @@ export class Game {
         // Enter ist eine User-Geste: aus dem Tuning-Stand direkt weiter.
         if (st === 'paused' && this.pausedFor === 'tuning') this.requestResume();
         else if (st === 'finished' && this.coasting) this.showFinishMenu();
+        // Lektion bestanden (Bonusstufen offen): Enter zeigt das Ergebnis.
+        else if (st === 'playing' && this.session?.done === true && this.demo === null) this.showLessonResult();
         break;
       case 'toggleTuning':
         this.toggleTuning();
@@ -1277,7 +1730,251 @@ export class Game {
         this.applyVolumes(this.settings.get());
         this.hud.showNotice(this.muted ? 'Ton aus  [M]' : 'Ton an');
         break;
+      case 'demo':
+        // Vorführung im Training (Plan 007): H startet, H (oder jede andere Taste) beendet.
+        if (st !== 'playing' || this.session === null) break;
+        if (this.demo !== null) this.endDemo(true);
+        else this.startDemo(false);
+        break;
     }
+  }
+
+  // ================================================================== Training
+
+  /**
+   * Pro Frame in einer Lektion: Tore auflösen, Vorführung beenden (Zeit um / Taste), Tipp ins
+   * Coach-Band, Fortschritt speichern, Ergebnis nach der letzten Stufe. Frame-Pfad: nur Zahlen,
+   * gespeichert wird nur nach einer Stufe (selten).
+   */
+  private updateLesson(frameDt: number): void {
+    const s = this.session;
+    if (s === null) return;
+    const live = this.gameState === 'playing' && !this.frozen;
+    if (live) s.update(frameDt);
+    if (s.hud.stageIndex !== this.judgeStage) {
+      // Selten (Stufenwechsel): turnBand ist nur je Stufe null oder nicht, das Tempo zählt dafür nicht.
+      this.judgeStage = s.hud.stageIndex;
+      this.lessonJudge = s.turnBand(JUDGE_PROBE_SPEED) !== null;
+    }
+    if (this.demo !== null && this.gameState === 'playing') {
+      const keyed = !this.demoPlays && this.input.anyKeyDown();
+      // Zuschauen endet, sobald es nichts mehr zu sehen gibt: Ziel gezeigt (+ kurze Pause), Bot steht, Zeit um.
+      const shown = this.demoGoal && this.demoGoalLeft <= 0;
+      if (keyed || this.demoLeft <= 0 || shown || this.demoStill >= DEMO_STILL_END) this.endDemo(true);
+      else if (this.demoPlays && s.hud.stageIndex !== this.demoStage) {
+        // Bot spielt: neue Stufe → deren Vorführung (vom Stufen-Spawn), fertig → aus.
+        if (this.currentStage()?.demo !== undefined) this.startDemo(true);
+        else this.endDemo(false);
+      }
+    }
+    if (s.tip.serial !== this.tipSerial) {
+      this.tipSerial = s.tip.serial;
+      // Tipps der Lektion im Coach-Band; "[H]" zeigt die echte Vorführungs-Taste. Ist keine belegt,
+      // entfällt ein Tipp, der auf sie verweist (er würde auf eine tote Taste zeigen). Selten: darf bauen.
+      const text = s.tip.text;
+      const refersDemo = text.includes('[H]');
+      // Urteils-Tipps nur, wo Strafen bewertet wird ("W LOSLASSEN" in T2 LENKEN widersprach dem Stufentext).
+      const off = s.tip.kind === 'verdict' && !this.lessonJudge;
+      if (!s.suspended && !off && !(refersDemo && this.demoKey === null)) {
+        this.hud.showNotice(refersDemo && this.demoKey !== null && this.demoKey !== 'H' ? text.split('[H]').join(`[${this.demoKey}]`) : text, 'coach');
+      }
+    }
+    if (this.progressDirty) {
+      this.progressDirty = false;
+      this.saveProgress();
+    }
+    if (this.lessonEndIn >= 0 && live) {
+      this.lessonEndIn -= frameDt;
+      if (this.lessonEndIn < 0) this.showLessonResult();
+    }
+    const hud = this.hud;
+    hud.demo = this.demo !== null && !this.demoPlays;
+    hud.demoGoal = hud.demo && this.demoGoal;
+    hud.judge = this.lessonJudge;
+    hud.lessonDone = s.done && s.hud.stageIndex < s.hud.stageTotal;
+    hud.demoAvailable = this.currentStage()?.demo !== undefined && this.demoKey !== null;
+    this.fx.gateOpen = s.gateOpen;
+  }
+
+  /**
+   * Vorführung der aktuellen Stufe: an den Stufen-Spawn, Bot der Stufe (DemoDef) übernimmt die Eingabe,
+   * die Session hält an (nichts zählt), HUD zeigt das Demo-Band und die Tasten des Bots.
+   * play = Tools: der Bot spielt wirklich (Session läuft). false = Stufe ohne Vorführung.
+   */
+  private startDemo(play: boolean): boolean {
+    const s = this.session;
+    const level = this.level;
+    const demo = this.currentStage()?.demo;
+    if (!s || !level || !demo || this.gameState !== 'playing') {
+      if (s && !demo && this.gameState === 'playing') this.hud.showNotice('FÜR DIESE STUFE GIBT ES KEINE VORFÜHRUNG');
+      return false;
+    }
+    this.clearBot();
+    const sp = s.respawnPoint();
+    // Kopie: respawnPoint() liefert ein wiederverwendetes Objekt.
+    const spawn = { pos: sp.pos.clone(), yaw: sp.yaw };
+    this.placeAt(spawn.pos, spawn.yaw);
+    // Tools: echte Läufe verwerfen Laufendes wie ein Respawn (Judge, Serien); die Vorführung
+    // setzt dafür suspended (die Session räumt beim Umschalten selbst auf).
+    if (play) this.bus.emit(RESPAWN_MANUAL);
+    s.suspended = !play;
+    const runner = createDemo(demo, level, this.config, this.world, spawn);
+    this.demo = runner;
+    this.demoLeft = runner.seconds;
+    this.demoPlays = play;
+    this.demoStage = s.hud.stageIndex;
+    this.resetDemoWatch();
+    // Zuschauen: der Schatten erkennt, wann der Bot die Stufe geschafft hätte (Tools spielen echt, ohne Schatten).
+    if (!play) this.demoShadow = this.makeDemoShadow(level, s.hud.stageIndex);
+    const pm = this.movement;
+    this.overrideActive = true;
+    this.input.setOverride(() => (this.demo !== null ? this.demo.next(pm.state, pm.surfNormal) : NO_INPUT));
+    this.startFade();
+    // Der Druck, der die Vorführung gestartet hat, beendet sie nicht gleich wieder.
+    this.input.anyKeyDown();
+    return true;
+  }
+
+  /**
+   * Schatten-Session an Stufe `stage` (ohne Welt: Tore betreffen nur die Kollision, die die echte GatedWorld
+   * trägt). Einmal je Vorführung, nicht im Tick-Pfad. null = Stufe nicht erreichbar (sollte nicht vorkommen).
+   */
+  private makeDemoShadow(level: CompiledLevel, stage: number): TrainingSessionApi | null {
+    const sh = new TrainingSession(level, this.config, { world: null });
+    // Über den Vertrag an die Stufe: Überspringen (die gemeldeten Ereignisse verwirft watchDemo).
+    for (let i = 0; i < stage && sh.hud.stageIndex < stage; i++) sh.skipStage();
+    return sh.hud.stageIndex === stage ? sh : null;
+  }
+
+  /**
+   * Tick-Pfad während einer Vorführung (nicht demoPlays): Schatten mit den Ticks des Bots füttern — wechselt
+   * seine Stufe, ist das Ziel erreicht ("SO GEHT'S!", nach DEMO_GOAL_HOLD zurück). Dazu Stillstand messen.
+   */
+  private watchDemo(dt: number, cmd: PlayerInput, hullH: number): void {
+    const sh = this.demoShadow;
+    if (sh !== null) {
+      const out = this.shadowEvents;
+      out.length = 0;
+      sh.tick(dt, this.prev, this.cur, cmd, hullH, out);
+      out.length = 0;
+      if (sh.hud.stageIndex !== this.demoStage) {
+        this.demoShadow = null;
+        this.demoGoal = true;
+        this.demoGoalLeft = DEMO_GOAL_HOLD;
+      }
+    } else if (this.demoGoal) this.demoGoalLeft -= dt;
+    if (this.cur.speed >= DEMO_STILL_SPEED) {
+      this.demoMoved = true;
+      this.demoStill = 0;
+    } else if (this.demoMoved) this.demoStill += dt;
+  }
+
+  /** Beobachtung der Vorführung zurücksetzen (Start, Ende, Levelwechsel). */
+  private resetDemoWatch(): void {
+    this.demoShadow = null;
+    this.demoGoal = false;
+    this.demoGoalLeft = 0;
+    this.demoMoved = false;
+    this.demoStill = 0;
+    this.hud.demoGoal = false;
+  }
+
+  /** Vorführung beenden; teleport = zurück an den Stufen-Spawn (Fortschritt unverändert). */
+  private endDemo(teleport: boolean): void {
+    if (this.demo === null) return;
+    this.demo = null;
+    this.demoPlays = false;
+    this.demoStage = -1;
+    this.resetDemoWatch();
+    if (this.overrideActive) {
+      // Ohne Teleport dort weiterschauen, wo der Bot zuletzt hinsah (sonst springt der Blick zurück).
+      this.input.setOverride(null);
+      this.input.setView(this.lastYaw, this.lastPitch);
+    }
+    this.overrideActive = false;
+    const s = this.session;
+    if (s !== null) {
+      s.suspended = false;
+      if (teleport) {
+        const sp = s.respawnPoint();
+        this.placeAt(sp.pos, sp.yaw);
+        this.startFade();
+      }
+    }
+    this.hud.demo = false;
+    this.input.anyKeyDown();
+  }
+
+  /** Übersprungene Stufe: nur die Buchführung von 'lessonStage' (ohne Feier) — Ergebnis nach der letzten. */
+  private stageSkipped(): void {
+    this.skipPending--;
+    this.progressDirty = true;
+    const s = this.session;
+    if (s !== null && s.hud.stageIndex >= s.hud.stageTotal) this.lessonEndIn = LESSON_RESULT_DELAY;
+  }
+
+  /** Lektion von vorn (R): Fortschritt der Sitzung weg, Tore zu, Start der ersten Stufe. */
+  private restartLesson(): void {
+    const s = this.session;
+    if (!s) return;
+    this.endDemo(false);
+    // skipPending bleibt: restartLesson leert die Warteschlange der Session nicht — ein vorher übersprungenes
+    // 'lessonStage' kommt trotzdem mit dem nächsten Tick und darf nicht gefeiert werden.
+    s.restartLesson();
+    const sp = s.respawnPoint();
+    this.placeAt(sp.pos, sp.yaw);
+    this.bus.emit(RESPAWN_RESTART);
+    this.startFade();
+    this.lessonEndIn = -1;
+    this.lessonResult = null;
+    this.gameState = 'playing';
+    this.menu.hide();
+  }
+
+  /** Erledigte Stufen der Sitzung in den Fortschritt (Vereinigung, Sterne nur nach oben). */
+  private saveProgress(): void {
+    const s = this.session;
+    const def = this.level?.def.training;
+    if (s === null || !def || s.completedStageIds.length === 0) return;
+    this.progress.record(this.levelId, def.stages, s.completedStageIds);
+  }
+
+  /** Ergebnis der Lektion: speichern, Freischaltungen, Menü 'lessonDone'. */
+  private showLessonResult(): void {
+    const s = this.session;
+    if (s === null) return;
+    this.endDemo(false);
+    this.saveProgress();
+    const fresh = this.unlocks.sync(this.levels, (id) => this.best.get(id), this.progress);
+    if (fresh.length > 0) {
+      let patch: SettingsPatch = {};
+      for (const id of fresh) patch = { ...patch, ...unlockPatch(id) };
+      this.settings.update(patch);
+    }
+    const done = new Set(s.completedStageIds);
+    const i = this.lessons.findIndex((l) => l.id === this.levelId);
+    const r: LessonResult = {
+      lessonId: this.levelId,
+      name: this.hudData.levelName,
+      stars: s.stars,
+      stages: (this.level?.def.training?.stages ?? []).map((st) => ({ id: st.id, title: st.title, rank: st.rank ?? 'required', done: done.has(st.id) })),
+      nextLessonId: i >= 0 && i + 1 < this.lessons.length ? this.lessons[i + 1].id : null,
+      unlocked: fresh.map((id) => unlockDef(id).name),
+    };
+    this.lessonResult = r;
+    this.lessonEndIn = -1;
+    this.gameState = 'finished';
+    this.coasting = false;
+    this.input.exitLock();
+    this.tuning.hide();
+    this.menu.showLessonDone(r);
+  }
+
+  /** Normales Level ohne Ghost (Lektion): Anzeige und Aufnahme aus. */
+  private clearGhost(): void {
+    this.ghostTrack = null;
+    this.ghostRec.stop();
+    this.hudData.ghostDiff = null;
   }
 
   private toggleTuning(): void {
@@ -1299,7 +1996,7 @@ export class Game {
     const ticking = this.ticking && !this.frozen;
     if (ticking) lerpSnapshot(this.prev, this.cur, alpha, this.interp);
     else copySnap(this.cur, this.interp);
-    cameraViewFromSnapshot(this.interp, this.lastSprint, this.lastSide, this.view);
+    cameraViewFromSnapshot(this.interp, this.lastSprint, this.lastSide, this.view, ticking ? alpha : 1);
     // Blick immer frisch aus der Maus — nie der des letzten Ticks (außer ein Bot/Override steuert).
     this.rig.update(ticking ? frameDt : 0, this.view, this.viewYaw, this.viewPitch);
   }
@@ -1369,6 +2066,7 @@ export class Game {
     d.strafeSync = s.strafeSync;
     d.airTime = s.airTime;
     d.surfing = s.surfing;
+    d.sliding = s.sliding;
     const live = this.ticking && !this.frozen;
     d.nearL = live ? this.nearL : Infinity;
     d.nearR = live ? this.nearR : Infinity;
@@ -1384,6 +2082,9 @@ export class Game {
     const d = this.hudData;
     const s = this.interp;
     const run = this.run;
+    // Lektion mit forceKeys: Showkeys immer an (sie sind dort Teil der Anleitung).
+    d.showKeys = this.showKeysSetting || this.lessonForceKeys;
+
     d.speed = s.speed;
     d.hopChain = s.hopChain;
     d.strafeSync = s.strafeSync;
@@ -1464,11 +2165,19 @@ export class Game {
     this.strafeBadTicks = 0;
     this.strafeGoodTicks = 0;
     k.forwardInAirMs = clampInt(Math.round(this.forwardAirTime * 1000), 1e9);
+    // Zielband der Lektion am Drehbalken (Ganzzahlen: kalter Leser, fallen.md #59).
+    const band = this.session !== null ? this.session.turnBand(this.interp.speed) : null;
+    if (band !== null) {
+      this.band.lo = clampInt(Math.round(band.lo), TURN_RATE_LIMIT);
+      this.band.hi = clampInt(Math.round(band.hi), TURN_RATE_LIMIT);
+      k.turnBand = this.band;
+    } else k.turnBand = null;
   }
 
   private updateFx(frameDt: number): void {
     const fx = this.fx;
     fx.time = this.time;
+    if (this.session === null) fx.gateOpen = undefined;
     const sp = this.gameState === 'title' ? 0 : this.interp.speed;
     fx.speed01 = clamp01((sp - SPEED01_LO) / (SPEED01_HI - SPEED01_LO));
     // Tempostufe mit Hysterese: hoch an der Schwelle, runter erst TIER_DOWN darunter (kein Flackern am Rand).
@@ -1515,7 +2224,7 @@ export class Game {
 
   private updateLeaveGuard(): void {
     // "Seite verlassen?" nur, solange ein echter Lauf läuft — nie im Playwright-Betrieb ohne Lock.
-    const on = !this.lockless && this.run !== null && this.run.running && this.gameState !== 'title';
+    const on = !this.lockless && this.session === null && this.run !== null && this.run.running && this.gameState !== 'title';
     if (on !== this.leaveGuard) {
       this.leaveGuard = on;
       this.input.setLeaveGuard(on);
@@ -1532,6 +2241,12 @@ export class Game {
     this.applyVolumes(s);
     this.hudData.showSpeedometer = s.showSpeedometer;
     this.hudData.showKeys = s.showKeys;
+    this.showKeysSetting = s.showKeys;
+    // Vorführungs-Taste (Plan 007) für HUD-Hinweis, Pause und Tipps.
+    const demoCode = s.keybinds.demo[0];
+    this.demoKey = demoCode !== undefined ? keyShortLabel(demoCode) : null;
+    this.hud.setDemoKey(this.demoKey);
+    this.menu.setDemoKey(this.demoKey ?? '—');
     this.hand.enabled = s.showHand;
     this.hand.motionFx = s.motionFx;
     this.applyCosmetics(s);
@@ -1568,6 +2283,8 @@ export class Game {
   private applyConfig(c: MovementConfig): void {
     this.config = c;
     this.movement.setConfig(c);
+    this.coach.setConfig(c);
+    this.session?.setConfig(c);
     this.hud.setMovement(c);
     this.rig.setMovement(c);
     this.bot?.setConfig(c);
@@ -1598,7 +2315,7 @@ export class Game {
           seed: opts.seed,
           killY: level.def.killY,
           start: { x: level.spawnPos.x, z: level.spawnPos.z },
-          world: level.world,
+          world: this.world,
           maxTurnRate: opts.maxTurnRate,
           timeout: opts.timeout,
           stallTimeout: opts.stallTimeout,
@@ -1617,6 +2334,15 @@ export class Game {
   }
 
   private clearBot(): void {
+    // Eine laufende Vorführung endet mit (ohne Teleport — der Aufrufer setzt selbst).
+    if (this.demo !== null) {
+      this.demo = null;
+      this.demoPlays = false;
+      this.demoStage = -1;
+      this.resetDemoWatch();
+      if (this.session !== null) this.session.suspended = false;
+      this.hud.demo = false;
+    }
     if (this.overrideActive) {
       // Blick dort fortsetzen, wo Bot/Override zuletzt hinsah.
       this.input.setOverride(null);
@@ -1663,6 +2389,7 @@ function copySnap(a: PlayerSnapshot, out: MutablePlayerSnapshot): void {
   out.airTime = a.airTime;
   out.surfing = a.surfing;
   out.surfNormal.copy(a.surfNormal);
+  out.sliding = a.sliding;
 }
 
 /** Ganzzahl in ±limit als int32 (Smi) — für Felder, die ein kalter Leser liest. */
@@ -1693,6 +2420,24 @@ export function parseMedals(v: unknown): LevelMedals | null {
   if (typeof bronze !== 'number' || typeof silver !== 'number' || typeof gold !== 'number' || typeof velocity !== 'number' || typeof author !== 'number') return null;
   if (!(author > 0 && velocity >= author && gold > velocity && silver > gold && bronze > silver && Number.isFinite(bronze))) return null;
   return { bronze, silver, gold, velocity, author };
+}
+
+function vecOf(v: Vector3): { readonly x: number; readonly y: number; readonly z: number } {
+  return { x: Math.round(v.x * 1000) / 1000, y: Math.round(v.y * 1000) / 1000, z: Math.round(v.z * 1000) / 1000 };
+}
+
+/** training/index.json prüfen (wie parseIndex): kaputte Einträge fallen raus, Reihenfolge = Liste. */
+export function parseTrainingIndex(data: unknown): TrainingIndexEntry[] {
+  if (!Array.isArray(data)) throw new Error('training/index.json ist keine Liste');
+  const out: TrainingIndexEntry[] = [];
+  for (const e of data) {
+    if (!isRecord(e)) continue;
+    const { id, name, subtitle, file, lesson, short, group } = e;
+    if (typeof id !== 'string' || typeof name !== 'string' || typeof file !== 'string' || typeof short !== 'string') continue;
+    if (typeof lesson !== 'number' || (group !== 'basics' && group !== 'advanced')) continue;
+    out.push({ id, name, file, lesson, short, group, ...(typeof subtitle === 'string' ? { subtitle } : {}) });
+  }
+  return out;
 }
 
 /** index.json prüfen statt blind zu casten — ein kaputter Eintrag fällt raus, der Rest bleibt spielbar. */

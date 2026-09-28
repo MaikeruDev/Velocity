@@ -80,7 +80,9 @@ export class SpeedCurve {
   }
 
   static model(m: StrafeModel, cfg: MovementConfig = VELOCITY_DEFAULT): SpeedCurve {
-    const key = `${m.sync ?? 1}|${m.aimNoiseDeg ?? 0}|${cfg.airAccelerate}|${cfg.airSpeedCap}|${cfg.gravity}|${cfg.jumpImpulse}|${cfg.tickRate}|${cfg.runSpeed}`;
+    // Schlüssel über ALLE Config-Felder: die alte Auswahl (8 Felder) kannte weder den
+    // Anfänger-Cap noch Assist/Sprint — zwei Configs in einem Prozess teilten sich eine Kurve.
+    const key = `${m.sync ?? 1}|${m.aimNoiseDeg ?? 0}|${configKey(cfg)}`;
     let c = SpeedCurve.cache.get(key);
     if (!c) {
       c = new SpeedCurve(m, measureCurve(m, cfg));
@@ -116,6 +118,25 @@ export class SpeedCurve {
     }
     return n - 1 + (v - p[n - 1]) / Math.max(1e-6, p[n - 1] - p[n - 2]);
   }
+}
+
+/**
+ * Stabiler Schlüssel über alle Felder einer Config (sortiert, rekursiv, Zahlen per String —
+ * JSON machte aus Infinity/NaN "null"). Neue MovementConfig-Felder zählen automatisch mit.
+ */
+export function configKey(cfg: MovementConfig): string {
+  return stableKey(cfg);
+}
+
+function stableKey(v: unknown): string {
+  if (typeof v === 'number') return String(v);
+  if (v === null || typeof v !== 'object') return JSON.stringify(v) ?? String(v);
+  if (Array.isArray(v)) return `[${v.map(stableKey).join(',')}]`;
+  const o = v as Record<string, unknown>;
+  return `{${Object.keys(o)
+    .sort()
+    .map((k) => `${k}:${stableKey(o[k])}`)
+    .join(',')}}`;
 }
 
 function measureCurve(m: StrafeModel, cfg: MovementConfig): number[] {
@@ -405,13 +426,24 @@ export function routeAxis(route: readonly RouteNode[]): (x: number, z: number) =
   };
 }
 
+/** So tief (u) unter der Trigger-Unterkante zählt ein Knoten noch als "im Checkpoint" (Füße am Hang, Pads). */
+export const RESUME_BELOW = 8;
+
+/**
+ * Liegt ein Route-Knoten (Füße) im Checkpoint-Trigger? x/z mit 1 u Toleranz, y von
+ * RESUME_BELOW unter der Unterkante bis zur Oberkante. Ohne die Höhe griff in gestapelten
+ * Leveln (Wendel L4) ein Knoten der Etage darunter ("Schatten-Knoten").
+ */
+export function nodeInTrigger(p: readonly number[], trigger: CompiledTrigger): boolean {
+  const b = trigger.bounds;
+  return p[0] >= b.min.x - 1 && p[0] <= b.max.x + 1 && p[2] >= b.min.z - 1 && p[2] <= b.max.z + 1 && p[1] >= b.min.y - RESUME_BELOW && p[1] <= b.max.y;
+}
+
 /** Ab welchem Route-Knoten geht es nach einem Respawn an `spawn` weiter? */
 export function resumeIndex(route: readonly RouteNode[], trigger: CompiledTrigger, from = 0): number {
-  const inside = (p: readonly number[]): boolean =>
-    p[0] >= trigger.bounds.min.x - 1 && p[0] <= trigger.bounds.max.x + 1 && p[2] >= trigger.bounds.min.z - 1 && p[2] <= trigger.bounds.max.z + 1;
   let first = -1;
   for (let i = from; i < route.length; i++) {
-    if (inside(route[i].pos)) {
+    if (nodeInTrigger(route[i].pos, trigger)) {
       first = i;
       break;
     }
@@ -437,6 +469,31 @@ export function resumeIndex(route: readonly RouteNode[], trigger: CompiledTrigge
     if ((sp.x - n.pos[0]) * ax + (sp.z - n.pos[2]) * az > 0) return best + 1;
   }
   return best;
+}
+
+/** Welche Bot-Linie eines Levels: `route` (Ideallinie) oder `safeRoute` (sichere Linie einer Gabel). */
+export type RouteChoice = 'route' | 'safeRoute';
+
+/**
+ * Level mit `safeRoute` als Route — alle Proben, die `def.route` lesen (Bots, Respawn,
+ * Surf-Raster, Spiel-Uhr), fahren dann die sichere Linie. Ohne safeRoute bleibt das Level
+ * unverändert (die Route IST dann die sichere Linie). Die Variante trägt selbst kein
+ * safeRoute mehr, damit Prüfungen nicht rekursiv doppelt laufen.
+ */
+export function withRoute(level: CompiledLevel, which: RouteChoice): CompiledLevel;
+export function withRoute(level: LevelFile, which: RouteChoice): LevelFile;
+export function withRoute(level: CompiledLevel | LevelFile, which: RouteChoice): CompiledLevel | LevelFile {
+  if ('world' in level) {
+    const def = routeDef(level.def, which);
+    return def === level.def ? level : { ...level, def };
+  }
+  return routeDef(level, which);
+}
+
+function routeDef(def: LevelFile, which: RouteChoice): LevelFile {
+  if (which === 'route' || !def.safeRoute) return def;
+  const { safeRoute, ...rest } = def;
+  return { ...rest, route: safeRoute };
 }
 
 /** Trigger, die nach Checkpoint `order` kommen: der nächste Checkpoint, sonst das Ziel. */
@@ -831,6 +888,8 @@ export interface TimedRun {
   readonly deaths: number;
   /** Warum kein Ziel (Bot gescheitert, Zeitlimit). */
   readonly reason: string | null;
+  /** Spiel-Uhr an jedem erreichten Checkpoint (RunState.splits) — verortet, wo Läufe auseinanderlaufen. */
+  readonly splits: readonly number[];
 }
 
 const SPAWN_LIFT = 1;
@@ -842,7 +901,7 @@ const SPAWN_LIFT = 1;
  * mit neuem Timer). Die Bestzeit, die der Spieler sieht, ist genau diese Zahl —
  * build.ts maß Par früher ab Spawn (1.2–1.3 s zu lang) und nur Läufe ohne Tod.
  */
-export function timedRun(level: CompiledLevel, model: StrafeModel, seed: number, cfg: MovementConfig = VELOCITY_DEFAULT, timeout = 180): TimedRun {
+export function timedRun(level: CompiledLevel, model: StrafeModel, seed: number, cfg: MovementConfig = VELOCITY_DEFAULT, timeout = 180, jitter?: StartJitter): TimedRun {
   const route = level.def.route ?? [];
   const pm = new PlayerMovement(level.world, cfg);
   const run = new RunState(level);
@@ -861,15 +920,17 @@ export function timedRun(level: CompiledLevel, model: StrafeModel, seed: number,
       stallTimeout: 12,
       timeout: timeout + 1,
     });
-  place(level.spawnPos);
-  let bot = follower(0, level.spawnPos);
+  const start = jitterStart(level.spawnPos, level.spawnYaw, jitter?.lateral ?? 0);
+  place(start);
+  let bot = follower(0, start);
+  const aim = new StartAim(jitter?.yawDeg ?? 0);
   let deaths = 0;
   const dt = 1 / cfg.tickRate;
   for (let t = 0; t < timeout * cfg.tickRate; t++) {
-    pm.tick(bot.next(pm.state, pm.surfNormal));
+    pm.tick(aim.apply(bot.next(pm.state, pm.surfNormal), pm.state.onGround));
     const s = pm.state;
     const out = run.tick(dt, s.pos, pm.hullMins, pm.hullMaxs, s.speed, s.onGround, events);
-    if (out === 'finish') return { time: run.time, deaths, reason: null };
+    if (out === 'finish') return { time: run.time, deaths, reason: null, splits: run.splits() };
     if (out === 'fall' || out === 'kill') {
       deaths++;
       if (run.checkpoint === 0) run.reset(null);
@@ -880,16 +941,207 @@ export function timedRun(level: CompiledLevel, model: StrafeModel, seed: number,
       continue;
     }
     // Bot fertig oder gescheitert, ohne dass das Ziel kam: noch kurz ausrollen lassen (Flug ins Ziel).
-    if (bot.status === 'failed') return { time: null, deaths, reason: bot.report.reason ?? 'bot' };
+    if (bot.status === 'failed') return { time: null, deaths, reason: bot.report.reason ?? 'bot', splits: run.splits() };
   }
-  return { time: null, deaths, reason: 'timeout' };
+  return { time: null, deaths, reason: 'timeout', splits: run.splits() };
 }
 
 /** Median der Spiel-Zeiten eines Modells über die Seeds (null, wenn keiner ins Ziel kommt). */
 export function timedMedian(level: CompiledLevel, model: StrafeModel, seeds: readonly number[], cfg: MovementConfig = VELOCITY_DEFAULT): { readonly median: number | null; readonly runs: readonly TimedRun[] } {
   const runs = seeds.map((seed) => timedRun(level, model, seed, cfg));
+  return { median: medianOf(runs), runs };
+}
+
+/** Median über ALLE Läufe: ein gescheiterter zählt als langsamster; null ohne Mehrheit im Ziel. */
+function medianOf(runs: readonly TimedRun[]): number | null {
   const times = runs.flatMap((r) => (r.time === null ? [] : [r.time])).sort((a, b) => a - b);
-  // Median über ALLE Seeds: ein gescheiterter Lauf zählt als langsamster.
-  if (times.length * 2 <= seeds.length) return { median: null, runs };
-  return { median: times[Math.floor((seeds.length - 1) / 2)], runs };
+  if (times.length * 2 <= runs.length) return null;
+  return times[Math.floor((runs.length - 1) / 2)];
+}
+
+// ---------------------------------------------------------------------------
+// Start-Jitter (Medaillen des perfekten Bots)
+
+/** Start-Störung eines Laufs: Versatz (u) rechts vom Spawn-Blick, Blickfehler (Grad, + = links) bis zum ersten Absprung. */
+export interface StartJitter {
+  readonly lateral: number;
+  readonly yawDeg: number;
+}
+
+/** Startpunkt `lateral` u rechts vom Spawn-Blick (Blick = (−sin yaw, −cos yaw), rechts = (cos yaw, −sin yaw) wie Taste D). */
+export function jitterStart(spawn: Vector3, spawnYawDeg: number, lateral: number): Vector3 {
+  if (lateral === 0) return spawn;
+  const a = (spawnYawDeg * Math.PI) / 180;
+  return new Vector3(spawn.x + Math.cos(a) * lateral, spawn.y, spawn.z - Math.sin(a) * lateral);
+}
+
+/**
+ * Blickfehler des Start-Jitters: verdreht die Bot-Eingabe um `yawDeg`, bis der Spieler nach dem ersten
+ * Aufsetzen am Spawn wieder abhebt (erster Absprung) — danach nie wieder, auch nicht nach einem Respawn.
+ * `apply` liefert die Bot-Eingabe selbst oder eine verdrehte Kopie (die Bot-Ausgabe bleibt unberührt).
+ */
+export class StartAim {
+  private off: number;
+  private grounded = false;
+  private readonly out: MutablePlayerInput = makeBotInput();
+
+  constructor(yawDeg: number) {
+    this.off = (yawDeg * Math.PI) / 180;
+  }
+
+  /** true, solange der Blickfehler wirkt. */
+  get active(): boolean {
+    return this.off !== 0;
+  }
+
+  /** `onGround` = Zustand VOR dem Tick, der diese Eingabe bekommt. */
+  apply(cmd: PlayerInput, onGround: boolean): PlayerInput {
+    if (this.off !== 0) {
+      if (onGround) this.grounded = true;
+      else if (this.grounded) this.off = 0;
+    }
+    if (this.off === 0) return cmd;
+    Object.assign(this.out, cmd);
+    this.out.yaw = cmd.yaw + this.off;
+    return this.out;
+  }
+}
+
+/** Kasten des Start-Jitters: ±16 u quer × ±1° Blick. */
+export const JITTER_LATERAL = 16;
+export const JITTER_YAW_DEG = 1;
+/** Kantenlänge des Rasters (ungerade: die mittlere Zelle ist der ungestörte Start). */
+export const JITTER_GRID = 7;
+
+/** Zellmitten eines n × n-Rasters im Kasten, Reihenfolge Versatz außen, Blick innen. */
+export function jitterGrid(n = JITTER_GRID): StartJitter[] {
+  const out: StartJitter[] = [];
+  for (let a = 0; a < n; a++)
+    for (let b = 0; b < n; b++) out.push({ lateral: JITTER_LATERAL * ((2 * a + 1) / n - 1), yawDeg: JITTER_YAW_DEG * ((2 * b + 1) / n - 1) });
+  return out;
+}
+
+/**
+ * 49 Starts um den Spawn (7 × 7-Zellmitten). Der perfekte Bot ist deterministisch, aber chaotisch: schon
+ * 0.1° oder 16 u verschieben seine Zeit. Plan 007 sah den Median über 5 Starts (Mitte + Ecken) vor — die
+ * Ecken sind keine faire Stichprobe (L1, Phase-0-Physik: alle vier im langsamen Zweig, 26.72 s gegen
+ * 23.02 s über 49 Starts); das gleichmäßige Raster ist es. 49 statt 25: auf dem ruhigen L2 schwankte der
+ * Median über 5 × 5 / 7 × 7 / 9 × 9 noch um 0.19 s (16.01/16.20/16.15), 7 × 7 liegt bei 9 × 9; ≈ 0.4 s je Level.
+ * Robust ist der Median nur, solange der Bot EINEN Zweig fährt — zerfallen die Läufe in Zweige
+ * (L1: Bonk an der Crouch-Kante, `jitterBranches`), hängt jede Kennzahl davon ab, wie viele Starts in
+ * welchem Zweig landen. Dann warnen build.ts und levels:check; zu reparieren ist das Level.
+ */
+export const START_JITTERS: readonly StartJitter[] = jitterGrid();
+
+/** Ergebnis über die Start-Jitter: Median wie timedMedian, dazu die Zweige (null = ein Zweig). */
+export interface JitterResult {
+  readonly median: number | null;
+  readonly runs: readonly TimedRun[];
+  readonly branches: JitterBranches | null;
+}
+
+/** Median der Spiel-Zeiten eines Modells über Start-Jitter (build.ts: Gold/VELOCITY/Autor). */
+export function jitterMedian(level: CompiledLevel, model: StrafeModel, cfg: MovementConfig = VELOCITY_DEFAULT, jitters: readonly StartJitter[] = START_JITTERS): JitterResult {
+  const runs = jitters.map((j, i) => timedRun(level, model, i + 1, cfg, 180, j));
+  return { median: medianOf(runs), runs, branches: jitterBranches(runs) };
+}
+
+/** Zweige: Lücke ≥ 4 % des Medians zwischen zwei benachbarten Zeiten … */
+export const BRANCH_GAP = 0.04;
+/** … mit je ≥ 10 % der Starts auf beiden Seiten (einzelne Ausreißer sind kein Zweig). */
+export const BRANCH_SHARE = 0.1;
+
+/**
+ * Zwei Zweige des perfekten Bots über den Start-Kasten. Kalibriert (7 × 7, Phase-0- und Repo-Physik): L1
+ * Lücke 2.0/2.1 s (9–10 % des Medians), L2 ≤ 0.2 s, L4-Prototyp ≤ 0.5 s (2 %), L3-Prototyp 1.2 s nur vor
+ * 3 von 49 Läufen (Ausreißer, kein Zweig).
+ */
+export interface JitterBranches {
+  /** Läufe des schnellen und des langsamen Zweigs, je aufsteigend; gescheiterte Läufe zählen als langsamste. */
+  readonly fast: readonly TimedRun[];
+  readonly slow: readonly TimedRun[];
+  /** Lücke (s) zwischen dem langsamsten schnellen und dem schnellsten langsamen Lauf (Infinity = der Rest scheitert). */
+  readonly gap: number;
+  /**
+   * Abschnitt mit dem größten Unterschied der Median-Abschnittszeiten (0 = Start → CP1, …), −1 ohne Splits. Das
+   * ist, wo der langsame Zweig die Zeit verliert — meist direkt NACH der Chaos-Stelle (L1: Bonk an der
+   * Crouch-Kante vor CP2, Verlust im Neustart CP2 → CP3).
+   */
+  readonly segment: number;
+  /** Median-Unterschied (s) in diesem Abschnitt. */
+  readonly segmentDiff: number;
+  /** Anzahl Checkpoints (Abschnitte = checkpoints + 1). */
+  readonly checkpoints: number;
+}
+
+export function jitterBranches(runs: readonly TimedRun[]): JitterBranches | null {
+  const med = medianOf(runs);
+  const n = runs.length;
+  const k = Math.max(1, Math.ceil(BRANCH_SHARE * n));
+  if (med === null || n < 2 * k) return null;
+  const at = (r: TimedRun): number => r.time ?? Infinity;
+  const sorted = [...runs].sort((a, b) => at(a) - at(b));
+  let cut = -1;
+  let gap = 0;
+  for (let i = k; i <= n - k; i++) {
+    const lo = at(sorted[i - 1]);
+    const hi = at(sorted[i]);
+    const g = hi === Infinity ? (lo === Infinity ? 0 : Infinity) : hi - lo;
+    if (g > gap) {
+      gap = g;
+      cut = i;
+    }
+  }
+  if (cut < 0 || gap < BRANCH_GAP * med) return null;
+  const fast = sorted.slice(0, cut);
+  const slow = sorted.slice(cut);
+  // Abschnittszeiten aus den Splits (nur Läufe im Ziel mit allen Checkpoints).
+  const cpCount = Math.max(0, ...runs.map((r) => r.splits.length));
+  const segs = (r: TimedRun): number[] | null => {
+    if (r.time === null || r.splits.length !== cpCount) return null;
+    const marks = [0, ...r.splits, r.time];
+    return marks.slice(1).map((m, i) => m - marks[i]);
+  };
+  const medianAt = (list: readonly TimedRun[], s: number): number | null => {
+    const xs = list.flatMap((r) => {
+      const x = segs(r);
+      return x ? [x[s]] : [];
+    });
+    if (!xs.length) return null;
+    xs.sort((a, b) => a - b);
+    return xs[Math.floor((xs.length - 1) / 2)];
+  };
+  let segment = -1;
+  let segmentDiff = 0;
+  for (let s = 0; s <= cpCount; s++) {
+    const f = medianAt(fast, s);
+    const w = medianAt(slow, s);
+    if (f === null || w === null) continue;
+    if (segment < 0 || w - f > segmentDiff) {
+      segment = s;
+      segmentDiff = w - f;
+    }
+  }
+  return { fast, slow, gap, segment, segmentDiff, checkpoints: cpCount };
+}
+
+/** Abschnittsname für Berichte: "Start → CP1", "CP2 → CP3", "CP4 → Ziel". */
+export function segmentName(segment: number, checkpoints: number): string {
+  const from = segment === 0 ? 'Start' : `CP${segment}`;
+  const to = segment >= checkpoints ? 'Ziel' : `CP${segment + 1}`;
+  return `${from} → ${to}`;
+}
+
+/** Eine Zeile für Build-Log und Validator: Größe und Zeiten der Zweige, Lücke, Abschnitt. */
+export function describeBranches(b: JitterBranches): string {
+  const n = b.fast.length + b.slow.length;
+  const span = (list: readonly TimedRun[]): string => {
+    const times = list.flatMap((r) => (r.time === null ? [] : [r.time]));
+    const failed = list.length - times.length;
+    const range = times.length ? `${times[0].toFixed(1)}–${times[times.length - 1].toFixed(1)} s` : '';
+    return [range, failed ? `${failed} ohne Ziel` : ''].filter((x) => x !== '').join(', ');
+  };
+  const gap = Number.isFinite(b.gap) ? `Lücke ${b.gap.toFixed(1)} s` : 'der Rest scheitert';
+  const where = b.segment >= 0 ? `; größter Verlust in ${segmentName(b.segment, b.checkpoints)} (+${b.segmentDiff.toFixed(1)} s)` : '';
+  return `${b.fast.length}/${n} Starts bei ${span(b.fast)}, ${b.slow.length}/${n} bei ${span(b.slow)} (${gap})${where}`;
 }

@@ -1,0 +1,34 @@
+[momentum patch] VELOCITY_DEFAULT += {"airSpeedCapLow":40}
+Physik: airSpeedCapLow 40, FadeFrom 350, FadeTo 700, MOM=slope,grace
+  level1 Planung:
+    Hop-Reihe: Plan-Tempo 450 → 549 → 613 → 659 → 692 → 726 → 757 → 786 u/s; Lücken 203 / 205 / 235 / 236 / 235 / 91 / 233 u; Tiefen 192 / 176 / 224 / 240 / 272 / 576 u
+    Hop-Reihe braucht ab Plattformmitte (mit Reserve): 416 / 447 / 483 / 494 / 308 u/s
+    Kehre: Radius 1395 u, Plan-Tempo 750 / 775 / 799 / 823 / 848 / 871 / 889; Slalom 907 u/s (Inseln 608 u)
+    Abkürzung: 5 Inseln, Sprünge à 512 u, braucht 606 u/s
+    Rutsche: 2956 u, 444 u Gefälle bis zum Kicker; Launch (unteres Band) 729 u/s; Ziel auf y=-1110
+
+### level1 (neu gebaut, 192 Brushes)
+  Voll-Lauf sync 1.0: 8/8 im Ziel, Median 29.2 s, max 994 u/s
+  Voll-Lauf sync 0.8: 8/8 im Ziel, Median 32.2 s, max 988 u/s
+  Voll-Lauf Hand 2° : 8/8 im Ziel, Median 34.2 s, max 893 u/s
+  Voll-Lauf Hand 3° : 8/8 im Ziel, Median 37.0 s, max 840 u/s
+  Voll-Lauf sync 0.7: 7/8 im Ziel, Median 30.2 s, max 947 u/s — Seed 4: kill bei (-2803, -255, -1404) vor Knoten 31
+  Spiel-Uhr 3°-Hand (Bronze÷1.05): 33.45 s
+  Spiel-Uhr sync 1.0 (Autor): 26.41 s
+  ✗ Design: Könner-Inseln: Hand 1° über die Inseln 2/6 durch (x x x 28.2 x 26.5 s), Ersparnis Ø -1.58 s (2 Paare); perfekter Bot scheitert
+  Design: 1 Fehler, 0 Warnungen, 5 ok
+  level2 Planung:
+    Ausfahrt: Vorfeld schließt die Lücke Ring → E1 (Sprint-Sprung von T0 trägt 334 u); Stufe 3 (über S1 auf S2): ab 1199 u/s, mit Reserve 1319
+    Launch braucht 378 u/s (ohne Reserve); Lücke 528 u; Ziel auf y=-2479, Strecke 9031 u nach Norden
+
+### level2 (neu gebaut, 338 Brushes)
+  Voll-Lauf sync 1.0: 8/8 im Ziel, Median 16.8 s, max 1068 u/s
+  Voll-Lauf sync 0.8: 8/8 im Ziel, Median 18.1 s, max 1029 u/s
+  Voll-Lauf Hand 2° : 8/8 im Ziel, Median 19.1 s, max 977 u/s
+  Voll-Lauf Hand 3° : 8/8 im Ziel, Median 20.5 s, max 897 u/s
+  Voll-Lauf sync 0.7: 8/8 im Ziel, Median 18.4 s, max 996 u/s
+  Spiel-Uhr 3°-Hand (Bronze÷1.05): 19.16 s
+  Spiel-Uhr sync 1.0 (Autor): 15.50 s
+  ✗ Design: Ausfahrt hat Todesstreifen mit Auto-Hop: 2/600 Läufe (z. B. ab Knoten 15 1100 u/s Versatz 96: kill bei 1602,-1236,-3145 (ring→surf2); ab Knoten 16 580 u/s Versatz 96: kill bei 1589,-1162,-2891 (apron→exit1→surf2))
+  ✗ Design: S0 fängt Nicht-Surfer nicht: 1/12 W-Halter ab CP2 tot (Blick -15° + Leertaste: kill nach 4.8 s bei 658,-1157,-2694)
+  Design: 2 Fehler, 0 Warnungen, 4 ok

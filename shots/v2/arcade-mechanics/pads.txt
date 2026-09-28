@@ -1,0 +1,56 @@
+
+## P1 Jump-Pad (flach, 128×128, setzt vy): Höhe, Luftzeit, Tempo bei der Landung — je Fahrer (Start 320 am Boden, Pad 200 u voraus)
+
+| vy | Höhe | Luftzeit | W gehalten | perfekter Strafer | 3°-Hand | 5°-Hand | Vergleich: normaler Hop perfekt / 3° |
+|---|---|---|---|---|---|---|---|
+| 500 | 156 u | 1.25 s | 320 → 320 | 320 → 500 | 320 → 462 | 320 → 403 | 320 → 442 / 421 |
+| 650 | 264 u | 1.63 s | 320 → 320 | 320 → 537 | 320 → 495 | 320 → 438 | 320 → 442 / 421 |
+| 800 | 400 u | 2.00 s | 320 → 320 | 320 → 569 | 320 → 523 | 320 → 465 | 320 → 442 / 421 |
+
+## P3 Speed-Ringe in der L1-Hop-Reihe (Ring im Scheitel zwischen je zwei Plattformen, Radius r, +40 u/s bis 1000): Treffer je Lauf / Tempo an der Crouch-Kante (RouteFollower ab CP1, 8 Seeds)
+
+- Radius — {"sync":1}         Ringe 0.0/0 je Lauf · Tempo H7 Ø 767 · Graben 0
+- Radius — {"aimNoiseDeg":2}  Ringe 0.0/0 je Lauf · Tempo H7 Ø 444 · Graben 0
+- Radius — {"aimNoiseDeg":3}  Ringe 0.0/0 je Lauf · Tempo H7 Ø 458 · Graben 0
+- Radius 64 {"sync":1}         Ringe 6.0/7 je Lauf · Tempo H7 Ø 0 · Graben 8
+- Radius 64 {"aimNoiseDeg":2}  Ringe 7.0/7 je Lauf · Tempo H7 Ø 385 · Graben 0
+- Radius 64 {"aimNoiseDeg":3}  Ringe 6.9/7 je Lauf · Tempo H7 Ø 519 · Graben 0
+- Radius 96 {"sync":1}         Ringe 7.0/7 je Lauf · Tempo H7 Ø 0 · Graben 8
+- Radius 96 {"aimNoiseDeg":2}  Ringe 7.0/7 je Lauf · Tempo H7 Ø 385 · Graben 0
+- Radius 96 {"aimNoiseDeg":3}  Ringe 7.0/7 je Lauf · Tempo H7 Ø 478 · Graben 0
+- Radius 128 {"sync":1}         Ringe 7.0/7 je Lauf · Tempo H7 Ø 0 · Graben 8
+- Radius 128 {"aimNoiseDeg":2}  Ringe 7.0/7 je Lauf · Tempo H7 Ø 385 · Graben 0
+- Radius 128 {"aimNoiseDeg":3}  Ringe 7.0/7 je Lauf · Tempo H7 Ø 478 · Graben 0
+
+## P2 Boost-Pad (Mindesttempo entlang der Route) auf jedem CP-Spawn in L1 — RouteFollower aus dem Stand bis zum nächsten CP (8 Seeds)
+
+- CP1 Pad aus {"aimNoiseDeg":3}  8/8, Median 8.16 s 
+- CP1 Pad aus {"sync":0.8}       8/8, Median 8.05 s 
+- CP1 Pad aus {"sync":1}         8/8, Median 6.52 s 
+- CP1 Pad 450 {"aimNoiseDeg":3}  8/8, Median 8.09 s 
+- CP1 Pad 450 {"sync":0.8}       8/8, Median 7.95 s 
+- CP1 Pad 450 {"sync":1}         8/8, Median 6.42 s 
+- CP1 Pad 600 {"aimNoiseDeg":3}  8/8, Median 8.02 s 
+- CP1 Pad 600 {"sync":0.8}       8/8, Median 7.75 s 
+- CP1 Pad 600 {"sync":1}         8/8, Median 6.36 s 
+- CP2 Pad aus {"aimNoiseDeg":3}  8/8, Median 8.84 s 
+- CP2 Pad aus {"sync":0.8}       7/8, Median 8.68 s s3:kill
+- CP2 Pad aus {"sync":1}         8/8, Median 7.90 s 
+- CP2 Pad 450 {"aimNoiseDeg":3}  8/8, Median 8.75 s 
+- CP2 Pad 450 {"sync":0.8}       8/8, Median 8.63 s 
+- CP2 Pad 450 {"sync":1}         8/8, Median 7.80 s 
+- CP2 Pad 600 {"aimNoiseDeg":3}  8/8, Median 9.33 s 
+- CP2 Pad 600 {"sync":0.8}       8/8, Median 8.81 s 
+- CP2 Pad 600 {"sync":1}         8/8, Median 6.97 s 
+- CP3 Pad aus {"aimNoiseDeg":3}  8/8, Median 15.60 s 
+- CP3 Pad aus {"sync":0.8}       8/8, Median 15.22 s 
+- CP3 Pad aus {"sync":1}         8/8, Median 11.45 s 
+- CP3 Pad 450 {"aimNoiseDeg":3}  8/8, Median 16.37 s 
+- CP3 Pad 450 {"sync":0.8}       8/8, Median 14.84 s 
+- CP3 Pad 450 {"sync":1}         8/8, Median 11.28 s 
+- CP3 Pad 600 {"aimNoiseDeg":3}  8/8, Median 14.48 s 
+- CP3 Pad 600 {"sync":0.8}       8/8, Median 14.48 s 
+- CP3 Pad 600 {"sync":1}         8/8, Median 11.22 s 
+
+→ shots/v2/arcade-mechanics/pads.json
+exit 0

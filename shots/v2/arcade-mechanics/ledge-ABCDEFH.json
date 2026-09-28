@@ -1,0 +1,262 @@
+{
+  "A": [
+    {
+      "name": "Original",
+      "ok": 0,
+      "n": 200
+    },
+    {
+      "name": "Lip 4",
+      "ok": 0,
+      "n": 200
+    },
+    {
+      "name": "Lip 6",
+      "ok": 0,
+      "n": 200
+    },
+    {
+      "name": "Lip 8",
+      "ok": 12,
+      "n": 200
+    },
+    {
+      "name": "Lip 12",
+      "ok": 20,
+      "n": 200
+    },
+    {
+      "name": "Lip 18 (Q3-AirStep)",
+      "ok": 27,
+      "n": 200
+    },
+    {
+      "name": "Gedächtnis 0.2 s",
+      "ok": 0,
+      "n": 200
+    },
+    {
+      "name": "Gedächtnis + Lip 5",
+      "ok": 0,
+      "n": 200
+    }
+  ],
+  "B": [
+    {
+      "name": "Original",
+      "cells": [
+        "320: 168 u (21/40, 12 gekrochen)",
+        "450: 240 u (30/40, 13 gekrochen)",
+        "600: 320 u (40/40, 15 gekrochen)",
+        "761: 320 u (40/40, 20 gekrochen)",
+        "900: 320 u (40/40, 23 gekrochen)"
+      ]
+    },
+    {
+      "name": "Gedächtnis + Lip 5",
+      "cells": [
+        "320: 184 u (23/40, 14 gekrochen)",
+        "450: 256 u (32/40, 15 gekrochen)",
+        "600: 320 u (40/40, 1 gekrochen)",
+        "761: 320 u (40/40, 1 gekrochen)",
+        "900: 320 u (40/40, 1 gekrochen)"
+      ]
+    }
+  ],
+  "C": [
+    {
+      "name": "Original",
+      "cells": [
+        "171/200, Ø 15 % Tempo, 171× < 50 %",
+        "169/200, Ø 15 % Tempo, 169× < 50 %",
+        "167/200, Ø 15 % Tempo, 167× < 50 %",
+        "162/200, Ø 15 % Tempo, 162× < 50 %",
+        "155/200, Ø 14 % Tempo, 155× < 50 %",
+        "145/200, Ø 14 % Tempo, 145× < 50 %"
+      ]
+    },
+    {
+      "name": "Gedächtnis + Lip 5",
+      "cells": [
+        "171/200, Ø 77 % Tempo, 28× < 50 %",
+        "169/200, Ø 78 % Tempo, 26× < 50 %",
+        "167/200, Ø 78 % Tempo, 26× < 50 %",
+        "162/200, Ø 80 % Tempo, 23× < 50 %",
+        "155/200, Ø 82 % Tempo, 19× < 50 %",
+        "145/200, Ø 86 % Tempo, 15× < 50 %"
+      ]
+    }
+  ],
+  "D": [
+    {
+      "name": "Original",
+      "cells": [
+        "794/1272 / 0.0 u",
+        "610/1272 / 0.0 u",
+        "452/1272 / 0.0 u",
+        "301/1272 / 0.0 u"
+      ]
+    },
+    {
+      "name": "Lip 4",
+      "cells": [
+        "807/1272 / 5.3 u",
+        "621/1272 / 6.3 u",
+        "486/1272 / 14.3 u",
+        "384/1272 / 33.5 u"
+      ]
+    },
+    {
+      "name": "Lip 6",
+      "cells": [
+        "811/1272 / 6.7 u",
+        "633/1272 / 13.3 u",
+        "507/1272 / 22.3 u",
+        "412/1272 / 45.1 u"
+      ]
+    },
+    {
+      "name": "Lip 8",
+      "cells": [
+        "818/1272 / 9.3 u",
+        "643/1272 / 17.0 u",
+        "526/1272 / 29.3 u",
+        "435/1272 / 54.2 u"
+      ]
+    },
+    {
+      "name": "Lip 12",
+      "cells": [
+        "832/1272 / 20.7 u",
+        "670/1272 / 28.7 u",
+        "560/1272 / 41.3 u",
+        "475/1272 / 69.5 u"
+      ]
+    },
+    {
+      "name": "Lip 18 (Q3-AirStep)",
+      "cells": [
+        "850/1272 / 31.3 u",
+        "702/1272 / 39.3 u",
+        "598/1272 / 55.7 u",
+        "533/1272 / 92.0 u"
+      ]
+    },
+    {
+      "name": "Gedächtnis 0.2 s",
+      "cells": [
+        "794/1272 / 0.0 u",
+        "610/1272 / 0.0 u",
+        "452/1272 / 0.0 u",
+        "301/1272 / 0.0 u"
+      ]
+    },
+    {
+      "name": "Gedächtnis + Lip 5",
+      "cells": [
+        "810/1272 / 6.3 u",
+        "628/1272 / 11.3 u",
+        "498/1272 / 19.3 u",
+        "398/1272 / 38.5 u"
+      ]
+    }
+  ],
+  "E": [
+    {
+      "name": "Original",
+      "reached": 260,
+      "dead": 0,
+      "runs": 260,
+      "ok3": 24,
+      "n3": 24
+    },
+    {
+      "name": "Gedächtnis + Lip 5",
+      "reached": 260,
+      "dead": 0,
+      "runs": 260,
+      "ok3": 24,
+      "n3": 24
+    }
+  ],
+  "F": [
+    {
+      "name": "Original",
+      "cells": [
+        "-2°: 1404.55@8.42s",
+        "0°: 1236.51@9.24s",
+        "2°: 1032.70@10.65s",
+        "3°: 667.48@12.19s",
+        "5°: 548.92@18.81s"
+      ]
+    },
+    {
+      "name": "Gedächtnis + Lip 5",
+      "cells": [
+        "-2°: 1404.55@8.42s",
+        "0°: 1236.51@9.24s",
+        "2°: 1032.70@10.65s",
+        "3°: 667.48@12.19s",
+        "5°: 548.92@18.81s"
+      ]
+    }
+  ],
+  "H": [
+    {
+      "id": "level1",
+      "base": {
+        "errors": [],
+        "warnings": [
+          "Design: Könner-Inseln lohnen nicht (Soll ≥ 5/6, ≥ 1 s): Hand 1° über die Inseln 2/6 durch (x 29.0 27.5 x x x s), Ersparnis Ø -0.77 s (2 Paare); perfekter Bot 0.00 s schneller"
+        ],
+        "info": [
+          "Design: Erstkontakt ohne Tod — 270 Läufe (W, Leertaste ab 0.2–1.5 s gehalten, ±96, mit/ohne Shift) bis CP1 in 6.46–8.25 s; 201 Läufe über eine Auffangmulde, Verlust je Mulde ≤ 0.30 s",
+          "Design: Grundkurs — unter allen 10 Lücken bis zur Crouch-Kante liegt Boden ≤ 50 u tief (Ausstieg ohne Respawn)",
+          "Design: Slalom braucht Lenkung — 115 Geradeaus-Läufe (Versatz ±176, 509–1049 u/s) scheitern alle",
+          "Design: Crouch-Kante hat bei 320–913 u/s überall eine Absprungzone ≥ 48 u, Plan-Knoten trägt 550–913; Fehlversuche landen auf H7 (720 Läufe)",
+          "Design: Surf-Rutsche fängt jeden — 250 Läufe ab der letzten Insel (320–1300 u/s, ±96, geradeaus ohne Surfen und W-Halter) im Ziel, langsamster W-Halter 5.2 s"
+        ]
+      },
+      "arc": {
+        "errors": [],
+        "warnings": [
+          "Design: Könner-Inseln lohnen nicht (Soll ≥ 5/6, ≥ 1 s): Hand 1° über die Inseln 2/6 durch (x 29.0 27.5 x x x s), Ersparnis Ø -0.77 s (2 Paare); perfekter Bot 0.00 s schneller"
+        ],
+        "info": [
+          "Design: Erstkontakt ohne Tod — 270 Läufe (W, Leertaste ab 0.2–1.5 s gehalten, ±96, mit/ohne Shift) bis CP1 in 6.46–8.25 s; 201 Läufe über eine Auffangmulde, Verlust je Mulde ≤ 0.30 s",
+          "Design: Grundkurs — unter allen 10 Lücken bis zur Crouch-Kante liegt Boden ≤ 50 u tief (Ausstieg ohne Respawn)",
+          "Design: Slalom braucht Lenkung — 115 Geradeaus-Läufe (Versatz ±176, 509–1049 u/s) scheitern alle",
+          "Design: Crouch-Kante hat bei 320–913 u/s überall eine Absprungzone ≥ 48 u, Plan-Knoten trägt 550–913; Fehlversuche landen auf H7 (720 Läufe)",
+          "Design: Surf-Rutsche fängt jeden — 250 Läufe ab der letzten Insel (320–1300 u/s, ±96, geradeaus ohne Surfen und W-Halter) im Ziel, langsamster W-Halter 5.2 s"
+        ]
+      }
+    },
+    {
+      "id": "level2",
+      "base": {
+        "errors": [],
+        "warnings": [],
+        "info": [
+          "Design: Erstkontakt ohne Tod — 270 Läufe (W, Leertaste ab 0.2–1.5 s gehalten, ±96, mit/ohne Shift) bis CP1 in 5.79–7.53 s; 253 Läufe über eine Auffangmulde, Verlust je Mulde ≤ 0.34 s",
+          "Design: Ausfahrt ohne Todesstreifen mit Auto-Hop (600 Läufe ab Ring und T0, 320–1500 u/s, seitlich ±96)",
+          "Design: Ausfahrt-Linien ab T0 (geradeaus, Auto-Hop): apron→exit1→surf0b ab 320, apron→exit1→surf1 ab 540, apron→surf0b ab 600, apron→surf1 ab 840, apron→surf2 ab 1040, apron ab 1300 u/s",
+          "Design: S0 fängt Nicht-Surfer — 12 W-Halter ab CP2 (Blick ±30° / auf Knoten, mit und ohne Leertaste) 12 s ohne Tod",
+          "Design: Rückweg von der S0-Fläche aufs Vorfeld begehbar (W / W + Leertaste, ≤ 6.7 s)",
+          "Design: Finale aus dem Stand (CP4) landet mit -1°: 197 %, 0°: 190 %, 2°: 73 % Weitenreserve (Lücke 488 u)"
+        ]
+      },
+      "arc": {
+        "errors": [],
+        "warnings": [],
+        "info": [
+          "Design: Erstkontakt ohne Tod — 270 Läufe (W, Leertaste ab 0.2–1.5 s gehalten, ±96, mit/ohne Shift) bis CP1 in 5.79–7.53 s; 253 Läufe über eine Auffangmulde, Verlust je Mulde ≤ 0.34 s",
+          "Design: Ausfahrt ohne Todesstreifen mit Auto-Hop (600 Läufe ab Ring und T0, 320–1500 u/s, seitlich ±96)",
+          "Design: Ausfahrt-Linien ab T0 (geradeaus, Auto-Hop): apron→exit1→surf0b ab 320, apron→exit1→surf1 ab 540, apron→surf0b ab 600, apron→surf1 ab 840, apron→surf2 ab 1040, apron ab 1300 u/s",
+          "Design: S0 fängt Nicht-Surfer — 12 W-Halter ab CP2 (Blick ±30° / auf Knoten, mit und ohne Leertaste) 12 s ohne Tod",
+          "Design: Rückweg von der S0-Fläche aufs Vorfeld begehbar (W / W + Leertaste, ≤ 6.7 s)",
+          "Design: Finale aus dem Stand (CP4) landet mit -1°: 197 %, 0°: 190 %, 2°: 73 % Weitenreserve (Lücke 488 u)"
+        ]
+      }
+    }
+  ]
+}

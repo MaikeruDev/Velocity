@@ -1,0 +1,44 @@
+
+## C Anfänger ab Checkpoints (Respawn am selben CP, bis zum nächsten CP/Ziel, 120 s)
+
+- level1 CP2 W+Space  Original: NICHT (Zeit), Tode 30 {"Kante":30} | Luftkontrolle: NICHT (Zeit), Tode 30 {"Kante":30}
+- level1 CP2 Edge     Original: durch 13.7 s, Tode 0 {} | Luftkontrolle: durch 13.7 s, Tode 0 {}
+- level1 CP3 W+Space  Original: NICHT (Zeit), Tode 30 {"Slalom":30} | Luftkontrolle: NICHT (Zeit), Tode 22 {"Slalom":22}
+- level1 CP3 Edge     Original: NICHT (Rutsche (Knoten 33)), Tode 0 {} | Luftkontrolle: NICHT (Rutsche (Knoten 33)), Tode 0 {}
+- level2 CP1 W+Space  Original: NICHT (surf0b (Knoten 18)), Tode 0 {} | Luftkontrolle: durch 11.6 s, Tode 0 {}
+- level2 CP1 Edge     Original: durch 10.7 s, Tode 0 {} | Luftkontrolle: durch 10.7 s, Tode 0 {}
+
+## T Wendekreis: Blick springt um 90°, W gehalten (Luftkontrolle) vs. perfekter Strafer mit Ziel 90° seitlich — Drehung nach 0.3 s / Tempo
+
+- 320 u/s: W-Lenken 32° (Tempo 322) | perfekter Strafe 98° (Tempo 375)
+- 600 u/s: W-Lenken 20° (Tempo 601) | perfekter Strafe 93° (Tempo 621)
+- 900 u/s: W-Lenken 15° (Tempo 900) | perfekter Strafe 58° (Tempo 912)
+
+## S Strafe-Bots (A/D) unberührt? flach 10 s ab 320 — und Spiel-Uhr-Läufe (Seeds 1–4)
+
+- StrafeBot 0°: Original 965.261 | Luftkontrolle 965.261
+- StrafeBot 2°: Original 760.146 | Luftkontrolle 760.146
+- StrafeBot 3°: Original 655.699 | Luftkontrolle 655.699
+- StrafeBot 5°: Original 499.848 | Luftkontrolle 499.848
+- level1 {"sync":1}: Original 22.242 22.242 22.242 22.242 | Luftkontrolle 22.242 22.242 22.242 22.242
+- level1 {"aimNoiseDeg":3}: Original 34.453 35.391 33.750 33.492 | Luftkontrolle 34.453 35.391 33.750 33.492
+- level2 {"sync":1}: Original 15.852 15.852 15.852 15.852 | Luftkontrolle 15.852 15.852 15.852 15.852
+- level2 {"aimNoiseDeg":3}: Original 19.555 24.563 20.492 19.492 | Luftkontrolle 19.555 24.563 20.492 19.492
+
+## N Anfänger (zielen auf den nächsten Knoten, Respawn am CP, 240 s): Ziel / Tode / Todesorte / Stau
+
+- level1 W+Space  Original                     kein Ziel · Tode 0 · CP@90 1 · {} · STAU Kante (Knoten 17)
+- level1 W+Space  Luftkontrolle 1.6→0.8 rad/s  kein Ziel · Tode 0 · CP@90 1 · {} · STAU Kante (Knoten 17)
+- level1 W+Space  Luftkontrolle 3.0→1.5 rad/s  kein Ziel · Tode 0 · CP@90 1 · {} · STAU Kante (Knoten 17)
+- level1 Edge     Original                     kein Ziel · Tode 0 · CP@90 1 · {} · STAU Kante (Knoten 17)
+- level1 Edge     Luftkontrolle 1.6→0.8 rad/s  kein Ziel · Tode 0 · CP@90 1 · {} · STAU Kante (Knoten 17)
+- level1 Edge     Luftkontrolle 3.0→1.5 rad/s  kein Ziel · Tode 0 · CP@90 1 · {} · STAU Kante (Knoten 17)
+- level2 W+Space  Original                     kein Ziel · Tode 1 · CP@90 2 · {"surf1":1} · STAU surf0b (Knoten 19)
+- level2 W+Space  Luftkontrolle 1.6→0.8 rad/s  kein Ziel · Tode 0 · CP@90 2 · {} · STAU surf0b (Knoten 19) · gelenkt 201°
+- level2 W+Space  Luftkontrolle 3.0→1.5 rad/s  kein Ziel · Tode 0 · CP@90 2 · {} · STAU surf0b (Knoten 19) · gelenkt 179°
+- level2 Edge     Original                     kein Ziel · Tode 0 · CP@90 2 · {} · STAU surf0b (Knoten 20)
+- level2 Edge     Luftkontrolle 1.6→0.8 rad/s  kein Ziel · Tode 0 · CP@90 2 · {} · STAU surf0b (Knoten 20) · gelenkt 61°
+- level2 Edge     Luftkontrolle 3.0→1.5 rad/s  kein Ziel · Tode 0 · CP@90 2 · {} · STAU surf0b (Knoten 20) · gelenkt 114°
+
+→ shots/v2/arcade-mechanics/aircontrol.json
+exit 0

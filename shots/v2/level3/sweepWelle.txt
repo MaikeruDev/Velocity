@@ -1,0 +1,20 @@
+{} Schanze: Ende Grat -1944; Welle 1152 u, Kamm 201 u unter dem Schanzenende; Z-Grat 465 u darunter
+   {"sync":1} über 19.01 / durch 18.51 s (Welle berührt 4/4)
+   {"aimNoiseDeg":2} über 22.38 / durch 22.68 s (Welle berührt 4/4)
+   {"aimNoiseDeg":3} über 25.20 / durch 25.02 s (Welle berührt 4/4)
+{"welleUp":640,"welleUpDeg":10,"welleDown":896,"welleDownDeg":7} Schanze: Ende Grat -1944; Welle 1536 u, Kamm 160 u unter dem Schanzenende; Z-Grat 386 u darunter
+   {"sync":1} über 19.43 / durch 18.70 s (Welle berührt 4/4)
+   {"aimNoiseDeg":2} über 22.66 / durch 22.43 s (Welle berührt 4/4)
+   {"aimNoiseDeg":3} über 24.92 / durch 25.82 s (Welle berührt 4/4)
+{"welleUp":768,"welleUpDeg":10,"welleDown":1024,"welleDownDeg":6,"welleDrop":224} Schanze: Ende Grat -1944; Welle 1792 u, Kamm 106 u unter dem Schanzenende; Z-Grat 331 u darunter
+   {"sync":1} über 19.30 / durch 18.98 s (Welle berührt 4/4)
+   {"aimNoiseDeg":2} über 22.69 / durch 22.45 s (Welle berührt 4/4)
+   {"aimNoiseDeg":3} über 25.04 / durch 26.20 s (Welle berührt 4/4)
+{"welleUp":640,"welleUpDeg":12,"welleDown":1024,"welleDownDeg":8,"welleDrop":192} Schanze: Ende Grat -1944; Welle 1664 u, Kamm 73 u unter dem Schanzenende; Z-Grat 331 u darunter
+   {"sync":1} über 19.14 / durch 19.07 s (Welle berührt 4/4)
+   {"aimNoiseDeg":2} über 22.56 / durch 22.72 s (Welle berührt 4/4)
+   {"aimNoiseDeg":3} über 24.65 / durch 25.95 s (Welle berührt 4/4)
+{"welleUp":896,"welleUpDeg":8,"welleDown":1152,"welleDownDeg":5,"welleDrop":224} Schanze: Ende Grat -1944; Welle 2048 u, Kamm 115 u unter dem Schanzenende; Z-Grat 335 u darunter
+   {"sync":1} über 19.41 / durch 19.27 s (Welle berührt 4/4)
+   {"aimNoiseDeg":2} über 23.05 / durch 23.22 s (Welle berührt 4/4)
+   {"aimNoiseDeg":3} über 25.97 / durch 27.35 s (Welle berührt 4/4)

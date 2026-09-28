@@ -1,0 +1,149 @@
+{
+  "ladder": [
+    2,
+    4,
+    4,
+    9,
+    9,
+    9,
+    14
+  ],
+  "monotone": true,
+  "rows": {
+    "Einsteiger (3°-Hand, nur Grundlagen-Training)": {
+      "medals": [
+        "level1 33.36 s → bronze",
+        "level2 19.58 s → bronze"
+      ],
+      "L3/L4 angenommen": "bronze",
+      "count": 2,
+      "hands": 0,
+      "unlocked": [
+        "Fidget-Spinner",
+        "Münze"
+      ],
+      "nextGoal": "Roboter-Hand"
+    },
+    "Solide (2.5°-Hand, Training komplett)": {
+      "medals": [
+        "level1 30.88 s → bronze",
+        "level2 18.05 s → silver"
+      ],
+      "L3/L4 angenommen": "bronze",
+      "count": 4,
+      "hands": 1,
+      "unlocked": [
+        "Fidget-Spinner",
+        "Roboter-Hand",
+        "Münze",
+        "Sturmfeuerzeug"
+      ],
+      "nextGoal": "Jo-Jo"
+    },
+    "Ordentlich (2°-Hand)": {
+      "medals": [
+        "level1 31.57 s → bronze",
+        "level2 17.73 s → silver"
+      ],
+      "L3/L4 angenommen": "bronze",
+      "count": 4,
+      "hands": 1,
+      "unlocked": [
+        "Fidget-Spinner",
+        "Roboter-Hand",
+        "Münze",
+        "Sturmfeuerzeug"
+      ],
+      "nextGoal": "Jo-Jo"
+    },
+    "Gut (1.5°-Hand)": {
+      "medals": [
+        "level1 28.53 s → silver",
+        "level2 16.06 s → velocity"
+      ],
+      "L3/L4 angenommen": "silver",
+      "count": 9,
+      "hands": 2,
+      "unlocked": [
+        "Fidget-Spinner",
+        "Roboter-Hand",
+        "Münze",
+        "Jo-Jo",
+        "Sturmfeuerzeug",
+        "Kendama",
+        "Handy",
+        "Skelett-Hand",
+        "Dose"
+      ],
+      "nextGoal": "Neon-Handschuh"
+    },
+    "Sehr gut (1°-Hand)": {
+      "medals": [
+        "level1 26.44 s → silver",
+        "level2 16.03 s → velocity"
+      ],
+      "L3/L4 angenommen": "silver",
+      "count": 9,
+      "hands": 2,
+      "unlocked": [
+        "Fidget-Spinner",
+        "Roboter-Hand",
+        "Münze",
+        "Jo-Jo",
+        "Sturmfeuerzeug",
+        "Kendama",
+        "Handy",
+        "Skelett-Hand",
+        "Dose"
+      ],
+      "nextGoal": "Neon-Handschuh"
+    },
+    "Elite (sync 0.95)": {
+      "medals": [
+        "level1 28.55 s → silver",
+        "level2 15.73 s → velocity"
+      ],
+      "L3/L4 angenommen": "silver",
+      "count": 9,
+      "hands": 2,
+      "unlocked": [
+        "Fidget-Spinner",
+        "Roboter-Hand",
+        "Münze",
+        "Jo-Jo",
+        "Sturmfeuerzeug",
+        "Kendama",
+        "Handy",
+        "Skelett-Hand",
+        "Dose"
+      ],
+      "nextGoal": "Neon-Handschuh"
+    },
+    "Top (sync 1.0)": {
+      "medals": [
+        "level1 22.73 s → velocity",
+        "level2 15.31 s → velocity"
+      ],
+      "L3/L4 angenommen": "velocity",
+      "count": 14,
+      "hands": 5,
+      "unlocked": [
+        "Fidget-Spinner",
+        "Roboter-Hand",
+        "Münze",
+        "Jo-Jo",
+        "Sturmfeuerzeug",
+        "Kendama",
+        "Handy",
+        "Neon-Handschuh",
+        "Skelett-Hand",
+        "Sammelkarte",
+        "Dose",
+        "Butterfly-Messer",
+        "Gold-Handschuh",
+        "Katzenpfote"
+      ],
+      "nextGoal": "— alles"
+    }
+  }
+}

@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
-import { Coach } from '../src/engine/Coach';
+import { Coach, JUDGE_MAX_SPEED, hintText } from '../src/engine/Coach';
 import type { HintId } from '../src/engine/Coach';
+import { VERDICTS } from '../src/engine/trainingTypes';
+import type { Verdict } from '../src/engine/trainingTypes';
 import { PlayerMovement } from '../src/player/PlayerMovement';
 import { VELOCITY_DEFAULT } from '../src/player/MovementConfig';
+import type { MovementConfig } from '../src/player/MovementConfig';
 import { StrafeBot } from '../src/player/bots';
 import type { MutablePlayerInput, MutablePlayerSnapshot, PlayerInput } from '../src/player/types';
 import { NO_INPUT } from '../src/player/types';
@@ -23,19 +26,33 @@ interface Harness {
   readonly pm: PlayerMovement;
   readonly coach: Coach;
   readonly hints: HintId[];
+  /** Fehlurteil je Hinweis (null bei Crouch/Surf). */
+  readonly verdicts: (Verdict | null)[];
   readonly gains: number[];
   step(input: PlayerInput): void;
 }
 
-function harness(level: ReturnType<typeof compileLevel>, route: readonly RouteNode[] | undefined, start: Vector3, vel: Vector3): Harness {
-  const pm = new PlayerMovement(level.world, CFG);
+function harness(
+  level: ReturnType<typeof compileLevel>,
+  route: readonly RouteNode[] | undefined,
+  start: Vector3,
+  vel: Vector3,
+  lesson = false,
+  cfg: MovementConfig = CFG,
+): Harness {
+  const pm = new PlayerMovement(level.world, cfg);
   pm.state.vel.copy(vel);
   pm.teleport(start, { keepVelocity: true });
-  const coach = new Coach();
+  const coach = new Coach(cfg);
+  coach.lesson = lesson;
   coach.setLevel(route);
   const hints: HintId[] = [];
+  const verdicts: (Verdict | null)[] = [];
   const gains: number[] = [];
-  coach.onHint = (id) => hints.push(id);
+  coach.onHint = (id, v) => {
+    hints.push(id);
+    verdicts.push(v);
+  };
   const prev: MutablePlayerSnapshot = PlayerMovement.createSnapshot();
   const cur: MutablePlayerSnapshot = PlayerMovement.createSnapshot();
   pm.copySnapshot(cur);
@@ -43,6 +60,7 @@ function harness(level: ReturnType<typeof compileLevel>, route: readonly RouteNo
     pm,
     coach,
     hints,
+    verdicts,
     gains,
     step(input) {
       pm.copySnapshot(prev);
@@ -63,10 +81,10 @@ describe('Coach — Strafe-Hinweis', () => {
    * dreht in der Luft mit `rate` °/s in diese Richtung, A/D passend oder dagegen.
    * Auto-Hop gehalten. rate 0 = Maus steht, nur A/D wechseln.
    */
-  function zigzag(against: boolean, rate: number, seconds: number): Harness {
+  function zigzag(against: boolean, rate: number, seconds: number, speed = 320, lesson = false, cfg: MovementConfig = CFG, holdW = false): Harness {
     const lvl = compileLevel(flatLevel(30000));
-    const h = harness(lvl, undefined, new Vector3(0, 1, 20000), new Vector3(0, 0, -320));
-    const inp: MutablePlayerInput = { ...NO_INPUT, jumpHeld: true };
+    const h = harness(lvl, undefined, new Vector3(0, 1, 20000), new Vector3(0, 0, -speed), lesson, cfg);
+    const inp: MutablePlayerInput = { ...NO_INPUT, jumpHeld: true, forward: holdW ? 1 : 0 };
     let dir = 1; // +1 = links drehen
     let yaw = 0;
     let wasGround = true;
@@ -84,16 +102,83 @@ describe('Coach — Strafe-Hinweis', () => {
     return h;
   }
 
-  it('Taste gegen die Maus (60 °/s) → Hinweis nach drei Sprüngen', () => {
-    // Gemessen je Luftabschnitt: +1.6, −109, −74, −55 u/s bei Sync 0.00–0.01.
+  it('Taste gegen die Maus (60 °/s) → Hinweis nach drei Sprüngen, Text "dieselbe Richtung"', () => {
+    // Drei Urteile 'against' (Absprung ≥ 200 u/s), danach ist man zu langsam für weitere Urteile.
     const h = zigzag(true, 60, 3.5);
     expect(h.hints).toEqual(['strafe']);
+    expect(h.verdicts).toEqual(['against']);
+    expect(hintText('strafe', 'against', 'C')).toContain('DIESELBE RICHTUNG');
     expect(h.coach.isLearned('strafe')).toBe(false);
   });
 
-  it('A/D ohne Mausbewegung → Hinweis (kein Gewinn)', () => {
+  it('A/D ohne Mausbewegung: drei Urteile noMouse → Hinweis mit Maus-Text', () => {
     const h = zigzag(false, 0, 6);
-    expect(h.hints).toContain('strafe');
+    expect(h.hints[0]).toBe('strafe');
+    expect(h.verdicts[0]).toBe('noMouse');
+    const text = hintText('strafe', h.verdicts[0], 'C');
+    expect(text).toContain('MAUS');
+    // Coach-Band: höchstens zwei Zeilen à ≤ 40 Zeichen.
+    expect(text.split('\n').length).toBeLessThanOrEqual(2);
+    for (const line of text.split('\n')) expect(line.length).toBeLessThanOrEqual(40);
+  });
+
+  it('Judge-Hinweis nur unter 600 u/s: bei 700 u/s dieselben Fehler ohne Hinweis', () => {
+    expect(JUDGE_MAX_SPEED).toBe(600);
+    const h = zigzag(false, 0, 6, 700);
+    // A/D ohne Maus hält das Tempo — alle Absprünge liegen über der Grenze.
+    expect(h.pm.state.speed).toBeGreaterThan(JUDGE_MAX_SPEED);
+    expect(h.hints).toEqual([]);
+    // Direkt gefüttert: drei noMouse bei 700 → nichts, bei 320 → Hinweis.
+    const c = new Coach(CFG);
+    const got: HintId[] = [];
+    c.onHint = (id) => got.push(id);
+    for (let i = 0; i < 3; i++) c.judged('noMouse', 700);
+    expect(got).toEqual([]);
+    for (let i = 0; i < 3; i++) c.judged('noMouse', 320);
+    expect(got).toEqual(['strafe']);
+  });
+
+  it('dreimal DASSELBE Fehlurteil: gemischte Fehler zählen je Art, ein guter Hop setzt zurück', () => {
+    const c = new Coach(CFG);
+    const got: (Verdict | null)[] = [];
+    c.onHint = (_id, v) => got.push(v);
+    c.judged('noMouse', 320);
+    c.judged('tooSlow', 320);
+    c.judged('noMouse', 320);
+    c.judged('good', 320);
+    // gelernt → kein Hinweis mehr, egal wie viele Fehler folgen
+    for (let i = 0; i < 6; i++) c.judged('noMouse', 320);
+    expect(got).toEqual([]);
+    const d = new Coach(CFG);
+    d.onHint = (_id, v) => got.push(v);
+    for (const v of ['noMouse', 'tooSlow', 'noMouse', 'late', 'noMouse'] as const) d.judged(v, 320);
+    expect(got).toEqual(['noMouse']);
+  });
+
+  it('in Lektionen: 0 Coach-Hinweise (gegen die Maus, Maus steht, Surf mit W)', () => {
+    expect(zigzag(true, 60, 3.5, 320, true).hints).toEqual([]);
+    expect(zigzag(false, 0, 6, 320, true).hints).toEqual([]);
+    const c = new Coach(CFG);
+    c.lesson = true;
+    const got: HintId[] = [];
+    c.onHint = (id) => got.push(id);
+    const s = PlayerMovement.createSnapshot();
+    s.surfing = true;
+    s.onGround = false;
+    for (let i = 0; i < CFG.tickRate; i++) c.tick(DT, s, s, { ...NO_INPUT, forward: 1 });
+    c.onEvent({ type: 'respawn', reason: 'kill' });
+    for (let i = 0; i < 3; i++) c.judged('noMouse', 320);
+    expect(got).toEqual([]);
+  });
+
+  it('Strafe-Assist aus (Coach mit der gespeicherten Config, wie Game ihn baut): W + passende Seite → Hinweis wHeld', () => {
+    // Regression: Game baute den Coach ohne Config (Assist an) — 'W in der Luft' hieß dann "Maus weiter ziehen".
+    const off: MovementConfig = { ...CFG, strafeAssist: false };
+    for (const rate of [30, 60]) {
+      const h = zigzag(false, rate, 8, 320, false, off, true);
+      expect(h.verdicts[0], `rate ${rate}`).toBe('wHeld');
+      expect(hintText('strafe', h.verdicts[0], 'C')).toContain('W LOSLASSEN');
+    }
   });
 
   it('passender Zickzack (60/120 °/s) → kein Hinweis, gilt als gelernt', () => {
@@ -180,7 +265,7 @@ describe('Coach — Surf', () => {
   }
 
   it('W ohne A/D auf der Rampe → Hinweis nach 0.3 s; Tod nach Surf-Kontakt → sofort wieder; Checkpoint danach → nie mehr', () => {
-    const c = new Coach();
+    const c = new Coach(CFG);
     const hints: HintId[] = [];
     c.onHint = (id) => hints.push(id);
     const w: PlayerInput = { ...NO_INPUT, forward: 1 };
@@ -205,7 +290,7 @@ describe('Coach — Surf', () => {
   });
 
   it('abgeschaltet (showHints aus) → nichts', () => {
-    const c = new Coach();
+    const c = new Coach(CFG);
     c.enabled = false;
     const hints: HintId[] = [];
     c.onHint = (id) => hints.push(id);
@@ -213,5 +298,19 @@ describe('Coach — Surf', () => {
     for (let i = 0; i < CFG.tickRate; i++) c.tick(DT, a, a, { ...NO_INPUT, forward: 1 });
     c.onEvent({ type: 'respawn', reason: 'kill' });
     expect(hints).toEqual([]);
+  });
+});
+
+describe('Coach-Band (Plan 007 TU2): Texte passen', () => {
+  it('jeder Hinweis ≤ 2 Zeilen à ≤ 40 Zeichen, auch für jedes Fehlurteil (eine Quelle mit der Lektion)', () => {
+    const texts = [hintText('crouch', null, 'CTRL'), hintText('surf', null, 'C'), hintText('strafe', null, 'C')];
+    for (const v of VERDICTS) texts.push(hintText('strafe', v, 'C'));
+    for (const t of texts) {
+      const lines = t.split('\n');
+      expect(lines.length, t).toBeLessThanOrEqual(2);
+      for (const l of lines) expect(l.length, l).toBeLessThanOrEqual(40);
+    }
+    // 'good' hat keinen Fehlertext — dann der allgemeine Strafe-Hinweis, nie ein leeres Band.
+    expect(hintText('strafe', 'good', 'C').length).toBeGreaterThan(0);
   });
 });

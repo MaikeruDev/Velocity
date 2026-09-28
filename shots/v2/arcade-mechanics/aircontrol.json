@@ -1,0 +1,354 @@
+{
+  "fromCp": [
+    {
+      "level": "level1",
+      "order": 2,
+      "kind": "W+Space",
+      "name": "Original",
+      "ok": false,
+      "t": 120,
+      "deaths": 30,
+      "spots": {
+        "Kante": 30
+      },
+      "stuck": "Zeit"
+    },
+    {
+      "level": "level1",
+      "order": 2,
+      "kind": "W+Space",
+      "name": "Luftkontrolle",
+      "ok": false,
+      "t": 120,
+      "deaths": 30,
+      "spots": {
+        "Kante": 30
+      },
+      "stuck": "Zeit"
+    },
+    {
+      "level": "level1",
+      "order": 2,
+      "kind": "Edge",
+      "name": "Original",
+      "ok": true,
+      "t": 13.6875,
+      "deaths": 0,
+      "spots": {},
+      "stuck": null
+    },
+    {
+      "level": "level1",
+      "order": 2,
+      "kind": "Edge",
+      "name": "Luftkontrolle",
+      "ok": true,
+      "t": 13.6796875,
+      "deaths": 0,
+      "spots": {},
+      "stuck": null
+    },
+    {
+      "level": "level1",
+      "order": 3,
+      "kind": "W+Space",
+      "name": "Original",
+      "ok": false,
+      "t": 120,
+      "deaths": 30,
+      "spots": {
+        "Slalom": 30
+      },
+      "stuck": "Zeit"
+    },
+    {
+      "level": "level1",
+      "order": 3,
+      "kind": "W+Space",
+      "name": "Luftkontrolle",
+      "ok": false,
+      "t": 120,
+      "deaths": 22,
+      "spots": {
+        "Slalom": 22
+      },
+      "stuck": "Zeit"
+    },
+    {
+      "level": "level1",
+      "order": 3,
+      "kind": "Edge",
+      "name": "Original",
+      "ok": false,
+      "t": 39.5390625,
+      "deaths": 0,
+      "spots": {},
+      "stuck": "Rutsche (Knoten 33)"
+    },
+    {
+      "level": "level1",
+      "order": 3,
+      "kind": "Edge",
+      "name": "Luftkontrolle",
+      "ok": false,
+      "t": 39.5546875,
+      "deaths": 0,
+      "spots": {},
+      "stuck": "Rutsche (Knoten 33)"
+    },
+    {
+      "level": "level2",
+      "order": 1,
+      "kind": "W+Space",
+      "name": "Original",
+      "ok": false,
+      "t": 38.15625,
+      "deaths": 0,
+      "spots": {},
+      "stuck": "surf0b (Knoten 18)"
+    },
+    {
+      "level": "level2",
+      "order": 1,
+      "kind": "W+Space",
+      "name": "Luftkontrolle",
+      "ok": true,
+      "t": 11.6171875,
+      "deaths": 0,
+      "spots": {},
+      "stuck": null
+    },
+    {
+      "level": "level2",
+      "order": 1,
+      "kind": "Edge",
+      "name": "Original",
+      "ok": true,
+      "t": 10.703125,
+      "deaths": 0,
+      "spots": {},
+      "stuck": null
+    },
+    {
+      "level": "level2",
+      "order": 1,
+      "kind": "Edge",
+      "name": "Luftkontrolle",
+      "ok": true,
+      "t": 10.703125,
+      "deaths": 0,
+      "spots": {},
+      "stuck": null
+    }
+  ],
+  "strafe": [
+    {
+      "level": "level1",
+      "model": {
+        "sync": 1
+      },
+      "a": [
+        22.2421875,
+        22.2421875,
+        22.2421875,
+        22.2421875
+      ],
+      "b": [
+        22.2421875,
+        22.2421875,
+        22.2421875,
+        22.2421875
+      ]
+    },
+    {
+      "level": "level1",
+      "model": {
+        "aimNoiseDeg": 3
+      },
+      "a": [
+        34.453125,
+        35.390625,
+        33.75,
+        33.4921875
+      ],
+      "b": [
+        34.453125,
+        35.390625,
+        33.75,
+        33.4921875
+      ]
+    },
+    {
+      "level": "level2",
+      "model": {
+        "sync": 1
+      },
+      "a": [
+        15.8515625,
+        15.8515625,
+        15.8515625,
+        15.8515625
+      ],
+      "b": [
+        15.8515625,
+        15.8515625,
+        15.8515625,
+        15.8515625
+      ]
+    },
+    {
+      "level": "level2",
+      "model": {
+        "aimNoiseDeg": 3
+      },
+      "a": [
+        19.5546875,
+        24.5625,
+        20.4921875,
+        19.4921875
+      ],
+      "b": [
+        19.5546875,
+        24.5625,
+        20.4921875,
+        19.4921875
+      ]
+    }
+  ],
+  "novice": [
+    {
+      "level": "level1",
+      "kind": "W+Space",
+      "name": "Original",
+      "deaths": 0,
+      "spots": {},
+      "stuck": "Kante (Knoten 17)",
+      "time": null,
+      "cpAt90": 1,
+      "airCtlDeg": 0
+    },
+    {
+      "level": "level1",
+      "kind": "W+Space",
+      "name": "Luftkontrolle 1.6→0.8 rad/s",
+      "deaths": 0,
+      "spots": {},
+      "stuck": "Kante (Knoten 17)",
+      "time": null,
+      "cpAt90": 1,
+      "airCtlDeg": 0
+    },
+    {
+      "level": "level1",
+      "kind": "W+Space",
+      "name": "Luftkontrolle 3.0→1.5 rad/s",
+      "deaths": 0,
+      "spots": {},
+      "stuck": "Kante (Knoten 17)",
+      "time": null,
+      "cpAt90": 1,
+      "airCtlDeg": 0
+    },
+    {
+      "level": "level1",
+      "kind": "Edge",
+      "name": "Original",
+      "deaths": 0,
+      "spots": {},
+      "stuck": "Kante (Knoten 17)",
+      "time": null,
+      "cpAt90": 1,
+      "airCtlDeg": 0
+    },
+    {
+      "level": "level1",
+      "kind": "Edge",
+      "name": "Luftkontrolle 1.6→0.8 rad/s",
+      "deaths": 0,
+      "spots": {},
+      "stuck": "Kante (Knoten 17)",
+      "time": null,
+      "cpAt90": 1,
+      "airCtlDeg": 0
+    },
+    {
+      "level": "level1",
+      "kind": "Edge",
+      "name": "Luftkontrolle 3.0→1.5 rad/s",
+      "deaths": 0,
+      "spots": {},
+      "stuck": "Kante (Knoten 17)",
+      "time": null,
+      "cpAt90": 1,
+      "airCtlDeg": 0
+    },
+    {
+      "level": "level2",
+      "kind": "W+Space",
+      "name": "Original",
+      "deaths": 1,
+      "spots": {
+        "surf1": 1
+      },
+      "stuck": "surf0b (Knoten 19)",
+      "time": null,
+      "cpAt90": 2,
+      "airCtlDeg": 0
+    },
+    {
+      "level": "level2",
+      "kind": "W+Space",
+      "name": "Luftkontrolle 1.6→0.8 rad/s",
+      "deaths": 0,
+      "spots": {},
+      "stuck": "surf0b (Knoten 19)",
+      "time": null,
+      "cpAt90": 2,
+      "airCtlDeg": 200.64763411268567
+    },
+    {
+      "level": "level2",
+      "kind": "W+Space",
+      "name": "Luftkontrolle 3.0→1.5 rad/s",
+      "deaths": 0,
+      "spots": {},
+      "stuck": "surf0b (Knoten 19)",
+      "time": null,
+      "cpAt90": 2,
+      "airCtlDeg": 178.6219294670777
+    },
+    {
+      "level": "level2",
+      "kind": "Edge",
+      "name": "Original",
+      "deaths": 0,
+      "spots": {},
+      "stuck": "surf0b (Knoten 20)",
+      "time": null,
+      "cpAt90": 2,
+      "airCtlDeg": 0
+    },
+    {
+      "level": "level2",
+      "kind": "Edge",
+      "name": "Luftkontrolle 1.6→0.8 rad/s",
+      "deaths": 0,
+      "spots": {},
+      "stuck": "surf0b (Knoten 20)",
+      "time": null,
+      "cpAt90": 2,
+      "airCtlDeg": 61.265644945590886
+    },
+    {
+      "level": "level2",
+      "kind": "Edge",
+      "name": "Luftkontrolle 3.0→1.5 rad/s",
+      "deaths": 0,
+      "spots": {},
+      "stuck": "surf0b (Knoten 20)",
+      "time": null,
+      "cpAt90": 2,
+      "airCtlDeg": 114.07968289508624
+    }
+  ]
+}

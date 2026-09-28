@@ -49,14 +49,58 @@ const RANGES: Record<NumericMovementKey, RangeSpec> = {
   autoHopLandShare: { min: 0, max: 1, step: 0.01, label: 'Smart-Hop Anteil nach Luft' },
   autoHopLandAirTime: { min: 0, max: 1, step: 0.01, label: 'Smart-Hop Mindest-Luftzeit (s)' },
   duckTime: { min: 0, max: 0.5, step: 0.01, label: 'Duck-Dauer (s)' },
+  // Arcade-Pass (Plan 007, movement-tuning.md "Arcade-Pass"). 0 = Source-Verhalten.
+  landGraceTime: { min: 0, max: 0.25, step: 1 / 128, label: 'Lande-Gnade (s, 0 = aus)' },
+  slopeLandGain: { min: 0, max: 1, step: 0.05, label: 'Hang-Landung (0 = Source)' },
+  ledgeStep: { min: 0, max: 18, step: 1, label: 'Kanten-Step (u, 0 = aus)' },
+  ledgeMemory: { min: 0, max: 1, step: 0.01, label: 'Kanten-Tempo merken (s)' },
+  slideMinSpeed: { min: 0, max: 600, step: 5, label: 'Rutschen ab (u/s, 0 = aus)' },
+  slideExitSpeed: { min: 0, max: 400, step: 5, label: 'Rutschen bis (u/s)' },
+  slideFriction: { min: 0, max: 5, step: 0.05, label: 'Rutsch-Reibung' },
+  slideDecel: { min: 0, max: 400, step: 5, label: 'Rutsch-Bremse (u/s²)' },
+  slideBoost: { min: 0, max: 200, step: 1, label: 'Rutsch-Schub (u/s)' },
+  slideBoostCap: { min: 0, max: 800, step: 5, label: 'Schub bis Tempo (u/s)' },
+  slideBoostMinGround: { min: 0, max: 1, step: 0.01, label: 'Schub nach Bodenzeit (s)' },
+  slideBoostCooldown: { min: 0, max: 5, step: 0.1, label: 'Schub-Abklingzeit (s)' },
+  slideSteerRate: { min: 0, max: 5, step: 0.05, label: 'Rutsch-Lenken (rad/s)' },
+  slideSlopeGravity: { min: 0, max: 2, step: 0.05, label: 'Rutsch-Hangabtrieb' },
+  slideEyeTime: { min: 0, max: 0.3, step: 0.01, label: 'Rutsch-Auge (s)' },
+  airControl: { min: 0, max: 5, step: 0.05, label: 'Luftlenkung W (rad/s, 0 = aus)' },
+  airControlHigh: { min: 0, max: 5, step: 0.05, label: 'Luftlenkung schnell (rad/s)' },
+  airControlFadeFrom: { min: 0, max: 1500, step: 10, label: 'Luftlenkung Blende ab (u/s)' },
+  airControlFadeTo: { min: 0, max: 2000, step: 10, label: 'Luftlenkung Blende bis (u/s)' },
+  airControlSurfGrace: { min: 0, max: 2, step: 0.05, label: 'Luftlenkung Pause nach Surf (s)' },
 };
 
 /** Gruppen fürs Panel — Reihenfolge nach Wichtigkeit fürs Gefühl. */
 const GROUPS: readonly { readonly title: string; readonly keys: readonly NumericMovementKey[] }[] = [
   { title: 'Luft (Strafe)', keys: ['airAccelerate', 'airSpeedCap', 'airSpeedCapLow', 'airSpeedCapFadeFrom', 'airSpeedCapFadeTo', 'gravity', 'jumpImpulse'] },
   { title: 'Boden', keys: ['runSpeed', 'sprintSpeed', 'accelerate', 'friction', 'stopSpeed', 'duckSpeedScale'] },
-  { title: 'Verzeihen', keys: ['coyoteTime', 'jumpBufferTime', 'autoHopSpeedShare', 'autoHopGroundTime', 'autoHopLandShare', 'autoHopLandAirTime'] },
+  {
+    title: 'Verzeihen',
+    keys: ['coyoteTime', 'jumpBufferTime', 'landGraceTime', 'ledgeStep', 'ledgeMemory', 'autoHopSpeedShare', 'autoHopGroundTime', 'autoHopLandShare', 'autoHopLandAirTime'],
+  },
   { title: 'System', keys: ['tickRate', 'maxVelocity', 'stepSize', 'nonJumpVelocity', 'duckTime'] },
+  {
+    title: 'Arcade (Plan 007)',
+    keys: ['slopeLandGain', 'airControl', 'airControlHigh', 'airControlFadeFrom', 'airControlFadeTo', 'airControlSurfGrace'],
+  },
+  {
+    title: 'Rutschen',
+    keys: [
+      'slideMinSpeed',
+      'slideExitSpeed',
+      'slideFriction',
+      'slideDecel',
+      'slideBoost',
+      'slideBoostCap',
+      'slideBoostMinGround',
+      'slideBoostCooldown',
+      'slideSteerRate',
+      'slideSlopeGravity',
+      'slideEyeTime',
+    ],
+  },
 ];
 
 const NUMERIC_KEYS = Object.keys(RANGES).filter(isNumericKey);
@@ -69,7 +113,7 @@ function isPresetId(v: string): v is MovementPresetId {
   return Object.prototype.hasOwnProperty.call(MOVEMENT_PRESETS, v);
 }
 
-type MovementParams = Record<NumericMovementKey, number> & { autoHop: boolean; strafeAssist: boolean };
+type MovementParams = Record<NumericMovementKey, number> & { autoHop: boolean; strafeAssist: boolean; surfSeamFix: boolean };
 
 type RenderParams = { -readonly [K in keyof RenderSettings]: RenderSettings[K] };
 
@@ -123,6 +167,8 @@ export class TuningPanel {
     this.movementControllers.push(hop);
     const assist = this.gui.add(this.params, 'strafeAssist').name('Strafe-Assist').onChange(() => this.commit());
     this.movementControllers.push(assist);
+    const seam = this.gui.add(this.params, 'surfSeamFix').name('Rampbug-Fix').onChange(() => this.commit());
+    this.movementControllers.push(seam);
 
     // --- Presets & Export
     const tools = this.gui.addFolder('Preset & Export');
@@ -199,11 +245,17 @@ export class TuningPanel {
       const v = this.params[k];
       if (Number.isFinite(v)) patch[k] = v;
     }
-    this.config = withMovement(this.config, { ...patch, autoHop: this.params.autoHop, strafeAssist: this.params.strafeAssist });
-    // Auto-Hop und Strafe-Assist sind auch Spieler-Einstellungen — beide Wege synchron halten.
+    this.config = withMovement(this.config, {
+      ...patch,
+      autoHop: this.params.autoHop,
+      strafeAssist: this.params.strafeAssist,
+      surfSeamFix: this.params.surfSeamFix,
+    });
+    // Auto-Hop, Strafe-Assist und Luftlenkung (an = > 0) sind auch Spieler-Einstellungen — beide Wege synchron halten.
     const cur = this.settings.get();
-    if (cur.autoHop !== this.params.autoHop || cur.strafeAssist !== this.params.strafeAssist) {
-      this.settings.update({ autoHop: this.params.autoHop, strafeAssist: this.params.strafeAssist });
+    const air = this.params.airControl > 0;
+    if (cur.autoHop !== this.params.autoHop || cur.strafeAssist !== this.params.strafeAssist || cur.airControl !== air) {
+      this.settings.update({ autoHop: this.params.autoHop, strafeAssist: this.params.strafeAssist, airControl: air });
     }
     this.emit();
   }
@@ -235,10 +287,12 @@ export class TuningPanel {
       this.meta.preset = s.movementPreset;
       this.loadPreset(s.movementPreset);
       this.gui.controllersRecursive().forEach((c) => c.updateDisplay());
-    } else if (s.autoHop !== this.params.autoHop || s.strafeAssist !== this.params.strafeAssist) {
+    } else if (s.autoHop !== this.params.autoHop || s.strafeAssist !== this.params.strafeAssist || s.airControl !== this.params.airControl > 0) {
       this.params.autoHop = s.autoHop;
       this.params.strafeAssist = s.strafeAssist;
-      this.config = withMovement(this.config, { autoHop: s.autoHop, strafeAssist: s.strafeAssist });
+      // Luftlenkung aus dem Menü: aus = 0, an = Wert des Presets (ein im Panel gezogener Wert bleibt, solange er > 0 ist).
+      if (s.airControl !== this.params.airControl > 0) this.params.airControl = s.airControl ? this.base.airControl : 0;
+      this.config = withMovement(this.config, { autoHop: s.autoHop, strafeAssist: s.strafeAssist, airControl: this.params.airControl });
       for (const c of this.movementControllers) c.updateDisplay();
       this.emit();
     }
@@ -263,6 +317,7 @@ export class TuningPanel {
     }
     if (this.config.autoHop !== this.base.autoHop) lines.push(`  autoHop: ${this.config.autoHop},`);
     if (this.config.strafeAssist !== this.base.strafeAssist) lines.push(`  strafeAssist: ${this.config.strafeAssist},`);
+    if (this.config.surfSeamFix !== this.base.surfSeamFix) lines.push(`  surfSeamFix: ${this.config.surfSeamFix},`);
     if (lines.length === 0) return `withMovement(${presetName}, {})`;
     return `withMovement(${presetName}, {\n${lines.join('\n')}\n})`;
   }
@@ -306,8 +361,29 @@ function toParams(c: MovementConfig): MovementParams {
     autoHopLandShare: c.autoHopLandShare,
     autoHopLandAirTime: c.autoHopLandAirTime,
     duckTime: c.duckTime,
+    landGraceTime: c.landGraceTime,
+    slopeLandGain: c.slopeLandGain,
+    ledgeStep: c.ledgeStep,
+    ledgeMemory: c.ledgeMemory,
+    slideMinSpeed: c.slideMinSpeed,
+    slideExitSpeed: c.slideExitSpeed,
+    slideFriction: c.slideFriction,
+    slideDecel: c.slideDecel,
+    slideBoost: c.slideBoost,
+    slideBoostCap: c.slideBoostCap,
+    slideBoostMinGround: c.slideBoostMinGround,
+    slideBoostCooldown: c.slideBoostCooldown,
+    slideSteerRate: c.slideSteerRate,
+    slideSlopeGravity: c.slideSlopeGravity,
+    slideEyeTime: c.slideEyeTime,
+    airControl: c.airControl,
+    airControlHigh: c.airControlHigh,
+    airControlFadeFrom: c.airControlFadeFrom,
+    airControlFadeTo: c.airControlFadeTo,
+    airControlSurfGrace: c.airControlSurfGrace,
     autoHop: c.autoHop,
     strafeAssist: c.strafeAssist,
+    surfSeamFix: c.surfSeamFix,
   };
 }
 

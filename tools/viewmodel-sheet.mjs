@@ -1,7 +1,7 @@
 /**
  * Viewmodel-Kontaktblatt ohne Spiel (Plan 006): rendert Kacheln über dev/viewmodel.html.
  *   node tools/viewmodel-sheet.mjs <spec.json> <out.png>
- * spec.json: { "w": 480, "h": 270, "zoom": 2, "depth": 34, "cells": [ {pose, item, frame, …}, … ] }
+ * spec.json: { "w": 480, "h": 270, "zoom": 2, "depth": 34, "crop"?: [x0, y0, x1, y1], "cells": [ {pose, item, frame, …}, … ] }
  * Port VMSHEET_PORT (Default 5282).
  */
 import { readFileSync, mkdirSync } from 'node:fs';
@@ -21,7 +21,8 @@ const browser = await launchBrowser();
 const errors = [];
 try {
   const cols = spec.cols ?? 4;
-  const width = Math.min(3800, cols * (spec.w * spec.zoom + 6) + 12);
+  const cw = spec.crop ? Math.round((spec.crop[2] - spec.crop[0]) * spec.w) : spec.w;
+  const width = Math.min(3800, cols * (cw * spec.zoom + 6) + 12);
   const page = await browser.newPage({ viewport: { width, height: 800 } });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
@@ -29,7 +30,7 @@ try {
   });
   await page.goto(`${srv.url}dev/viewmodel.html`, { waitUntil: 'load' });
   await page.waitForFunction(() => window.__vm !== undefined);
-  await page.evaluate((s) => window.__vm.render(s.cells, { w: s.w, h: s.h, zoom: s.zoom, depth: s.depth }), spec);
+  await page.evaluate((s) => window.__vm.render(s.cells, { w: s.w, h: s.h, zoom: s.zoom, depth: s.depth, crop: s.crop }), spec);
   const el = await page.$('#sheet');
   await el.screenshot({ path: outPath });
   await page.close();

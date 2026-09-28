@@ -1,10 +1,10 @@
 # Movement-Tuning (VELOCITY_DEFAULT)
 
-**Stand:** 2026-09-27, Plan 003 (Game-Feel, Strang movement) · Quelle aller Zahlen: `npm run sim` (tools/sim.ts), 128 Tick.
+**Stand:** 2026-09-28, Plan 007 (Arcade-Pass, Strang movement) · Quelle aller Zahlen: `npm run sim` (tools/sim.ts), 128 Tick.
 Regel (rules/movement.md §7): jede Wertänderung hier begründet, mit Sim-Zahlen.
-Die Änderungen dieser Runde (Smart-Auto-Hop, tempoabhängiger Cap, Strafe-Assist, Ducken, Crouch-Jump
-nach Vor-Ducken) stehen gesammelt unter **"Runde Game-Feel (Plan 003)"** am Ende; ältere Tabellen
-weiter oben sind der Stand ihrer Runde (Cap 17 bzw. 24 konstant).
+Die jüngste Runde (Knick-Fix, Rampbug-Fix, Lande-Gnade, Hang-Landung, Cap 40, Kanten-Assist, Rutschen,
+Luftlenkung) steht unter **"Arcade-Pass (Plan 007)"** am Ende, davor **"Runde Game-Feel (Plan 003)"**;
+ältere Tabellen weiter oben sind der Stand ihrer Runde (Cap 17 bzw. 24 konstant).
 
 ## Ergebnis
 
@@ -20,10 +20,15 @@ weiter oben sind der Stand ihrer Runde (Cap 17 bzw. 24 konstant).
 | nonJumpVelocity | 140 | 140 (unverändert) | Nach einem Boden-Tick gilt davon abgeleitet 140·320/250 ≈ 179 (s. Abweichungen). |
 | coyoteTime / jumpBufferTime | 0 / 0 | 0.1 / 0.12 | Timing-Hilfen (rules §5), unverändert. |
 | autoHop, duckTime | – | true, 0.15 | unverändert. |
-| airSpeedCapLow / FadeFrom / FadeTo | 0 (aus) | **32 / 350 / 700** | Plan 003: Cap 32 bis 350 u/s, linear auf 24 bei 700 — nur in freier Luft. S. "Runde Game-Feel". |
+| airSpeedCapLow / FadeFrom / FadeTo | 0 (aus) | **40 / 350 / 700** | Plan 003: Cap bis 350 u/s, linear auf 24 bei 700 — nur in freier Luft. Plan 007: 32 → 40 (Anfänger-Band). S. "Arcade-Pass". |
 | strafeAssist | false | **true** | Plan 003: W zählt in der Luft nicht, solange A/D gedrückt ist. |
 | autoHopSpeedShare / autoHopGroundTime | 0 (Autobhop sofort) / – | **0.97 / 0.2 s** | Plan 003: Smart-Auto-Hop, gehaltene Taste springt am Boden erst mit Anlauf. |
 | autoHopLandShare / autoHopLandAirTime | 0 / – | **0.75 / 0.25 s** | Prüfung 27.09.: Strafer (A/D) nach echter Luftphase springen schon ab 0.75 × Wunschtempo. S. "M1b". |
+| landGraceTime | 0 | **0.0625 s** | Plan 007 A3: 8 Bodenticks ohne Friction nach echter Landung, Schub-Kappe. |
+| slopeLandGain / surfSeamFix | 0 / false | **1 / true** | Plan 007 A4 (Hang-Landung phasenfest, Bergauf-Verlust gestundet) und A2 (Rampbug-Fix). |
+| ledgeStep / ledgeMemory | 0 / 0 | **5 u / 0.2 s** | Plan 007 A6: Kanten-Assist; Crouch-Kanten ≥ 66 u (Review 28.09.). |
+| slideMinSpeed (+ slide*) | 0 | **280** | Plan 007 A7: Rutschen; Nebenwerte in beiden Presets gleich (wirken ohne Hauptschalter nicht). |
+| airControl (+ airControl*) | 0 | **1.6 rad/s** | Plan 007 A8: Luftlenkung mit W; Einstellung "Luftlenkung mit W" (aus → 0). |
 
 Zielkorridor aus dem Auftrag, alle erfüllt:
 
@@ -297,6 +302,9 @@ umgelenkt und hält der Schwerkraft die Waage. Tempo holt man durch Abwärts-Sur
 - **Duck-Walk unabhängig von Sprint** (Plan 003): geduckt am Boden immer runSpeed × duckSpeedScale.
 - **Crouch-Jump nach Vor-Ducken** (Plan 003): ist die Hull beim Absprung vom Boden schon geduckt und
   darüber Platz, springt sie direkt in die Luft-Duck-Geometrie (Füße +18, eyeHeight −18).
+- **Arcade-Pass** (Plan 007): Knick-Projektion (Bugfix, immer), Rampbug-Fix, Lande-Gnade, Hang-Landung,
+  Kanten-Assist (inkl. Wand-Tasche), Rutschen, Luftlenkung — Übersicht rules/movement.md §1, Zahlen im
+  Abschnitt "Arcade-Pass" unten.
 - **strafeSync als Zeitfenster** (neu): Ring mit einem Slot pro Tick über 1 s (kein Sample / Fehl /
   Gewinn), strafeSync = Gewinne / max(Samples, ¼ Fenster). Vorher rückte der Ring nur bei
   Strafe-Eingabe weiter — nach 5 s Bhop und 20 s Stehen stand er noch auf 1.0 (Musik blieb auf Layer 1).
@@ -597,3 +605,244 @@ Level-Build 02:49 (gegen diese Physik gebaut), 20 Seeds neu / alt: L1 Hand 2° *
 Knoten 27–29), Hand 3° 19 / 19, sync 0.8 20 / 19, sync 0.7 18 / 18; L2 2° 19 / 20, sonst 20 / 20.
 `npm run levels:check`: 3 Level, 0 Fehler, 1 Warnung (L1 Hand 3° 7/8), Vitest grün. Offen für S3:
 die bessere 2°-Hand ist schneller und überschießt den schnellen Schluss von L1 (Knoten 27–29).
+
+## Arcade-Pass (Plan 007, Strang movement, 28.09.)
+
+Nutzerwunsch: Spaß, arcadig, smooth, befriedigend statt 1:1-CS; harte Grenzen bleiben (kein Walljump,
+Wallrun, Double-Jump), die Skill-Decke bleibt das Strafen. Jede Abweichung hat einen Schalter in
+`MovementConfig` (CS2 = 0/aus → `npm run sim -- --preset cs2` in allen eigenen Spalten bitgleich zu vorher).
+Alle Zahlen gegen die echte Engine; Werkzeug: **`npm run sim -- --section arcade`** (`tools/sim/arcade.ts`,
+Spalte "aus" = nur dieser Schalter auf 0, "an" = VELOCITY). Prototypen und Entwurfszahlen:
+`tools/critique/v2/{momentum,arcade-mechanics,level3,level4}`. Die Mechaniken wurden einzeln eingebaut und
+nach jedem Schritt mit `levels:check` (eingefrorene Kopie der Werkzeuge, fallen.md #30) gemessen.
+
+### A1 Knick-Projektion (Bugfix, immer)
+
+`tryPlayerMove`, zwei Clip-Ebenen ohne Einzellösung: `vel.copy(dir).multiplyScalar(dir.dot(vel))` wertete
+das Skalarprodukt NACH dem Kopieren aus → |v| = 1 u/s entlang der Knick-Kante → Luft-Hänger in konkaven
+Ecken. Jetzt `along = dir·vel` vorher (Source). `tools/critique/v2/level4/cornercling.ts`: **21/72 → 0/72**
+Hänger. levels:check L1/L2 nach M1 zeilengleich (nur Laufzeiten).
+
+### A2 Rampbug-Fix (`surfSeamFix`)
+
+Beginnt ein Luft-Move an einer Surf-Fläche und trifft der Trace eine Ebene gegen die Fahrt (horizontal
+cos < −0.5, |v_h| > 100), wird derselbe Weg 0.25/1/2 u entlang der letzten Surf-Normale angehoben
+nachgetraced; kommt der weiter und trifft keine Gegen-Ebene, gilt er. Echte Stirnwände treffen auch
+angehoben. `probeCurveSweep.ts` (45°-Kurve, 1536 u Bogen, Raster wie der Validator, 108 Läufe je Zeile),
+Innenflanke, Stand vor v2 (HEAD) → finale Physik (Review-Runde 28.09. vollständig nachgemessen):
+
+| Achsgefälle | Stücke je 45° (Knick je Fuge) | 2 (22.5°) | 3 (15°) | 4 (11.3°) | 6 (7.5°) | 12 (3.8°) | 24 (1.9°) |
+|---|---|---|---|---|---|---|---|
+| 0° | Nahtstopps | 0 → 0 | 1 → 0 | 3 → 0 | 10 → 0 | 43 → 1 | 82 → 0 |
+| 0° | Energieverlust | 20 → 19 % | 18 → 18 % | 12 → 12 % | 11 → 11 % | 16 → 9 % | 29 → 8 % |
+| 6° | Nahtstopps | 2 → 0 | 14 → 0 | 27 → 0 | 15 → 0 | 50 → 0 | 55 → 0 |
+| 6° | Energieverlust | 10 → 9 % | 10 → 8 % | 17 → **4 %** | 9 → **4 %** | 25 → **2 %** | 30 → **1 %** |
+| 10° | Nahtstopps | 4 → 0 | 11 → 0 | 6 → 0 | 14 → 0 | 22 → 0 | 52 → 0 |
+| 10° | Energieverlust | 10 → 8 % | 10 → 10 % | 7 → 6 % | 10 → 7 % | 15 → **4 %** | 31 → **3 %** |
+
+Außenflanke: keine Verschlechterung gegen HEAD. Die Nahtstopps sind überall weg; der Restverlust grober
+Gehrungen (6–10 % bei 2–6 Stücken, 8–19 % bei flacher Achse) ist Geometrie, keine Naht. Die Abnahme "≤ 5 %"
+gilt also nur für feine Gehrungen — **Level-Regel (L3):** Surf-Gehrungskurven mit Achsgefälle ≥ 6° und Knick
+≤ 4° je Fuge (≥ 12 Stücke je 45°), dann ≤ 4 %. L1/L2 nach M2 zeilengleich; eine glatte Surf-Rampe fährt mit
+und ohne Fix bitgleich (Vitest).
+
+### A3 Lande-Gnade (`landGraceTime` 0.0625 s = 8 Ticks)
+
+Nach einer Landung aus ≥ 0.1 s Luft keine Friction in den ersten 8 Bodenticks (`frictionTicks` zählt jetzt
+Bodenticks seit der Landung). Schub-Kappe: Boden-Accelerate hebt |v_h| in der Zeit nicht über
+max(Tempo davor, wishspeed). Kette und `lastAirSync` reißen erst nach max(3, 8) Ticks. `jump.clean` =
+perfekt oder alle Bodenticks davor in der Gnade.
+
+| Messung | aus | an |
+|---|---|---|
+| Sprung k Ticks nach der Landung, 700 u/s: k = 1 / 2 / 4 / 8 / 9 / 12 | 672 / 644 / 593 / 502 / 482 / 426 | **700 / 700 / 700 / 700** / 672 / 593 |
+| k = 1…8 bei 400/700/1000: Abweichung vom Landetempo · k = 9: Abweichung von genau v·5.2/128 | – | **0.000 · 0.000** |
+| Tipp-Hand ±20 ms (perfekter Strafe, 8 Seeds) H5/H10/H20 | 677/701/742 | **726/897/1166** |
+| Exploit: Landung 500, 8 Ticks Ground-Strafe W+D, Sprung (ohne Kappe im Prototyp 591) | 448.7 | **500.0** |
+| Drop 800 u/s ohne Sprung, W: Tempo nach 0.05 / 0.1 / 0.25 s (momentum/grace.ts) | 624 / 467 / 320 | 800 / 650 / 320 |
+
+`npm run sim` nach M3: nur die Zeilen "Naive aus dem Stand … frisch gedrückt" ändern sich (395 → 403 u),
+CS2 bitgleich. levels:check nach M1–M3: 0 F / 2 W wie vorher, L1 Hand 2° 7/8 → 8/8, sync 1.0 25.1 → 24.3 s,
+Verlust je Auffangmulde L1 0.30 → 0.16 s, L2 0.34 → 0.25 s.
+
+### A4 Deterministische Hang-Landung (`slopeLandGain` 1)
+
+Referenz = Anflug-Geschwindigkeit vor dem ersten Clip an begehbarem Boden (`tryPlayerMove`) bzw. vor der
+2-u-Sonde (Sonden-Fall). Geklippt nach oben > nonJumpVelocity → Rampslide (in der Luft bleiben) in jeder
+Phase; sonst Landung in alter Richtung mit h1 = h0 + k·max(0, Clip-Anteil entlang der Flugrichtung − h0).
+Flacher Boden (n.y ≥ 0.9999) unberührt. `land.speed` meldet das umgelenkte Tempo.
+
+| Messung (5–35°, 320/600/1000 u/s, Fall 57/192 u, je 16 Tick-Phasen) | aus | an |
+|---|---|---|
+| bergab: größte Spreizung max − min | 353.8 | **2.94** |
+| bergauf ohne Rampslide: Spreizung / größter Verlust gegen den Anflug | 53.9 / 53.9 | **0 / 0** |
+| Rampslide-Fälle: Spreizung | 803.2 | 3.51 (35°, 1000 u/s) |
+| Beispiel 10° bergab 320/192: min/max | 320 / 415 | 415 / 415 |
+
+Die Rest-Spreizung ist Physik, nicht Lotterie: das Messraster startet je Phase bis zu einen Fall-Tick höher,
+der Aufprall ist dadurch bis g·dt = 6.25 u/s schneller; auf 35° gibt das ×sinθcosθ ≈ 2.9 u/s (bergab)
+bzw. nach dem Rampslide-Flug 3.5 u/s.
+
+W + Leertaste gehalten, 1500 u Hang ab 320 u/s: 5° 378 → 435, **10° 381 → 508, 16° 320 → 656**,
+25° 493 → 693 u/s; Energie-Decke √(v0² + 2gΔh) 559/725/889/1105 nie überschritten. levels:check nach
+M1–M4: **3 F** — L1 Könner-Inseln (perfekter Bot scheitert), L2 Ausfahrt 1/600, L2 S0 1/12 (wie der
+Prototyp "slopeslide").
+
+**Hügel-Pumpe (Review 28.09.) → gestundeter Bergauf-Verlust.** "Energie-begrenzt" galt nur auf gleichförmigem
+Gefälle. Auf Wellen erntete jede Talfahrt den Sprungimpuls, den der Aufstieg gratis bekam (bergauf kein
+Verlust, bergab Gewinn, dazwischen verlustfreier Bodenlauf): nur W + Leertaste, kein Strafen, Tempo nach
+10 / 20 / 30 s (`hillRun`, sim-Zeile "Hügel-Pumpe"):
+
+| Wellen | Source (slopeLandGain 0) | Arcade vorher | **jetzt** |
+|---|---|---|---|
+| 5°, Periode 512 u | 311 → 320 → 320 | 415 → 518 → 621 | **353 → 353 → 353** |
+| 10°, 512 u | 312 → 312 → 376 | 482 → 594 → 783 | **377 → 377 → 377** |
+| 10°, 1024 u | 315 → 320 → 319 | 570 → 742 → 785 | **430 → 430 → 430** |
+| 15°, 768 u | 319 → 320 → 315 | 519 → 523 → 578 | **413 → 414 → 414** |
+| 10°, 1024 u + 512 u eben | 320 → 381 → 445 | 468 → 673 → 788 | **430 → 430 → 430** |
+
+(Hand-3°-Strafer auf flachem Boden H20: 646.) Fix: der erlassene Clip-Verlust bergauf (h0 − along) wird als
+Schuld gemerkt und vom nächsten Bergab-Gewinn abgezogen; die Schuld ist nie größer als das Tempo über dem
+Lauftempo (je Tick gekappt — Reibung, Wände und Stehen löschen sie), teleport löscht sie. Bergauf bleibt es
+verlustfrei, auf gleichförmigem Gefälle ändert sich nichts (Tabelle oben, Einzel-Landungen, W+Space-Kette
+zeilengleich), CS2 bitgleich. Verworfen: (a) Review-Option A "bergauf wieder verlustbehaftet (phasenfest)" —
+kippt die Planentscheidung und kostet den perfekten Bot auf L1 **24.91 → 28.73 s** (L2 17.05 → 17.18 s);
+(b) Schuld nur bis zum Tempo-Äquivalent der gewonnenen Höhe — die Pumpe kommt langsam zurück (5°/512 353 →
+416 → 542, 10°/512 436 → 506 → 593), weil auch der Abstieg den Sprungimpuls erntet; (c) Energie-Kappe ab
+Absprunghöhe (Review-Prototyp) — 10°/1024 noch 811. Pausen-Exploit (nach jeder Landung 10 Ticks am Boden)
+und perfekter Strafer auf Wellen: wie vorher (Pause ~320; Strafer 5°/512 1594 statt 1665 nach 30 s, flach
+1569). Folge auf L2: der perfekte Bot landet im überhöhten Ring (n.y 0.985) mit Drift nach außen = bergauf
+(Schuld bis 59 u/s), die 10°-Ausfahrt gibt dann +23 statt +82 u/s → sync 1.0 **17.05 → 17.48 s**; L1 bitgleich.
+Fehler-/Warnliste von levels:check unverändert.
+
+### A5 Anfänger-Cap `airSpeedCapLow` 32 → 40
+
+| StrafeBot mit Zielfehler, Start 320, 8 Seeds | Cap 32 | Cap 40 |
+|---|---|---|
+| 3°: H10 · Zeit bis 500 u/s (Median) · Seeds ≥ 500 | 590 · 2.2 s · 8/8 | **631** · 1.2 s · 8/8 |
+| 4° | 514 · 4.0 s · 8/8 | 565 · **1.8 s** · 8/8 |
+| 5° | 451 · – · 4/8 | 510 · 2.6 s · **8/8** |
+| perfekt ab runSpeed H5 / H10 / H20 | 670 / 853 / 1134 | **717 / 890 / 1162** |
+
+Decke +2.5 % (ab 250) bzw. +7.2 % gegenüber konstantem Cap 24 (1084); Testkorridor jetzt H5 700–735,
+H10 875–905, H20 ≤ 1170. Abstand perfekt/3° bleibt (H20 1.83 → 1.80). CS2-Paritätstest ("gleiche Hand nie
+schlechter als CS2") grün. Surf-Halten unverändert 401 u/s (4 u mehr Höhe: Cap 40 in den freien Luftticks
+vor dem ersten Kontakt). levels:check nach M1–M5: **2 F / 1 W** (L1 Könner-Inseln wieder 5/6, Ø 2.9 s;
+neu Warnung L1 CP2→CP3 Hand 3° aus dem Stand).
+
+### A6 Kanten-Assist (`ledgeStep` 5 u, `ledgeMemory` 0.2 s)
+
+Port aus `arcade-mechanics/ArcadeMovement.ts` (airSlideMove) plus zwei Befunde dieses Strangs:
+- **Gedächtnis wurde überschrieben.** Mit Cap 40 drückt der Luft-Schub nach dem Anprall mit ~50 u/s weiter
+  gegen die Wand; das war selbst ein "Anprall" über LEDGE_MIN_SPEED und ersetzte die gemerkten 539 u/s nach
+  einem Tick durch 50. Jetzt überschreibt nur ein stärkerer Anprall. Treppe 48/192 perfekt: 8.17 → **3.30 s**
+  (ohne den Fix 8.17 s trotz Assist; mit Phase-0-Physik wie im Prototyp 3.24 s).
+- **Wand-Tasche.** fixcheck (L4-Bande) zeigte mit dem vollen Paket 1/702 Luft-Hänger: zwischen zwei um 4°
+  verdrehten Banden-Stücken greift die Doppelebenen-Regel (dot > 0.99), kein Bump kommt vom Fleck, Source
+  nullt die Geschwindigkeit, W drückt weiter → 2 s Schweben. Jetzt: nur Wände getroffen, keine Bewegung →
+  senkrecht weiterfallen. **1/702 → 0/702**, cornercling 0/72, levels:check unverändert.
+
+| Messung | aus | an |
+|---|---|---|
+| L1-Crouch-Kante OHNE Ducken (H7, 40 Startpunkte × 5 Tempi) | 0/200 | **0/200** |
+| MIT Ducken, gekrochen (< 50 % Tempo) bei 600 / 761 / 900 u/s | 15 / 20 / 23 von 40 | **1 / 1 / 1** |
+| zu spät geduckt (0–148 ms nach dem Anprall): Ø Ankunftstempo | 15 % | **98 %** (nur Kanten-Assist auf Phase-0-Physik: 77–86 % wie der Prototyp; Lande-Gnade bzw. Rutschen halten das Tempo in den ersten Bodenticks auf der Kante: 28 → 3 Ankünfte unter 50 %) |
+| Treppe 48/192, perfekt ab 320: bis 384 u | 8.17 s | **3.30 s** |
+| Treppe 32/192 (Rückschritt durch das Gedächtnis, s. u.) | 7.70 s | 8.27 s |
+| Treppe 24/192 | 10.98 s | **5.19 s** |
+| L1-Rutsche seitlich (dbg-chute: Knoten 31, ±48, 600–1100 u/s) | 9/9 im Ziel | 9/9 |
+| Höchste Kiste ohne Ducken (Stand/Lauf · aus der Auto-Hop-Landung) / mit Crouch-Jump | 57 · ~58.5 / 75 u | **62 · 63–63.5 / 80 u** |
+| Kante ohne Ducken aus dem Auto-Hop-Rhythmus, je 80 Läufe: 62 / 63 / 64 / 66 u | 0 / 0 / 0 / 0 | 7 / 2 / 0 / 0 |
+| Sprung 1 / 6 / 25 u vor einer Stufe 4 / 8 / 16 u, 600 u/s: Luftzeit · Landetempo | 0.74 s · 0 (Bonk) | vorher 0.01–0.05 s · 600, **jetzt 0.69–0.73 s · 600** |
+
+**Reichweite ohne Ducken (Review 28.09.):** die Auto-Hop-Landung schwebt bis 1.5 u über dem Boden (Füße im
+Tick vor dem Absprung 0.03–1.53 u, 2-u-Sonde) und der nächste Sprung startet dort — ohne Ducken erreicht man
+bis 63 u (Bhop-Strafer 62.5 u 12/120, W + Leertaste 63 u 5/120, 63.5 u 0/240). "64 = 57 + 5 + 2 Reserve"
+hatte also ≤ 1 u Reserve; der Validator (level-tools, `noDuckReach` 63.5 u + 2) warnt schon für die
+L1-Kante (64.0 u). Level-Regel deshalb **Crouch-Kanten ≥ 66 u** (L1-Kante und die zwei L4-Kanten auf 66 u).
+Vitest: aus dem Auto-Hop-Rhythmus 62 u erreichbar, 66 u in 0/80.
+
+**Lip-Step im Steigen (Review 28.09.):** "vel.y = 0, auch steigend" verschluckte den Sprung, wenn man direkt
+vor einer Stufe/einem Bordstein absprang (8–47 ms Luft, danach Reibung ohne Lande-Gnade). Jetzt kein Lip-Step,
+solange der Rest-Aufstieg v_y²/2g die Kante um ≥ 2 u selbst überragt; das Gedächtnis gibt das Tempo zurück,
+sobald die Hull oben frei ist (Zeile oben). Knapp vor dem Scheitel fängt der Lip-Step weiter (60-u-Kiste bei
+250 u/s: 3 Steps steigend, 2 fallend; Vitest). Ohne Gedächtnis (`ledgeMemory` 0) bleibt der alte Fang. Die
+Review-Variante "nur fallend" verlor diesen Scheitel-Fang (Kamera-Integrationstest rot). `--section arcade`
+bis auf die neuen Zeilen zeilengleich (0/200, 1/40 je Tempo, 98 %, 48/192 3.30 s, Rutsche 9/9);
+Treppen-Probe (Review `stairs2`/`stairs16`, perfekter Bot, v0 320/450/600 bzw. 450/700): 48/192 @600
+3.85 → 3.88 s, 48/256 @450/600 3.21/2.95 → 3.30/3.02 s, 16/128 @450 4.73 → **4.30 s**, 16/64 @700 3.65 → 3.77 s,
+16/192 @700 5.02 → 5.18 s; verschluckte Sprünge 1 → 0 je Treppe. Keine Liste von levels:check ändert sich.
+
+**Treppe 32/192 (Korrektur Review 28.09.):** der Rückschritt ist systematisch und kommt vom Gedächtnis, nicht
+vom Rhythmus des Bots. Nur Gedächtnis ergibt exakt die Zeiten von "an", nur Lip-Step exakt die von "aus"
+(v0 320/450/600): 32/192 7.70/7.52/7.71 → 8.27/8.27/8.27 s, 32/128 7.52/7.71/7.71 → 8.47/8.66/8.66,
+32/160 +0.2 s, 32/224 7.90/7.89/8.09 → 8.08/8.27/8.47, 40/192 6.19/6.20/6.20 → 6.38/6.20/6.39. Spur: der Hop
+prallt an die übernächste Setzstufe, das Gedächtnis gibt 476 u/s noch im Steigen zurück, der Scheitel reicht
+nicht über die nächste Stufe, zweiter Anprall im Fallen, Landung mit 42 u/s. Längere Vorausschau beim Vault
+hilft nicht (16 Ticks: gleich; 48 Ticks: 48/192 3.30 → 8.17 s). **Level-Regel:** Treppen mit Setzstufe 32–40 u
+nur mit Auftritt ≥ Hop-Weite beim Zieltempo, sonst Stufen ≤ 18 u (laufbar); 24er und 48er Setzstufen gewinnen
+mit dem Assist. Für level-tools vorgeschlagen: Probe "Treppen auf der Route: perfekter Bot mit Assist nicht
+langsamer als ohne".
+
+### A7 Rutschen (`slideMinSpeed` 280 + `slide*`)
+
+| Messung | aus | an |
+|---|---|---|
+| Sprint 320 + C: Tempo nach 0.1 s · Dauer bis < 160 u/s | 320 · 0.28 s | **351 · 1.34 s** |
+| dto. Auge auf duckEye nach · Schritt-Events beim Rutschen | 0.156 s · – | **0.063 s · 0** |
+| Landung 800 + Ducken, Sprung nach 0.1 / 0.2 / 0.4 s | 650 / 379 / 134 | 788 / **756** / 698 |
+| Duck-Tunnel 60 × 768 u, Anflug 900: Zeit · Ausgang | 8.59 s · 85 | **1.13 s · 548** |
+| Hang 25° / 15°, 1024 u ab 320 geduckt: Tempo am Fuß | Duck-Walk | **517** / 344 |
+| Schub-Farmer (nur W, 0.26 s laufen → C → springen), Ø letzte 6 s | 320 | **339** (≤ 352) |
+| Slide-Hop ohne Schub (rutschen bis < 300, springen), Ø | 295 | **300** (≤ 305) |
+| Bhop mit gehaltenem Ducken, perfekt / 3°: Tempo nach 10 s · Rutsch-Ticks | 993.696 / 670.633 | **993.696 / 670.633 · 0** |
+| Über eine 24-u-Kante ohne Sprung (Kante bei 229 u/s): Tempo 0.3 s nach der Landung | Duck-Walk | **195** (vorher 85, s. u.) |
+
+Im Gnade-Fenster keine Rutsch-Reibung (Tempo nach 8 Ticks exakt das Landetempo, Vitest). Lenken nur bis
+90° neben der Fahrt (Blick nach hinten dreht nicht um; im Prototyp drehte er) — sonst wie der Prototyp.
+
+**Weiterrutschen über Kanten** (Befund im echten Spiel, L1-Start): wie im Prototyp endete die Rutsche mit
+dem Boden. Über die Mulde hinter dem L1-Startfeld (Füße 0.2 s in der Luft) kam sie mit 270 u/s an — unter
+`slideMinSpeed`, also kein neuer Eintritt, und der Duck-Walk bremste 270 → 85 u/s in 0.2 s. Jetzt geht eine
+Rutsche, die den Boden **ohne Sprung** verlassen hat, im ersten Bodentick weiter (Hull geduckt, Tempo ≥
+`slideExitSpeed`, kein Schub). `slideOverDrop` (Kante 24 oder 64 u, Anlauf 230 u): vorher 229 → 85, jetzt
+229 → 195 u/s; im Spiel rutscht man vom L1-Start 1.37 s statt 0.55 s. Nach einem Sprung (auch Coyote) nicht:
+Crouch-Jump auf ein schmales Ziel soll bremsen (251 → 85). levels:check zeilengleich (Bots rutschen nie).
+
+**Rückmeldung ohne Rutschen (Review 28.09.).** (a) Die Rutsche begann schon im ersten Bodentick der
+Lande-Gnade; jeder 1–8 Ticks späte Crouch-Hop meldete slideStart + slideEnd (Kratz-Whoosh, Bett-Kratzen,
+Hand-Pose), obwohl er als `clean` gelobt wurde. Jetzt rutscht die Physik wie bisher ab dem ersten Bodentick
+(intern `slideOn`: keine Schritte, Lenken, Hangabtrieb — bitgleich, `npm run sim` zeilengleich), gemeldet
+(`sliding`, slideStart) wird erst mit dem ersten Reibungs-Tick; slideEnd nur für gemeldete Rutschen. Landung
+700 + C, Sprung k Ticks später: k = 1 / 4 / 8 → 0 Events (vorher 2), k = 12 → slideStart + slideEnd. Der
+slideStart kommt damit 62 ms nach dem Lande-Thud. (b) Weiterrutschen über eine Mulde: slideEnd in der Luft,
+slideStart bei der Landung → Sfx spielte den Einstiegs-Whoosh zweimal (L1-Start: zwei in 0.72 s). Sfx
+erkennt das Weiterrutschen (slideStart ohne Schub ≤ 1 s nach slideEnd, dazwischen kein Sprung, kein
+Aufstehen, kein Respawn) und spielt keinen Whoosh; das Bett-Kratzen läuft über `MusicDrive.sliding`
+(Offline-Differenz: Weiterrutschen −300 dB, frische Rutsche/nach Sprung/nach Aufstehen/nach 1.2 s ≈ −31 dB).
+Vertrag unverändert.
+
+### A8 Luftlenkung mit W (`airControl` 1.6 → 0.8 rad/s, Surf-Pause 0.5 s)
+
+| Messung | aus | an |
+|---|---|---|
+| 320 u/s, Blick 90° daneben, nur W, 0.3 s: Drehung · Tempo | 7.1° · 322.5 | **33.6° · 322.5** |
+| 320 u/s, Blick 45° daneben (reine Drehung) | 0.0° · 320.00 | 27.2° · **320.00** |
+| 900 u/s, Blick 90° | – | 14.8° · 900.3 |
+| W+D / Surf-Flanke 2 s mit W / 0.4 s nach steilem Kontakt | – | bitgleich / bitgleich / 0.00° |
+| StrafeBots 0/2/3/5° 10 s | – | bitgleich |
+
+Das Plus von 2.5 u/s bei 90° ist Sources W-Schub quer im ersten Tick (auch ohne Lenkung); die Lenkung
+selbst hält den Betrag exakt (45°-Zeile). Die Abnahme "30–35° **und** ±1 u/s" gilt deshalb nur getrennt:
+30–35° mit Blick 90°, ±0 u/s mit Blick ≤ 83°.
+
+### Level-Stand mit der finalen Physik (M11, Übergabe an l1l2)
+
+`levels:check` auf den unveränderten L1/L2-JSONs: **2 F / 1 W** (vorher 0 F / 2 W) — genau die in Plan 007
+§1 vorhergesagten chaotischen Proben. Liste mit Zahlen: `.docs/learnings/inbox/movement.md`.
+
+Nach der Review-Runde (28.09., mit dem erweiterten Validator von level-tools): **2 F / 3 W**. Neu gegenüber
+der Physik-Liste sind nur Validator-Proben: "Crouch-Kante 64.0 u Reserve 0.5 u < 2 u" (Kanten-Assist +
+Auto-Hop-Landehöhe → Kante auf 66 u) und "Perfekter Bot zerfällt über den Start-Kasten" (auch mit allen
+Arcade-Schaltern aus, dort mit anderem Split). Die Review-Fixes selbst ändern keine Meldung; L1 zeilengleich,
+L2-Bot-Mediane durch die Hang-Schuld: sync 1.0 17.0 → 17.5 s, sync 0.7 18.7 → 19.5 s, Hand 3° 20.6 → 20.6 s.

@@ -1,0 +1,23 @@
+  Schanze: Ende Grat -1944; Welle 1152 u, Kamm 201 u unter dem Schanzenende; Z-Grat 465 u darunter
+  Strand: Oberseite -4395 (1100 unter dem Kicker), Lücke 896 u bei unterem Band 700 u/s, Flugzeit 1.40 s
+  Kill-Kacheln: 41
+Tempo-Band Launch: schnell 446 u/s, sicher 363 u/s (90 % des Langsamsten)  
+  Strand: Oberseite -4395 (1100 unter dem Kicker), Lücke 464 u bei unterem Band 363 u/s, Flugzeit 1.40 s
+
+✓ SCHNELLE Linie (route) (0.0 s): 0 Fehler, 1 Warnungen
+    Bodenmarkierungen: 4, alle liegen auf
+    Kill-Zonen: 38 (kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile)
+    Brushes 157 (Kollision 120, Deko 37), Flächen 1082 (begehbar 10, Surf 224, 60–61°)
+    Bounds (-9980, -12800, -4360) … (4360, 2210, 13410), Größe (14340, 15010, 17770)
+    Trigger: Start 1, Checkpoints 3, Ziel 1; killY -12000, voidY -13000
+    Route 81 Knoten, 15849 u, Par 60 s
+  ! Keine Medaillen (npm run levels:build misst sie)
+
+✓ SICHERE Linie (safeRoute) (0.0 s): 0 Fehler, 1 Warnungen
+    Bodenmarkierungen: 4, alle liegen auf
+    Kill-Zonen: 38 (kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile)
+    Brushes 157 (Kollision 120, Deko 37), Flächen 1082 (begehbar 10, Surf 224, 60–61°)
+    Bounds (-9980, -12800, -4360) … (4360, 2210, 13410), Größe (14340, 15010, 17770)
+    Trigger: Start 1, Checkpoints 3, Ziel 1; killY -12000, voidY -13000
+    Route 86 Knoten, 15807 u, Par 60 s
+  ! Keine Medaillen (npm run levels:build misst sie)

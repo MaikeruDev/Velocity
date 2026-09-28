@@ -1,7 +1,10 @@
-import { POSE } from './poses';
+import { POSE, POSE_JOINTS } from './poses';
 import { arc, bell, clamp, smooth } from './anim';
+import { fingerTip } from './fk';
 import { PropTricks } from './propTricks';
 import type { PropFrameInput, PropOut } from './propTricks';
+import { relRot, socketPoint, viewRot } from './view';
+import type { V3 } from './view';
 
 /**
  * Energy-Drink-Dose (Plan 006): seitlich im Griff wie in den Referenzen, Deckel oben am Daumen.
@@ -11,10 +14,15 @@ import type { PropFrameInput, PropOut } from './propTricks';
  * - Schluck (nur offen): Dose zum Mund kippen — nur in Ruhe (Stand/Gehen) oder bei einer
  *   ruhigen Landung. Bei Tempo nie (Nutzerwunsch).
  * - Tempo-Tricks an Sprüngen: Flip → hoher Flip/Twirl → Doppel-Flip/Wurf hinter die Hand.
+ * - Plan 007 KI8, Surf ≥ 500 u/s: Zustand surfBalance — die Dose hüpft aus dem Griff auf die
+ *   Zeigefinger-Spitze und balanciert dort aufrecht (Boden auf der Kuppe), neigt sich gegen die
+ *   Rampe und wackelt; Surf-Ende → zurück in den Griff. Zählt nicht als Trick, bricht nie ab.
  */
 
-export const CAN_TRICKS = ['none', 'tilt', 'crack', 'sip', 'flip', 'highFlip', 'twirl', 'doubleFlip', 'behindThrow'] as const;
+export const CAN_TRICKS = ['none', 'tilt', 'crack', 'sip', 'flip', 'highFlip', 'twirl', 'doubleFlip', 'behindThrow', 'surfBalance'] as const;
 export type CanTrick = Exclude<(typeof CAN_TRICKS)[number], 'none'>;
+
+const CAN_NAMES: readonly string[] = CAN_TRICKS.filter((t) => t !== 'none');
 
 /** Tricks je Tempo-Stufe bei Sprüngen (Tests prüfen genau diese Zuordnung). */
 export const CAN_TIER_TRICKS: readonly (readonly CanTrick[])[] = [[], ['flip'], ['highFlip', 'twirl', 'flip'], ['doubleFlip', 'behindThrow', 'highFlip', 'twirl']];
@@ -49,7 +57,24 @@ const TOSS: { readonly [K in CanTrick]?: Toss } = {
   behindThrow: { windup: 0.13, air: 0.9, peak: 9.5, rot: 2 * TAU, twirl: 2, drift: 5, depth: -8, total: 1.2, throwKick: 0.85 },
 };
 
-const COOLDOWN = { tilt: 0.3, crack: 0.6, sip: 0.8, flip: 1.3, highFlip: 0.95, twirl: 0.95, doubleFlip: 0.7, behindThrow: 0.7 } as const;
+const COOLDOWN = { tilt: 0.3, crack: 0.6, sip: 0.8, flip: 1.3, highFlip: 0.95, twirl: 0.95, doubleFlip: 0.7, behindThrow: 0.7, surfBalance: 0.5 } as const;
+
+/** Surf-Balance (KI8): Dosen-Boden (Halbhöhe 7.8 + Luft) auf der Zeigefinger-Kuppe der Pose point. */
+const SURF_FROM = 500;
+const SURF_MIN = 0.5;
+const BAL_IN = 0.35;
+const BAL_OUT = 0.3;
+const BAL_HOP = 2.2;
+const BAL_LOWER = 0.07;
+const CAN_HALF = 7.8 + 0.25;
+const BAL_TIP: V3 = ((): V3 => {
+  const t: [number, number, number] = [0, 0, 0];
+  fingerTip(POSE_JOINTS[POSE.point], 0, t, 0.6);
+  return t;
+})();
+/** Aufrecht, Blitz leicht zur Bildmitte gedreht (man sieht das Etikett). */
+const BAL_ROT: V3 = viewRot([[1, -0.5]]);
+const BAL_REL = relRot(CAN_HOLD_ROT, BAL_ROT);
 
 const WIND_ANGLE = 0.25;
 const DIP_KICK = 0.22;
@@ -74,6 +99,21 @@ export class CanTricks extends PropTricks<CanTrick> {
   private pick2 = 0;
   private pick3 = 0;
   private idleCount = 0;
+  private surfOut = -1;
+  private readonly tmp = new Float64Array(3);
+
+  override get trickNames(): readonly string[] {
+    return CAN_NAMES;
+  }
+
+  protected override isState(id: CanTrick): boolean {
+    return id === 'surfBalance';
+  }
+
+  protected override start(id: CanTrick): void {
+    super.start(id);
+    this.surfOut = -1;
+  }
 
   protected resetRun(): void {
     this.opened = false;
@@ -143,7 +183,15 @@ export class CanTricks extends PropTricks<CanTrick> {
     else this.start('behindThrow');
   }
 
+  protected override onSurfStart(speed: number): void {
+    if (speed >= SURF_FROM) this.start('surfBalance');
+  }
+
   protected override onFree(inp: PropFrameInput, speed: number): void {
+    if (inp.surfing && speed >= SURF_FROM) {
+      this.start('surfBalance');
+      return;
+    }
     if (this.opened) return;
     const calm = inp.onGround && !inp.surfing && speed < 300;
     if (calm && this.groundTime >= CRACK_CALM_AFTER) this.start('crack');
@@ -157,7 +205,7 @@ export class CanTricks extends PropTricks<CanTrick> {
     super.update(dt, inp);
   }
 
-  protected evaluate(id: CanTrick, t: number, _dt: number, _inp: PropFrameInput, _m: number, o: PropOut): boolean {
+  protected evaluate(id: CanTrick, t: number, _dt: number, inp: PropFrameInput, _m: number, o: PropOut): boolean {
     if (id === 'tilt') {
       const u = t / TILT_TIME;
       if (u >= 1) return true;
@@ -167,6 +215,7 @@ export class CanTricks extends PropTricks<CanTrick> {
     }
     if (id === 'crack') return this.crack(t, o);
     if (id === 'sip') return this.sip(t, o);
+    if (id === 'surfBalance') return this.surfBalance(t, inp, o);
     const toss = TOSS[id];
     if (!toss) return true;
     const tr = t - toss.windup;
@@ -219,6 +268,34 @@ export class CanTricks extends PropTricks<CanTrick> {
     }
     o.canOpen = this.opened;
     return false;
+  }
+
+  /**
+   * Surf-Balance (KI8): Hopser aus dem Griff auf die Zeigefinger-Kuppe, aufrecht balancieren (Boden auf
+   * der Kuppe — Drehpunkt dort, nicht in der Dosen-Mitte), gegen die Rampe lehnen, leise wackeln.
+   */
+  private surfBalance(t: number, inp: PropFrameInput, o: PropOut): boolean {
+    if (this.surfOut < 0 && !inp.surfing && t >= SURF_MIN) this.surfOut = t;
+    const inE = smooth(t / BAL_IN);
+    const outE = this.surfOut < 0 ? 0 : smooth((t - this.surfOut) / BAL_OUT);
+    const e = inE * (1 - outE);
+    this.rotateLocal(o, BAL_REL[0], BAL_REL[1], BAL_REL[2], BAL_REL[3] * e);
+    const wob = 0.07 * Math.sin(t * 5.3) + 0.04 * Math.sin(t * 8.9 + 1);
+    // Leicht nach rechts (weg von der Bildmitte), gegen die Rampe gelehnt.
+    this.rotateView(o, 0, 0, 1, (0.3 * this.surfLean - 0.14 + wob) * e);
+    const p = this.tmp;
+    socketPoint(BAL_TIP, o.rot, 0, 1, 0, CAN_HALF, 0, p);
+    // Hopser beim Wechsel (rein und raus), Bogen über die Bahn.
+    const hop = BAL_HOP * (this.surfOut < 0 ? Math.sin(Math.PI * clamp(t / BAL_IN, 0, 1)) : Math.sin(Math.PI * clamp((t - this.surfOut) / BAL_OUT, 0, 1)));
+    for (let k = 0; k < 3; k++) o.pos[k] = CAN_HOLD_POS[k] + (p[k] - CAN_HOLD_POS[k]) * e;
+    this.offsetView(o, 0, hop, 0);
+    o.pose = e > 0.35 ? POSE.point : POSE.grip;
+    o.poseTau = 0.06;
+    // Hand tiefer: die aufrechte Dose ragt sonst bis an die Hülle der Tricks (−0.31 Bildhöhen).
+    o.hy = BAL_LOWER * e;
+    if (this.mark(0, BAL_IN, t)) this.kick(o, 0.12, -0.3);
+    if (this.surfOut >= 0 && this.mark(1, this.surfOut + BAL_OUT, t)) this.kick(o, 0.2, -0.5);
+    return this.surfOut >= 0 && t >= this.surfOut + BAL_OUT;
   }
 
   /** Schluck: Dose zum Mund (links oben, zur Kamera), Deckel kippt zu uns, drei kleine Schlucke. */

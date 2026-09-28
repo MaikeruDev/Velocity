@@ -1,4 +1,5 @@
 import { VELOCITY_DEFAULT, airSpeedCapAt } from '../player/MovementConfig';
+import type { StageRank } from '../world/level/LevelFormat';
 
 /**
  * DOM-freie Zustandslogik des HUD (Speedometer-Farbe, entprellter Luftzustand).
@@ -145,4 +146,97 @@ export class AirDisplay {
     this.groundFor = onGround ? this.groundFor + step : 0;
     this.sinceSurf = surfing ? 0 : this.sinceSurf + step;
   }
+}
+
+// ==================================================================== Lektionskarte (Plan 007)
+
+/**
+ * Bildschirmmitte, die das Lektions-HUD frei lassen muss (Anteile der Bildhöhe): der Landepunkt der
+ * nächsten Plattform liegt beim Geradeausblick dort. Karte oben, Urteil am Gain-Popup (über dem
+ * Fadenkreuz), Coach- und Demo-Band unten.
+ */
+export const CENTER_BAND_TOP = 0.35;
+export const CENTER_BAND_BOTTOM = 0.65;
+
+/** Grundskala der kleinen HUD-Schrift (wie Hud.uiScale): 1 bis ~400 Zeilen, darüber 2. */
+export function hudScale(h: number): number {
+  return h >= 400 ? 2 : 1;
+}
+
+/** Zeilen der Lektionskarte in HUD-Pixeln (oben mittig, an der Stelle des Timers). */
+export interface LessonCardLayout {
+  /** Oberkante des Hintergrund-Bands. */
+  top: number;
+  /** Titelzeile (Stufe, doppelte Größe). */
+  titleY: number;
+  /** Erste Textzeile und Abstand zur nächsten. */
+  textY: number;
+  lineStep: number;
+  /** Fortschrittszeile (Pips/Balken). */
+  progressY: number;
+  /** Unterkante des Bands. */
+  bottom: number;
+}
+
+export function makeLessonCardLayout(): LessonCardLayout {
+  return { top: 0, titleY: 0, textY: 0, lineStep: 0, progressY: 0, bottom: 0 };
+}
+
+/** Höhe der Pips/des Balkens in Schrift-Pixeln. */
+export const LESSON_PIP = 5;
+
+/**
+ * Layout der Karte: Titel (2×) + höchstens zwei Textzeilen + Fortschritt = ≤ 4 Zeilen. Bei 240 Zeilen
+ * endet sie bei 0.23 h, bei 448 bei 0.25 h — immer über dem Speedometer (0.3 h) und der Bildmitte.
+ */
+export function lessonCardLayout(h: number, textLines: number, out: LessonCardLayout): LessonCardLayout {
+  const s = hudScale(h);
+  const lines = Math.max(0, Math.min(2, textLines));
+  out.top = 3 * s;
+  out.titleY = 5 * s;
+  out.lineStep = 11 * s;
+  out.textY = out.titleY + 14 * s + 5 * s;
+  out.progressY = out.textY + lines * out.lineStep + s;
+  out.bottom = out.progressY + LESSON_PIP * s + 4 * s;
+  return out;
+}
+
+/** Pips statt Balken bis zu so vielen Einheiten (darüber wird es ein Balken). */
+export const MAX_PIPS = 12;
+
+/**
+ * Länge des Drehraten-Balkens (Showkeys) für |°/s| in Pixeln: volle halbe Breite bei 360 °/s.
+ * Nur Ganzzahl-Rechnung (≈ /360 per · 91 >> 15) — kein Gleitkomma-Zwischenwert, der in kaltem
+ * Code geboxt würde (fallen.md #59).
+ */
+export function turnBarLength(deg: number, half: number): number {
+  const d = deg < 0 ? -deg : deg;
+  const turn = d > 360 ? 360 : d | 0;
+  return (turn * half * 91) >> 15;
+}
+
+/**
+ * Stufenzähler je Rang (Karte, Pause): Pflichtstufen zählen unter sich ("2/4"), Bonus und Meister je für sich
+ * ("1/1" hinter "BONUS"). Über alle Stufen gezählt sah "LEKTION GESCHAFFT!" bei "4/6" nach "noch nicht fertig"
+ * aus, und ein Neuling las "1/6", obwohl 4 Stufen Pflicht sind. Nicht im Frame-Pfad (Levelstart/Pause).
+ */
+export function stageSteps(ranks: readonly StageRank[]): string[] {
+  return ranks.map((r, i) => {
+    let n = 0;
+    let k = 0;
+    for (let j = 0; j < ranks.length; j++) {
+      if (ranks[j] !== r) continue;
+      n++;
+      if (j <= i) k++;
+    }
+    return `${k}/${n}`;
+  });
+}
+
+/** Stufe `index` für die Pause: "Stufe 2/4", "Bonus 1/1", "Meister 1/1"; ohne Ränge nur "Stufe". */
+export function stageLabel(ranks: readonly StageRank[], index: number): string {
+  const r = ranks[index];
+  if (r === undefined) return 'Stufe';
+  const word = r === 'bonus' ? 'Bonus' : r === 'master' ? 'Meister' : 'Stufe';
+  return `${word} ${stageSteps(ranks)[index]}`;
 }

@@ -1,0 +1,1 @@
+R 2000 (6283 u) 10° Bande 96: Raster(Route-Achse) 95/108, Raster(Rampen-Achse) 102/108 (1+1 Nähte; Fehlschläge je Tempo 400:5 550:3 700:2 850:2 1000:1), Ziel bis 1835 u/s, v_trag 1665 | Bots ab Pad sync1/0.8/Hand3: 10.5s/1195 13.0s/1197 12.5s/1089

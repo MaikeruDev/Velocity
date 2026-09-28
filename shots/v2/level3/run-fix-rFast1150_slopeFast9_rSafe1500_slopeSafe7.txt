@@ -1,0 +1,134 @@
+  Acht: schnell R 1150 (7802 u, 9°, fällt 1222 u), sicher R 1500 (10001 u, 7°, fällt 1214 u); Enden (-0.0, -4000) / (-0.0, -4000), Grat -2195 / -2187
+  Freiraum unter der Gabel: F-Fuß -1384 über Schleifen-Grat -2187 → 677 u
+  M: Grat -2323; Drop schnell 128 u, sicher 136 u
+  Strand: Oberseite -4174 (1100 unter dem Kicker), Lücke 896 u bei unterem Band 700 u/s, Flugzeit 1.40 s
+  Kill-Kacheln: 46
+Tempo-Band Launch: schnell 380 u/s, sicher 378 u/s (90 % des Langsamsten)  
+  Strand: Oberseite -4174 (1100 unter dem Kicker), Lücke 480 u bei unterem Band 378 u/s, Flugzeit 1.40 s
+
+✗ SCHNELLE Linie (route) (2.9 s): 30 Fehler, 2 Warnungen
+    Bodenmarkierungen: 4, alle liegen auf
+    Kill-Zonen: 42 (kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile)
+    Bot-Durchlauf sync 1.0: 8/8 Seeds im Ziel, Median 20.6 s (20.6–20.6, max 1184 u/s)
+    Bot-Durchlauf sync 0.8: 8/8 Seeds im Ziel, Median 21.9 s (19.8–24.7, max 1197 u/s)
+    Bot-Durchlauf Hand 2°: 8/8 Seeds im Ziel, Median 22.4 s (21.6–23.7, max 1141 u/s)
+    Bot-Durchlauf Hand 3°: 8/8 Seeds im Ziel, Median 24.3 s (22.8–27.0, max 1089 u/s)
+    Bot-Durchlauf sync 0.7: 7/8 Seeds im Ziel, Median 22.8 s (20.2–24.5, max 1174 u/s) — Seed 4: stall bei (-228, -402, -210) vor Knoten 2
+    Bot-Durchlauf sync 0.9: 8/8 Seeds im Ziel, Median 20.8 s (19.8–23.7, max 1211 u/s)
+    Bot-Durchlauf Hand 1°: 8/8 Seeds im Ziel, Median 21.2 s (20.1–22.5, max 1205 u/s)
+    Bot-Durchlauf Hand 1.5°: 8/8 Seeds im Ziel, Median 21.9 s (21.1–23.4, max 1162 u/s)
+    Abschnitt × Bot (aus dem Stand):   sync 1.0  sync 0.8   Hand 2°   Hand 3°  sync 0.7  sync 0.9   Hand 1° Hand 1.5°
+      Start→CP1     6.1 s     6.7 s     6.7 s     6.6 s     6.8 s     6.3 s     6.1 s     6.5 s
+      CP1→CP2      14.4 s    12.8 s    13.9 s    15.1 s    13.7 s    13.3 s    14.1 s    14.0 s
+      CP2→Ziel      5.0 s     5.0 s     5.5 s     5.7 s     5.3 s     5.3 s     5.1 s     5.3 s
+    Grundtechnik-Surfer aus dem Stand (Blick 0°/2°, Tempo am nächsten Checkpoint): CP1 409 u/s; CP2 903 u/s / 422 u/s
+    Surf-Raster w1 → CP1: 108/108 Läufe, 0 Nahtstopps, Tempo am Ziel 605–1484 u/s
+    Surf-Raster w2 → CP1: 108/108 Läufe, 0 Nahtstopps, Tempo am Ziel 505–1418 u/s
+    Surf-Raster forkFast → CP2: 34/90 Läufe, 27 Nahtstopps, Tempo am Ziel 661–1538 u/s
+    Surf-Raster loopFasta → CP2: 54/108 Läufe, 25 Nahtstopps, Tempo am Ziel 618–1569 u/s
+    Surf-Raster merge → CP2: 108/108 Läufe, 0 Nahtstopps, Tempo am Ziel 466–1400 u/s
+    Surf-Raster finalea → Ziel: 90/90 Läufe, 0 Nahtstopps, Tempo am Ziel 727–1352 u/s
+    Deko frei von der Flugbahn (4 Bot-Läufe, 11698 Ticks, Oberkörper+Kopf gegen 38 Deko-Brushes)
+    Brushes 441 (Kollision 403, Deko 38), Flächen 3239 (begehbar 391, Surf 410, 60–61°)
+    Bounds (-7810, -12800, -12590) … (6950, 2210, 3350), Größe (14760, 15010, 15940)
+    Trigger: Start 1, Checkpoints 2, Ziel 1; killY -12000, voidY -13000
+    Route 103 Knoten, 14971 u, Bot sync 1.0 20.6 s, Hand 3° 24.3 s (Median), mit Spiel-Uhr 21.6 s, Par 60 s
+  ! Keine Medaillen (npm run levels:build misst sie)
+  ! Par 60 s liegt über 1.25 × 3°-Hand (21.6 s) — bedeutungslos
+  ✗ Z-Fighting: Brush #59 (loopFastx) und #156 (loopFastx-rail) teilen 441 u² koplanare Fläche, Normale (0, 0, -100)/100
+  ✗ Z-Fighting: Brush #253 (loopSafex) und #350 (loopSafex-rail) teilen 441 u² koplanare Fläche, Normale (0, 0, -100)/100
+  ✗ Z-Fighting: Brush #34 (loopFasty) und #131 (loopFasty-rail) teilen 441 u² koplanare Fläche, Normale (-100, 0, 0)/100
+  ✗ Z-Fighting: Brush #83 (loopFastv) und #180 (loopFastv-rail) teilen 441 u² koplanare Fläche, Normale (-100, 0, 0)/100
+  ✗ Z-Fighting: Brush #229 (loopSafez) und #326 (loopSafez-rail) teilen 441 u² koplanare Fläche, Normale (-100, 0, 0)/100
+  ✗ Z-Fighting: Brush #276 (loopSafeu) und #373 (loopSafeu-rail) teilen 441 u² koplanare Fläche, Normale (-100, 0, 0)/100
+  ✗ Z-Fighting: Brush #35 (loopFastz) und #132 (loopFastz-rail) teilen 441 u² koplanare Fläche, Normale (100, 0, 0)/100
+  ✗ Z-Fighting: Brush #82 (loopFastu) und #179 (loopFastu-rail) teilen 441 u² koplanare Fläche, Normale (100, 0, 0)/100
+  ✗ Z-Fighting: Brush #228 (loopSafey) und #325 (loopSafey-rail) teilen 441 u² koplanare Fläche, Normale (100, 0, 0)/100
+  ✗ Z-Fighting: Brush #277 (loopSafev) und #374 (loopSafev-rail) teilen 441 u² koplanare Fläche, Normale (100, 0, 0)/100
+  ✗ Z-Fighting: Brush #58 (loopFastw) und #155 (loopFastw-rail) teilen 441 u² koplanare Fläche, Normale (0, 0, 100)/100
+  ✗ Z-Fighting: Brush #252 (loopSafew) und #349 (loopSafew-rail) teilen 441 u² koplanare Fläche, Normale (0, 0, 100)/100
+  ✗ Z-Fighting: … 270 weitere
+  ✗ Respawn CP1 (Surfer, Blick 0°): timeout bei (-16, -930, -3664)
+  ✗ Surf forkFast → CP2: Einstieg 400 u/s, Versatz -90, Blick -2° scheitert (timeout bei (-88, -1103, -3560))
+  ✗ Surf forkFast → CP2: Einstieg 400 u/s, Versatz -90, Blick 0° scheitert (timeout bei (-35, -1039, -3781))
+  ✗ Surf forkFast → CP2: Einstieg 400 u/s, Versatz -90, Blick 2° scheitert (timeout bei (-33, -1037, -3768))
+  ✗ Surf forkFast → CP2: Einstieg 550 u/s, Versatz -90, Blick -2° scheitert (timeout bei (-134, -1173, -3985))
+  ✗ Surf forkFast → CP2: … 52 weitere Fehlschläge
+  ✗ Surf forkFast: Nahtstopp bei (-189, -1274, -3536) (512 → 70 u/s; Einstieg 400/-90/-2°)
+  ✗ Surf forkFast: Nahtstopp bei (-117, -1149, -3536) (346 → 75 u/s; Einstieg 400/-90/0°)
+  ✗ Surf forkFast: Nahtstopp bei (-213, -1316, -3536) (481 → 73 u/s; Einstieg 550/-90/-2°)
+  ✗ Surf loopFasta → CP2: Einstieg 400 u/s, Versatz -150, Blick -2° scheitert (timeout bei (-47, -1054, -3862))
+  ✗ Surf loopFasta → CP2: Einstieg 400 u/s, Versatz -150, Blick 0° scheitert (timeout bei (-36, -1041, -3784))
+  ✗ Surf loopFasta → CP2: Einstieg 400 u/s, Versatz -150, Blick 2° scheitert (timeout bei (-33, -1037, -3768))
+  ✗ Surf loopFasta → CP2: Einstieg 550 u/s, Versatz -150, Blick -2° scheitert (timeout bei (-65, -1066, -3949))
+  ✗ Surf loopFasta → CP2: … 50 weitere Fehlschläge
+  ✗ Surf loopFasta: Nahtstopp bei (-103, -1123, -3536) (336 → 49 u/s; Einstieg 400/-150/-2°)
+  ✗ Surf loopFasta: Nahtstopp bei (-167, -1235, -3536) (479 → 67 u/s; Einstieg 550/-150/-2°)
+  ✗ Surf loopFasta: Nahtstopp bei (-120, -1154, -3536) (360 → 78 u/s; Einstieg 550/-150/0°)
+
+✗ SICHERE Linie (safeRoute) (3.2 s): 30 Fehler, 2 Warnungen
+    Bodenmarkierungen: 4, alle liegen auf
+    Kill-Zonen: 42 (kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile, kill-tile)
+    Bot-Durchlauf sync 1.0: 8/8 Seeds im Ziel, Median 21.5 s (21.5–21.5, max 1258 u/s)
+    Bot-Durchlauf sync 0.8: 8/8 Seeds im Ziel, Median 25.4 s (22.0–27.0, max 1221 u/s)
+    Bot-Durchlauf Hand 2°: 8/8 Seeds im Ziel, Median 24.9 s (24.0–27.0, max 1160 u/s)
+    Bot-Durchlauf Hand 3°: 8/8 Seeds im Ziel, Median 27.8 s (25.8–33.9, max 1100 u/s)
+    Bot-Durchlauf sync 0.7: 7/8 Seeds im Ziel, Median 26.9 s (23.6–29.5, max 1206 u/s) — Seed 4: kill bei (254, -1189, -53) vor Knoten 2
+    Bot-Durchlauf sync 0.9: 8/8 Seeds im Ziel, Median 22.6 s (21.0–28.0, max 1270 u/s)
+    Bot-Durchlauf Hand 1°: 8/8 Seeds im Ziel, Median 23.3 s (22.2–25.4, max 1226 u/s)
+    Bot-Durchlauf Hand 1.5°: 8/8 Seeds im Ziel, Median 24.4 s (22.2–25.9, max 1203 u/s)
+    Abschnitt × Bot (aus dem Stand):   sync 1.0  sync 0.8   Hand 2°   Hand 3°  sync 0.7  sync 0.9   Hand 1° Hand 1.5°
+      Start→CP1     6.1 s     6.6 s     7.0 s     6.4 s     7.1 s     6.6 s     6.3 s     6.3 s
+      CP1→CP2      15.7 s    16.0 s    17.8 s    19.8 s    18.3 s    15.8 s    17.1 s    17.3 s
+      CP2→Ziel      5.0 s     5.1 s     5.3 s     5.7 s     5.9 s     5.3 s     5.3 s     5.2 s
+    Grundtechnik-Surfer aus dem Stand (Blick 0°/2°, Tempo am nächsten Checkpoint): CP1 409 u/s; CP2 903 u/s / 422 u/s
+    Surf-Raster w1 → CP1: 108/108 Läufe, 0 Nahtstopps, Tempo am Ziel 605–1484 u/s
+    Surf-Raster w2 → CP1: 108/108 Läufe, 0 Nahtstopps, Tempo am Ziel 505–1418 u/s
+    Surf-Raster forkSafe → CP2: 28/90 Läufe, 30 Nahtstopps, Tempo am Ziel 610–1601 u/s
+    Surf-Raster loopSafea → CP2: 45/108 Läufe, 25 Nahtstopps, Tempo am Ziel 570–1651 u/s
+    Surf-Raster merge → CP2: 108/108 Läufe, 0 Nahtstopps, Tempo am Ziel 466–1400 u/s
+    Surf-Raster finalea → Ziel: 90/90 Läufe, 0 Nahtstopps, Tempo am Ziel 727–1352 u/s
+    Deko frei von der Flugbahn (4 Bot-Läufe, 13854 Ticks, Oberkörper+Kopf gegen 38 Deko-Brushes)
+    Brushes 441 (Kollision 403, Deko 38), Flächen 3239 (begehbar 391, Surf 410, 60–61°)
+    Bounds (-7810, -12800, -12590) … (6950, 2210, 3350), Größe (14760, 15010, 15940)
+    Trigger: Start 1, Checkpoints 2, Ziel 1; killY -12000, voidY -13000
+    Route 126 Knoten, 17141 u, Bot sync 1.0 21.5 s, Hand 3° 27.8 s (Median), mit Spiel-Uhr 25.1 s, Par 60 s
+  ! Keine Medaillen (npm run levels:build misst sie)
+  ! Par 60 s liegt über 1.25 × 3°-Hand (25.1 s) — bedeutungslos
+  ✗ Z-Fighting: Brush #59 (loopFastx) und #156 (loopFastx-rail) teilen 441 u² koplanare Fläche, Normale (0, 0, -100)/100
+  ✗ Z-Fighting: Brush #253 (loopSafex) und #350 (loopSafex-rail) teilen 441 u² koplanare Fläche, Normale (0, 0, -100)/100
+  ✗ Z-Fighting: Brush #34 (loopFasty) und #131 (loopFasty-rail) teilen 441 u² koplanare Fläche, Normale (-100, 0, 0)/100
+  ✗ Z-Fighting: Brush #83 (loopFastv) und #180 (loopFastv-rail) teilen 441 u² koplanare Fläche, Normale (-100, 0, 0)/100
+  ✗ Z-Fighting: Brush #229 (loopSafez) und #326 (loopSafez-rail) teilen 441 u² koplanare Fläche, Normale (-100, 0, 0)/100
+  ✗ Z-Fighting: Brush #276 (loopSafeu) und #373 (loopSafeu-rail) teilen 441 u² koplanare Fläche, Normale (-100, 0, 0)/100
+  ✗ Z-Fighting: Brush #35 (loopFastz) und #132 (loopFastz-rail) teilen 441 u² koplanare Fläche, Normale (100, 0, 0)/100
+  ✗ Z-Fighting: Brush #82 (loopFastu) und #179 (loopFastu-rail) teilen 441 u² koplanare Fläche, Normale (100, 0, 0)/100
+  ✗ Z-Fighting: Brush #228 (loopSafey) und #325 (loopSafey-rail) teilen 441 u² koplanare Fläche, Normale (100, 0, 0)/100
+  ✗ Z-Fighting: Brush #277 (loopSafev) und #374 (loopSafev-rail) teilen 441 u² koplanare Fläche, Normale (100, 0, 0)/100
+  ✗ Z-Fighting: Brush #58 (loopFastw) und #155 (loopFastw-rail) teilen 441 u² koplanare Fläche, Normale (0, 0, 100)/100
+  ✗ Z-Fighting: Brush #252 (loopSafew) und #349 (loopSafew-rail) teilen 441 u² koplanare Fläche, Normale (0, 0, 100)/100
+  ✗ Z-Fighting: … 270 weitere
+  ✗ Respawn CP1 (Surfer, Blick 0°): timeout bei (17, -988, -3664)
+  ✗ Surf forkSafe → CP2: Einstieg 400 u/s, Versatz -90, Blick -2° scheitert (timeout bei (114, -1165, -3803))
+  ✗ Surf forkSafe → CP2: Einstieg 400 u/s, Versatz -90, Blick 0° scheitert (timeout bei (34, -1027, -3788))
+  ✗ Surf forkSafe → CP2: Einstieg 400 u/s, Versatz -90, Blick 2° scheitert (timeout bei (28, -1008, -3664))
+  ✗ Surf forkSafe → CP2: Einstieg 550 u/s, Versatz -90, Blick -2° scheitert (timeout bei (115, -1166, -3750))
+  ✗ Surf forkSafe → CP2: … 58 weitere Fehlschläge
+  ✗ Surf forkSafe: Nahtstopp bei (211, -1308, -3536) (590 → 72 u/s; Einstieg 400/-90/-2°)
+  ✗ Surf forkSafe: Nahtstopp bei (185, -1263, -3536) (448 → 76 u/s; Einstieg 400/-90/0°)
+  ✗ Surf forkSafe: Nahtstopp bei (210, -1306, -3536) (381 → 35 u/s; Einstieg 550/-90/-2°)
+  ✗ Surf loopSafea → CP2: Einstieg 400 u/s, Versatz -150, Blick -2° scheitert (timeout bei (23, -998, -3664))
+  ✗ Surf loopSafea → CP2: Einstieg 400 u/s, Versatz -150, Blick 0° scheitert (timeout bei (37, -1031, -3804))
+  ✗ Surf loopSafea → CP2: Einstieg 400 u/s, Versatz -150, Blick 2° scheitert (timeout bei (32, -1019, -3700))
+  ✗ Surf loopSafea → CP2: Einstieg 550 u/s, Versatz -150, Blick -2° scheitert (timeout bei (51, -1036, -3566))
+  ✗ Surf loopSafea → CP2: … 59 weitere Fehlschläge
+  ✗ Surf loopSafea: Nahtstopp bei (80, -1081, -3536) (316 → 40 u/s; Einstieg 400/-150/-2°)
+  ✗ Surf loopSafea: Nahtstopp bei (143, -1191, -3536) (474 → 50 u/s; Einstieg 550/-150/-2°)
+  ✗ Surf loopSafea: Nahtstopp bei (97, -1110, -3536) (349 → 64 u/s; Einstieg 550/-150/0°)
+
+Spiel-Uhr (Median Seeds 1–8):
+  {"sync":1}           schnell 18.48 s [18.5 18.5 18.5 18.5 18.5 18.5 18.5 18.5] Tode 0   |   sicher 19.41 s [19.4 19.4 19.4 19.4 19.4 19.4 19.4 19.4] Tode 0
+  {"sync":0.8}         schnell 19.52 s [17.2 20.4 20.0 22.2 19.4 17.9 19.9 19.5] Tode 0   |   sicher 23.19 s [19.5 23.5 23.3 24.6 23.2 20.9 23.3 21.5] Tode 0
+  {"aimNoiseDeg":1}    schnell 18.86 s [18.9 19.9 19.1 18.7 18.0 19.0 18.9 18.6] Tode 0   |   sicher 21.13 s [20.0 22.9 23.0 21.3 21.1 21.0 20.8 21.5] Tode 0
+  {"aimNoiseDeg":2}    schnell 19.86 s [19.2 20.6 20.8 19.9 19.9 21.1 19.4 21.2] Tode 0   |   sicher 22.32 s [21.7 24.1 24.2 21.8 22.2 23.6 22.3 24.1] Tode 0
+  {"aimNoiseDeg":3}    schnell 21.57 s [20.3 23.5 21.6 21.0 21.1 23.3 22.1 21.6] Tode 0   |   sicher 25.06 s [24.9 30.5 26.4 23.9 23.2 27.1 26.9 25.1] Tode 0
