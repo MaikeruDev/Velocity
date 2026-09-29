@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
-import { Coach, JUDGE_MAX_SPEED, hintText } from '../src/engine/Coach';
+import { Coach, JUDGE_MAX_SPEED, NO_STRAFE_HOPS, NO_STRAFE_MAX_SPEED, hintText } from '../src/engine/Coach';
 import type { HintId } from '../src/engine/Coach';
 import { VERDICTS } from '../src/engine/trainingTypes';
 import type { Verdict } from '../src/engine/trainingTypes';
@@ -198,15 +198,52 @@ describe('Coach — Strafe-Hinweis', () => {
     expect(h.coach.isLearned('strafe')).toBe(true);
   });
 
-  it('nur W + Sprung (kein A/D) → kein Strafe-Hinweis', () => {
+  /** W + Leertaste geradeaus (Luftlenkung legitim, kein Strafe-Versuch), `seconds` lang. */
+  function wHop(seconds: number, lesson = false, speed = 320): Harness {
     const lvl = compileLevel(flatLevel(30000));
-    const h = harness(lvl, undefined, new Vector3(0, 1, 20000), new Vector3(0, 0, -320));
+    const h = harness(lvl, undefined, new Vector3(0, 1, 20000), new Vector3(0, 0, -speed), lesson);
     const inp: MutablePlayerInput = { ...NO_INPUT, forward: 1, jumpHeld: true };
-    for (let i = 0; i < CFG.tickRate * 5; i++) {
+    for (let i = 0; i < CFG.tickRate * seconds; i++) {
       inp.jumpPressed = i === 0;
       h.step(inp);
     }
-    expect(h.hints).toEqual([]);
+    return h;
+  }
+
+  it('nur W + Sprung (kein A/D): kein Strafe-FEHLER-Hinweis, nach 6 langsamen Hops einmal der Anstoß "Schneller?"', () => {
+    expect(NO_STRAFE_HOPS).toBe(6);
+    // 3 s: weniger als 6 bewertete Hops → nichts.
+    expect(wHop(3).hints).toEqual([]);
+    // 20 s: genau ein Anstoß (einmal je Sitzung), nie ein 'strafe'-Fehlertext.
+    const h = wHop(20);
+    expect(h.hints).toEqual(['noStrafe']);
+    expect(h.verdicts).toEqual([null]);
+    expect(h.pm.state.speed).toBeLessThan(NO_STRAFE_MAX_SPEED);
+    const text = hintText('noStrafe', null, 'C');
+    expect(text).toContain('A ODER D');
+    expect(text).toContain('TRAINING');
+  });
+
+  it('Anstoß "Schneller?" nicht bei ≥ 400 u/s, nicht nach einem guten Hop, nicht in Lektionen', () => {
+    const fast = new Coach(CFG);
+    const got: HintId[] = [];
+    fast.onHint = (id) => got.push(id);
+    for (let i = 0; i < 12; i++) fast.judged('wOnly', NO_STRAFE_MAX_SPEED);
+    expect(got).toEqual([]);
+    // Wer schon gut gestrafet hat, kennt die Technik.
+    const good = new Coach(CFG);
+    good.onHint = (id) => got.push(id);
+    good.judged('good', 320);
+    for (let i = 0; i < 12; i++) good.judged('noSide', 320);
+    expect(got).toEqual([]);
+    expect(wHop(20, true).hints).toEqual([]);
+    // Gemischt wOnly/noSide zählen zusammen (beides kein Strafe-Versuch).
+    const mixed = new Coach(CFG);
+    mixed.onHint = (id) => got.push(id);
+    for (let i = 0; i < 5; i++) mixed.judged(i % 2 === 0 ? 'wOnly' : 'noSide', 320);
+    expect(got).toEqual([]);
+    mixed.judged('noSide', 320);
+    expect(got).toEqual(['noStrafe']);
   });
 });
 
@@ -303,7 +340,7 @@ describe('Coach — Surf', () => {
 
 describe('Coach-Band (Plan 007 TU2): Texte passen', () => {
   it('jeder Hinweis ≤ 2 Zeilen à ≤ 40 Zeichen, auch für jedes Fehlurteil (eine Quelle mit der Lektion)', () => {
-    const texts = [hintText('crouch', null, 'CTRL'), hintText('surf', null, 'C'), hintText('strafe', null, 'C')];
+    const texts = [hintText('crouch', null, 'CTRL'), hintText('surf', null, 'C'), hintText('strafe', null, 'C'), hintText('noStrafe', null, 'C')];
     for (const v of VERDICTS) texts.push(hintText('strafe', v, 'C'));
     for (const t of texts) {
       const lines = t.split('\n');

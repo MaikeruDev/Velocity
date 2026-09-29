@@ -4,9 +4,9 @@
  * Bahn 1024 breit Richtung −Z: erst eine Gerade (Kette ×6 mit gehaltener Leertaste), dann vier Gräben
  * als Auffangmulden (160–208 lang, 40 tief — zu kurz gesprungen kostet nichts). Hinter dem Ausgangstor
  * die Bonusbahn mit versetzten Säulen: Bonus = Slalom durch vier Tore mit W + Maus (Luftlenkung, Plan 007
- * A8: W dreht die Flugrichtung zum Blick, ohne Tempo zu gewinnen), Meister = Kette ×20 ohne Absetzen.
- * Mausrad-Hämmern bei jeder Landung umgeht den Smart-Auto-Hop und kriecht (fallen.md #68) — der
- * Stuck-Tipp erklärt es.
+ * A8: W dreht die Flugrichtung zum Blick, ohne Tempo zu gewinnen), Meister = alle sechs in einer Kette
+ * (≈ 20 Hops ohne Absetzen). Mausrad-Hämmern bei jeder Landung umgeht den Smart-Auto-Hop und kriecht
+ * (fallen.md #68): seine Absprünge zählen nicht zur Kette (CHAIN_MIN_SPEED), der Stuck-Tipp erklärt es.
  */
 import type { Point2 } from '../../../src/player/bots';
 import type { PlayerSnapshot } from '../../../src/player/types';
@@ -62,8 +62,8 @@ export function buildT2(): LevelFile {
   B.gate('tor1', [-W, 0, z(U.tor1 + 24)], [W, WALL_TOP, z(U.tor1)], TC.amber);
   B.gate('ausgang', [-W, 0, z(LY.tor2 + 24)], [W, WALL_TOP, z(LY.tor2)], TC.amber);
   B.zone('ende', [-W, 0, z(LY.ende[1])], [W, 200, z(LY.ende[0])]);
-  // Slalom-Tore: jeweils neben einer Säule auf der freien Seite.
-  for (let k = 0; k < 4; k++) {
+  // Slalom-Tore: jeweils neben einer Säule auf der freien Seite (Bonus die ersten vier, Meister alle sechs).
+  for (let k = 0; k < PILLARS; k++) {
     const x = -pillarX(k);
     const u = pillarU(k);
     B.zone(`slalom${k}`, [Math.min(x * 0.4, x * 1.9), 0, z(u + 48)], [Math.max(x * 0.4, x * 1.9), 300, z(u - 48)]);
@@ -92,7 +92,8 @@ export function buildT2(): LevelFile {
     task: { kind: 'hopChain', count: 6 },
     opens: ['tor1'],
     spawn: { pos: [0, 0, 0], yaw: 0 },
-    demo: { kind: 'route', from: 0, to: 1, seconds: 8 },
+    // Vorführung wie die Anweisung: W + Leertaste gehalten, kein Strafen (vorher 608 u/s mit gedrücktem D).
+    demo: { kind: 'route', from: 0, to: 1, style: 'hold', seconds: 8 },
     tips: [{ on: 'stuck', after: 12, text: 'NICHT HÄMMERN: LEERTASTE EINMAL\nDRÜCKEN UND GEDRÜCKT HALTEN' }],
   });
   B.stage({
@@ -102,7 +103,7 @@ export function buildT2(): LevelFile {
     task: { kind: 'reach', zone: 'ende' },
     opens: ['ausgang'],
     spawn: { pos: [0, 0, z(U.tor1 + 150)], yaw: 0 },
-    demo: { kind: 'route', from: 1, to: 10, seconds: 16 },
+    demo: { kind: 'route', from: 1, to: 10, style: 'hold', seconds: 16 },
     tips: [{ on: 'stuck', after: 20, text: 'ERST ANLAUFEN, DANN HÜPFEN:\nIM STAND HÜPFT MAN NUR AUF DER STELLE' }],
   });
   B.stage({
@@ -112,14 +113,21 @@ export function buildT2(): LevelFile {
     task: { kind: 'course', zones: ['slalom0', 'slalom1', 'slalom2', 'slalom3'], minSpeed: 250, airborne: true, groundGrace: 0.15 },
     rank: 'bonus',
     spawn: { pos: [0, 0, z(LY.tor2 + 150)], yaw: 0 },
-    demo: { kind: 'route', from: 11, to: 14, seconds: 12 },
+    // W + Leertaste gehalten, Blick auf die nächste Slalom-Marke: die Luftlenkung zieht die Bahn — genau der Text.
+    // Ohne style strafte der RouteFollower (A/D 46 % der Ticks, W in der Luft nie, bis 642 u/s; Review rv-tc3).
+    demo: { kind: 'route', from: 11, to: 14, style: 'hold', seconds: 16 },
   });
+  // Meister: der ganze Slalom (≈ 20 Hops) in einer Kette. Als hopChain 20 schaffte ihn W + Leertaste geradeaus
+  // (20/20) — der dritte Stern verlangte nichts über HALTEN hinaus. Die id bleibt (gespeicherter Fortschritt).
   B.stage({
     id: 'kette20',
-    title: 'KETTE X20',
-    text: 'MEISTER: 20 HOPS AM STÜCK\nOHNE ABZUSETZEN, UM DIE SÄULEN',
-    task: { kind: 'hopChain', count: 20 },
+    title: 'GANZER SLALOM',
+    text: `MEISTER: ALLE ${PILLARS} SÄULEN IM SLALOM\nIN EINER KETTE, OHNE ABZUSETZEN`,
+    task: { kind: 'course', zones: Array.from({ length: PILLARS }, (_, k) => `slalom${k}`), minSpeed: 250, airborne: true, groundGrace: 0.15 },
     rank: 'master',
+    spawn: { pos: [0, 0, z(LY.tor2 + 150)], yaw: 0 },
+    // Wie LENKEN, nur alle Säulen: W + Leertaste gehalten, Blick auf die nächste Marke — die Luftlenkung fliegt den Slalom.
+    demo: { kind: 'route', from: 11, to: 10 + PILLARS, style: 'hold', seconds: 24 },
   });
   return B.build();
 }
@@ -140,9 +148,13 @@ export const T2_CHECK: LessonCheck = {
     { model: 'NaiveBot hold', from: 'graeben', make: naive(p2(0, -LY.ende[1])), expect: { min: 20 }, level: 'error', seconds: 60 },
     { model: 'RouteFollower 5°', from: 'halten', make: routeHand({ from: 0, to: 1, noise: 5 }), expect: { min: 20 }, level: 'error', seconds: 30 },
     { model: 'RouteFollower 5°', from: 'graeben', make: routeHand({ from: 1, to: 10, noise: 5 }), expect: { min: 20 }, level: 'error', seconds: 60 },
+    // HALTEN lehrt die gehaltene Taste: Hämmern (Mausrad bei jeder Landung) hüpft mit ~40 u/s auf der Stelle und darf
+    // die Kette nicht füllen (Absprünge unter CHAIN_MIN_SPEED zählen nicht).
+    { model: 'Fehler: Mausrad-Hämmerer (Halten)', from: 'halten', make: naive(p2(0, -(U.tor1 - 100)), 'spam'), expect: { max: 0 }, level: 'error', seconds: 30 },
     { model: 'Mausrad-Hämmerer', from: 'graeben', make: naive(p2(0, -LY.ende[1]), 'spam'), expect: { max: 20 }, level: 'info', seconds: 60 },
     { model: 'W-Lenker (Bonus Slalom)', from: 'lenken', make: naive(slalomGoal()), expect: { min: 15 }, level: 'warning', seconds: 40 },
     { model: 'Geradeaus (Bonus Slalom)', from: 'lenken', make: naive(p2(0, -LY.end)), expect: { max: 0 }, level: 'warning', seconds: 40 },
-    { model: 'W-Lenker (Meister Kette)', from: 'kette20', make: naive(slalomGoal()), expect: { min: 10 }, level: 'warning', seconds: 40 },
+    { model: 'W-Lenker (Meister Slalom)', from: 'kette20', make: naive(slalomGoal()), expect: { min: 10 }, level: 'warning', seconds: 40 },
+    { model: 'Fehler: W + Leertaste geradeaus (Meister)', from: 'kette20', make: naive(p2(0, -LY.end)), expect: { max: 0 }, level: 'error', seconds: 40 },
   ],
 };

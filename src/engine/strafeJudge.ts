@@ -97,10 +97,18 @@ export const SLOW_RATE = 35;
 export const LATE_SIDE = 0.3;
 /** Strafe-Assist aus und W in mindestens diesem Anteil der A/D-Ticks gehalten: 'wHeld'. */
 export const W_HELD_SHARE = 0.3;
-/** Zielband am Drehbalken: untere Grenze (°/s) und Anteil der Zu-schnell-Grenze als obere, gekappt. */
-export const BAND_LO = 40;
+/**
+ * Zielband am Drehbalken: untere Grenze (°/s) und Anteil der Zu-schnell-Grenze als obere, gekappt.
+ * Unten 60 statt 40: bei 320 u/s bringt 40 °/s +20 u/s je Hop, 60 °/s +32 — das Band zeigt, wohin es geht; der
+ * Judge nennt langsamere Hops weiter 'good', solange sie die Schwelle schaffen. Oben 540 statt 360: mit 360 zog,
+ * wer bei 320–450 u/s schneller und BESSER zog (500 °/s: +150 u/s je Hop), den Balken in Gold ("daneben"), während
+ * der Judge "GUT" sagte. 540 °/s holt bei 320 u/s 98 % des besten Hops (turnwindow.ts: +155 von +159 bei 650 °/s),
+ * ab 400 u/s liegt das Optimum im Band (530 °/s); darüber zieht 0.8 × Zu-schnell-Grenze das Band herunter
+ * (600 u/s: 456, 800: 288). Der Balken selbst endet bei 360 °/s (hudLogic.turnBarLength): voll + grün = gut.
+ */
+export const BAND_LO = 60;
 export const BAND_HI_SHARE = 0.8;
-export const BAND_HI_MAX = 360;
+export const BAND_HI_MAX = 540;
 /**
  * Zielband der Prestrafe (Boden, W + A + Maus) in °/s: gemessen (flach, finale Physik, 20 Seeds, prestrafeRate)
  * tragen 160 und 220 °/s 20/20 über 350 u/s, 120 °/s 6/20, 45–90 °/s 0/20; ab ~360 °/s überdreht.
@@ -132,7 +140,7 @@ export function tooFastRate(speed: number): number {
   return lerpTable(FAST_TABLE, speed);
 }
 
-/** Zielband der Drehrate (°/s) beim Tempo `speed`: BAND_LO … min(360, 0.8 × Zu-schnell-Grenze). */
+/** Zielband der Drehrate (°/s) beim Tempo `speed`: BAND_LO … min(BAND_HI_MAX, 0.8 × Zu-schnell-Grenze). */
 export function turnBandAt(speed: number, out: { lo: number; hi: number }): TurnBand {
   out.lo = BAND_LO;
   out.hi = Math.max(BAND_LO + 20, Math.min(BAND_HI_MAX, BAND_HI_SHARE * tooFastRate(speed)));
@@ -187,6 +195,8 @@ export class StrafeJudge {
   private firstSide = D0;
   private startSpeed = D0;
   private prevYaw = D0;
+  /** Tick-Länge des laufenden Aufrufs (für contact(); Kommazahlen als Argument nicht geinlineter Aufrufe boxen, #107). */
+  private dt = D0;
 
   constructor(cfg: Pick<MovementConfig, 'strafeAssist'>) {
     this.assist = cfg.strafeAssist;
@@ -203,6 +213,7 @@ export class StrafeJudge {
   }
 
   tick(dt: number, prev: PlayerSnapshot, cur: PlayerSnapshot, cmd: PlayerInput): boolean {
+    this.dt = dt;
     const air = !cur.onGround;
     if (air && !this.inAir) {
       this.inAir = true;
@@ -222,8 +233,11 @@ export class StrafeJudge {
     if (air) {
       this.ticks++;
       if (cur.surfing) this.surfed = true;
-      // Ab dem zweiten Luft-Tick (der erste kann noch ein Boden-Move sein: von der Kante gelaufen).
-      if (this.ticks > 1 && !this.wall && this.contact(dt, prev, cur, cmd)) this.wall = true;
+      // Abschnitte mit Surf-Kontakt bekommen nie ein Urteil: nichts weiter messen. Die Wand-Probe allozierte an der
+      // Flanke je Tick (T7 allein: 4.6 B/Tick in contact()), obwohl ihr Ergebnis verworfen wird.
+      if (this.surfed) return false;
+      // Schon im Absprung-Tick (T4: Bande im Sprung-Tick, 400 → 296 u/s, sonst 'weak').
+      if (!this.wall && this.contact(prev, cur, cmd, this.ticks === 1)) this.wall = true;
       // Gewickelt: InputState verschiebt den Blick nach 32 Netto-Umdrehungen um ein Vielfaches von 2π.
       let dYaw = cmd.yaw - this.prevYaw;
       dYaw -= Math.round(dYaw / TWO_PI) * TWO_PI;
@@ -250,16 +264,32 @@ export class StrafeJudge {
     return !this.wall || this.last.verdict === 'good';
   }
 
-  /** Hat in diesem Luft-Tick eine Wand geclippt? (Nur Physik-Invarianten, keine Welt nötig.) */
-  private contact(dt: number, prev: PlayerSnapshot, cur: PlayerSnapshot, cmd: PlayerInput): boolean {
+  /**
+   * Hat in diesem Luft-Tick eine Wand geclippt? (Nur Physik-Invarianten, keine Welt nötig.) `first` = erster
+   * Luft-Tick: die Verschiebung gilt auch für einen Boden-Move (von der Kante gelaufen), v_h nicht (Reibung).
+   */
+  private contact(prev: PlayerSnapshot, cur: PlayerSnapshot, cmd: PlayerInput, first: boolean): boolean {
+    const dt = this.dt;
     const ex = cur.pos.x - prev.pos.x - cur.vel.x * dt;
     const ez = cur.pos.z - prev.pos.z - cur.vel.z * dt;
     if (ex * ex + ez * ez > CONTACT_EPS * CONTACT_EPS) return true;
+    if (first) return false;
     const dvx = cur.vel.x - prev.vel.x;
     const dvz = cur.vel.z - prev.vel.z;
     if (cmd.side === 0) {
-      // Ohne Taste keine Luft-Beschleunigung; nur W lenkt (Luftlenkung dreht v_h) → dort nicht prüfbar.
-      return cmd.forward === 0 && dvx * dvx + dvz * dvz > CONTACT_DV * CONTACT_DV;
+      if (cmd.forward === 0) return dvx * dvx + dvz * dvz > CONTACT_DV * CONTACT_DV;
+      if (cmd.forward < 0) return false;
+      // Nur W: die Luftlenkung dreht v_h (Betrag bleibt), der Schub geht entlang des Blicks. Zeigt der Blick
+      // nach vorn (≤ 90° zur Flugrichtung), wird |v_h| nie kleiner — schrumpft es, hat eine Wand geclippt. Das
+      // fängt das Schleifen an der Bande, bei dem die Verschiebung schon an der Wand beginnt (kein Positionsfehler).
+      // Math.sqrt statt Math.hypot: hypot (Rest-Parameter) allozierte im Tick-Pfad (Heap-Sampling 57 B/Tick).
+      const px = prev.vel.x;
+      const pz = prev.vel.z;
+      if (-px * Math.sin(cmd.yaw) - pz * Math.cos(cmd.yaw) <= 0) return false;
+      const v0 = Math.sqrt(px * px + pz * pz);
+      const cx = cur.vel.x;
+      const cz = cur.vel.z;
+      return Math.sqrt(cx * cx + cz * cz) < v0 - CONTACT_DV;
     }
     // wishdir wie PlayerMovement.computeWish: forward = (−sin, −cos), right = (cos, −sin); Assist: W zählt nicht.
     const fwd = this.assist ? 0 : cmd.forward;
@@ -267,8 +297,9 @@ export class StrafeJudge {
     const cy = Math.cos(cmd.yaw);
     const wx = -sy * fwd + cy * cmd.side;
     const wz = -cy * fwd - sy * cmd.side;
-    const len = Math.hypot(wx, wz);
-    if (len < 1e-6) return false;
+    const len2 = wx * wx + wz * wz;
+    if (len2 < 1e-12) return false;
+    const len = Math.sqrt(len2);
     const cross = (dvx * wz - dvz * wx) / len;
     const along = (dvx * wx + dvz * wz) / len;
     return cross > CONTACT_DV || cross < -CONTACT_DV || along < -CONTACT_DV;
@@ -290,17 +321,24 @@ export class StrafeJudge {
     r.verdict = this.classify(r, n);
   }
 
-  /** Reihenfolge = Priorität: erst Gewinn, dann fehlende Tasten, Maus, Richtung, Tempo, Timing. */
+  /**
+   * Reihenfolge = Priorität: erst die Technik (A/D überhaupt, Maus mit der Taste), dann der Gewinn, dann Maus,
+   * Tempo, Timing. Ohne A/D oder mit der Maus gegen die Taste gibt es auch mit Gewinn kein 'good': mit schneller
+   * Maus streicht der Blick bzw. die Wunschrichtung zufällig durchs Gewinnfenster (320 u/s: nur W 360 °/s +66 u/s,
+   * gegen 540 °/s +100). Vorher hieß derselbe W-Hop mal "W LOS", mal "GUT", und nur W + schnelle Maus bestand
+   * T4/T5 (Review rv-tc3) — die Lektion lehrt A/D + Maus.
+   */
   private classify(r: HopReport, n: number): Verdict {
-    if (r.gain >= goodGainAt(r.takeoffSpeed)) return 'good';
+    const good = r.gain >= goodGainAt(r.takeoffSpeed);
     if (r.sideShare < SIDE_MIN_SHARE) {
-      // A/D kam, aber erst spät und mit passender Maus: das ist der Fehler, nicht "keine Taste"
-      // (Zu-spät-Hand 0.45–0.5 s: sonst 7 % 'wOnly').
-      if (this.sideTicks > 0 && r.firstSide > LATE_SIDE && r.turnRate >= NO_MOUSE_RATE && this.turnSum > 0) return 'late';
+      // A/D kam, aber erst spät und mit passender Maus: das ist der Fehler, nicht "keine Taste" (Zu-spät-Hand
+      // 0.45–0.5 s: sonst 7 % 'wOnly'). Reicht der Gewinn trotzdem, ist der Hop gut (Nachsicht wie bisher).
+      if (this.sideTicks > 0 && r.firstSide > LATE_SIDE && r.turnRate >= NO_MOUSE_RATE && this.turnSum > 0) return good ? 'good' : 'late';
       return this.wTicks > n * W_ONLY_SHARE ? 'wOnly' : 'noSide';
     }
+    if (r.turnRate >= NO_MOUSE_RATE && this.turnSum < 0) return 'against';
+    if (good) return 'good';
     if (r.turnRate < NO_MOUSE_RATE) return 'noMouse';
-    if (this.turnSum < 0) return 'against';
     if (!this.assist && this.wWithSide >= this.sideTicks * W_HELD_SHARE) return 'wHeld';
     if (r.turnRate > tooFastRate(r.takeoffSpeed) || r.loss >= OVERTURN_LOSS) return 'tooFast';
     if (r.firstSide > LATE_SIDE) return 'late';

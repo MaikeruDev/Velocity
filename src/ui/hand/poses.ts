@@ -10,8 +10,8 @@ import { VM_JOINT, VM_JOINT_COUNT } from '../../render/types';
  *   finger: [Spreizen (+ = Richtung Daumen), Grund-, Mittel-, Endgelenk] × Zeige/Mittel/Ring/Klein
  */
 
-/** Plan 007 hängt an (Indizes der alten Posen bleiben): coin, phone, peace, phoneTap. */
-export const HAND_POSES = ['relaxed', 'open', 'fist', 'run', 'grip', 'pinch', 'knife', 'thumbsUp', 'point', 'flat', 'crack', 'coin', 'phone', 'peace', 'phoneTap'] as const;
+/** Plan 007 hängt an (Indizes der alten Posen bleiben): coin, phone, peace, phoneTap, cradle. */
+export const HAND_POSES = ['relaxed', 'open', 'fist', 'run', 'grip', 'pinch', 'knife', 'thumbsUp', 'point', 'flat', 'crack', 'coin', 'phone', 'peace', 'phoneTap', 'cradle'] as const;
 export type HandPose = (typeof HAND_POSES)[number];
 
 export const POSE: { readonly [K in HandPose]: number } = {
@@ -30,6 +30,7 @@ export const POSE: { readonly [K in HandPose]: number } = {
   phone: 12,
   peace: 13,
   phoneTap: 14,
+  cradle: 15,
 };
 
 type F4 = readonly [number, number, number, number];
@@ -69,6 +70,9 @@ const DEFS: { readonly [K in HandPose]: PoseDef } = {
   peace: { wrist: [0, 0, 0], thumb: [-6, 50, 36, 40], fingers: [[17, 0, 4, 0], [-16, 0, 4, 0], [0, 86, 100, 60], [-2, 84, 96, 58]] },
   // Handy: Daumen tippt/wischt aufs Display (Wechsel phone ↔ phoneTap = Daumen bewegt sich).
   phoneTap: { wrist: [0, 0, 0], thumb: [8, 34, 42, 38], fingers: [[0, 30, 70, 40], [0, 34, 74, 42], [-1, 38, 76, 42], [-3, 42, 76, 40]] },
+  // Jo-Jo "Rock the Baby" (Plan 007): Daumen und Zeigefinger gespreizt und gestreckt — zwischen ihren
+  // Spitzen spannt die Schnur das Dreieck (Wiege); Mittelfinger hält die Schlaufe, Rest eingerollt.
+  cradle: { wrist: [4, 0, 0], thumb: [30, -8, 0, 0], fingers: [[12, 8, 10, 4], [0, 42, 52, 30], [-2, 62, 72, 40], [-5, 68, 76, 40]] },
 };
 
 const DEG = Math.PI / 180;

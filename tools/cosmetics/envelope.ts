@@ -6,6 +6,7 @@
  * erlaubte Hülle (höchster Punkt −0.314, linkester 0.055 Bildhöhen); neue Gegenstände werden
  * dagegen geprüft, ebenso die Surf-Zustände der alten (KI8: 1.5 s Surf, dann Ende). Einheiten: Bildhöhen ab Bildmitte, x rechts, y unten (16:9, Anker wie im Spiel).
  *   npx tsx tools/cosmetics/envelope.ts        → shots/v2/kosmetik/envelope-core.json
+ *   npx tsx tools/cosmetics/envelope.ts yoyo … → nur diese Gegenstände, kompakt, ohne Datei (Iterieren)
  * Exit 1, wenn ein neuer Trick die Hülle verlässt. (Ursprung: tools/critique/v2/kosmetik/envelope.ts)
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -55,7 +56,10 @@ function addObject(e: Env, root: Object3D): void {
 }
 
 const APPROVED: readonly HeldItemId[] = ['can', 'card', 'knife'];
-const items = (Object.keys(PROP_FACTORIES) as HeldItemId[]).filter((i) => PROP_FACTORIES[i] !== undefined);
+/** Engere Hüllen aus dem Plan (KI1: das Jo-Jo bleibt in der Hülle seines Prototyps). */
+const ITEM_HULL: { readonly [K in HeldItemId]?: { readonly up: number; readonly left: number } } = { yoyo: { up: -0.037, left: 0.09 } };
+const only = process.argv.slice(2);
+const items = (Object.keys(PROP_FACTORIES) as HeldItemId[]).filter((i) => PROP_FACTORIES[i] !== undefined && (only.length === 0 || only.includes(i)));
 
 /** Zustands-Trick (Surf-Zustand, KI8 & Co.)? Die abgenommene Hülle bilden nur die Plan-006-Tricks. */
 function isStateTrick(item: HeldItemId, trick: string): boolean {
@@ -130,9 +134,27 @@ for (const item of items) {
   }
   result[item] = res;
 }
-mkdirSync('shots/v2/kosmetik', { recursive: true });
-writeFileSync('shots/v2/kosmetik/envelope-core.json', JSON.stringify(result, null, 2));
-console.log(JSON.stringify(result, null, 2));
+if (only.length === 0) {
+  mkdirSync('shots/v2/kosmetik', { recursive: true });
+  writeFileSync('shots/v2/kosmetik/envelope-core.json', JSON.stringify(result, null, 2));
+  console.log(JSON.stringify(result, null, 2));
+} else {
+  for (const item of items) for (const [trick, r] of Object.entries(result[item] ?? {})) console.log(item, trick, JSON.stringify(r));
+}
+// Je Gegenstand der höchste/linkeste Punkt (auch im Vollauf, als letzte Zeilen lesbar).
+for (const item of items) {
+  let up = Infinity;
+  let left = Infinity;
+  for (const r of Object.values(result[item] ?? {})) {
+    if (typeof r !== 'object' || r === null || !('up' in r) || !('left' in r)) continue;
+    up = Math.min(up, Number(r.up));
+    left = Math.min(left, Number(r.left));
+  }
+  const own = ITEM_HULL[item];
+  // Gerundet vergleichen (Ausgabe auf 3 Stellen): die Plan-Grenzen sind selbst gerundete Messwerte.
+  if (own && (up < own.up || left < own.left)) outside++;
+  console.log(`Hülle ${item}: höchster Punkt ${up}, linkester ${left} (Grenze ${r3(hull.up)} / ${r3(hull.left)}${own ? `; Plan ${own.up} / ${own.left}` : ''})`);
+}
 if (outside > 0) {
   console.error(`${outside} Tricks außerhalb der abgenommenen Hülle`);
   process.exit(1);

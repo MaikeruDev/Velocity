@@ -22,15 +22,16 @@
 import { Box3, Vector3 } from 'three';
 import { VELOCITY_DEFAULT, type MovementConfig } from '../../src/player/MovementConfig';
 import { PlayerMovement } from '../../src/player/PlayerMovement';
-import { makeBotInput, runRoute } from '../../src/player/bots';
+import { RouteFollower, makeBotInput } from '../../src/player/bots';
 import type { CompiledBrush } from '../../src/world/collision/types';
-import type { CompiledLevel } from '../../src/world/level/compileLevel';
+import { compileLevel, type CompiledLevel } from '../../src/world/level/compileLevel';
 import type { RouteNode } from '../../src/world/level/LevelFormat';
 import { OVERSHOOT } from './ballistics';
 import { forwardOf, type V2 } from './lib';
-import { SpeedCurve, SurfRider, routeAxis, simulate, straightHop, type Controller } from './physics';
+import { SpeedCurve, SurfRider, describeBranches, jitterMedian, routeAxis, simulate, straightHop, timedRun, type Controller, type StrafeModel } from './physics';
 import { level3Probes } from './probes/level3';
 import { level4Probes } from './probes/level4';
+import { level2RingBoard } from './level2';
 
 export interface DesignReport {
   readonly errors: string[];
@@ -45,6 +46,7 @@ export function designProbes(level: CompiledLevel, cfg: MovementConfig = VELOCIT
       firstContactProbe(level, cfg, r);
       grundkursExits(level, r);
       slalomNeedsSteering(level, cfg, r);
+      slalomFlow(level, cfg, r);
       crouchWindow(level, cfg, r);
       chuteCatch(level, cfg, r);
       expertIslands(level, cfg, r);
@@ -55,6 +57,7 @@ export function designProbes(level: CompiledLevel, cfg: MovementConfig = VELOCIT
       s0Catch(level, cfg, r);
       s0BackWay(level, cfg, r);
       finaleReserve(level, cfg, r);
+      ringBoardEscape(level, cfg, r);
       break;
     case 'level3':
       level3Probes(level, cfg, r);
@@ -264,6 +267,12 @@ export function byTag(level: CompiledLevel, tag: string): CompiledBrush | null {
   return level.brushes.find((b) => b.tag === tag) ?? null;
 }
 
+/** L1-Slalom-Inseln (Tags slalom1 … slalomN, ohne Nasen/Pylonen), aufsteigend — die Zahl legt level1.ts fest. */
+export function slalomIslands(level: CompiledLevel): CompiledBrush[] {
+  const num = (b: CompiledBrush): number => Number(/^slalom(\d+)$/.exec(b.tag ?? '')?.[1] ?? Number.NaN);
+  return level.brushes.filter((b) => Number.isFinite(num(b))).sort((a, b) => num(a) - num(b));
+}
+
 /** Tag des Brushes, auf dem ein Route-Knoten steht (Boden bis 8 u darunter), sonst null. */
 export function groundTag(level: CompiledLevel, n: RouteNode): string | null {
   const p = new Vector3(...n.pos);
@@ -290,18 +299,22 @@ const HULL_MAXS = new Vector3(PHYS_HULL, VELOCITY_DEFAULT.hull.standHeight, PHYS
  * Surf-Rutsche kommen — im Band von der 3°-Hand bis OVERSHOOT × Plan-Tempo des
  * Slalom-Knotens (wer schneller ist, darf Inseln auslassen: Speed belohnt).
  * Ziel ist die Flanke oberhalb des Fußes: wer neben den Inseln auf die
- * Auffangfläche fällt, zählt nicht.
+ * Auffangfläche fällt, zählt nicht. Dicht (SLALOM_STEP u/s × 8 u, ~7000 Läufe, ~1.3 s):
+ * fünf Tempi × 16 u sahen bei fünf Inseln 0/115, dicht waren es 61/7020 (Bänder ab
+ * 1183 u/s, fallen.md #117) — ob ein Geradeaus-Hüpfer durchkommt, hängt an seiner Phase.
  */
 function slalomNeedsSteering(level: CompiledLevel, cfg: MovementConfig, r: DesignReport): void {
   const turn = byTag(level, 'turn');
-  const s1 = byTag(level, 'slalom1');
-  const s5 = byTag(level, 'slalom5');
+  const islands = slalomIslands(level);
+  const s1 = islands[0];
+  // Achse aus Insel 1 und der letzten Insel derselben Spalte (ungerade Nummer) — unabhängig von der Inselzahl.
+  const sSame = islands.length >= 3 ? islands[2 * Math.floor((islands.length - 1) / 2)] : undefined;
   const chute = byTag(level, 'chutea');
-  if (!turn || !s1 || !s5 || !chute) {
-    r.errors.push('Design: Slalom-Probe findet turn/slalom1/slalom5/chutea nicht');
+  if (!turn || !s1 || !sSame || !chute) {
+    r.errors.push('Design: Slalom-Probe findet turn, ≥ 3 Slalom-Inseln (slalomN) oder chutea nicht');
     return;
   }
-  const fwd = center(s5).sub(center(s1)).setY(0).normalize();
+  const fwd = center(sSame).sub(center(s1)).setY(0).normalize();
   const side = new Vector3(-fwd.z, 0, fwd.x);
   const yaw = Math.atan2(-fwd.x, -fwd.z);
   const c = center(turn);
@@ -314,8 +327,8 @@ function slalomNeedsSteering(level: CompiledLevel, cfg: MovementConfig, r: Desig
   const node = (level.def.route ?? []).find((n) => groundTag(level, n) === 'turn');
   const vHi = OVERSHOOT * (node?.minSpeed ?? cfg.sprintSpeed);
   const vLo = SpeedCurve.hand(3, cfg).top * 0.8;
-  const speeds = [0, 1, 2, 3, 4].map((k) => Math.round(vLo + ((vHi - vLo) * k) / 4));
-  for (let o = -176; o <= 176; o += 16) {
+  const speeds = band(vLo, vHi, SLALOM_STEP);
+  for (let o = -176; o <= 176; o += 8) {
     for (const v of speeds) {
       const start = c.clone().addScaledVector(fwd, 100).addScaledVector(side, o).setY(top);
       const res = straightHop(level, start, yaw, v, goal, cfg);
@@ -323,9 +336,82 @@ function slalomNeedsSteering(level: CompiledLevel, cfg: MovementConfig, r: Desig
       if (res.ok) through.push(`${o}/${v}`);
     }
   }
-  if (through.length) r.errors.push(`Design: Slalom geradeaus ohne Lenkung schaffbar (Versatz/Tempo: ${through.slice(0, 6).join(', ')})`);
-  else r.info.push(`Design: Slalom braucht Lenkung — ${runs} Geradeaus-Läufe (Versatz ±176, ${speeds[0]}–${speeds[4]} u/s) scheitern alle`);
+  if (through.length) r.errors.push(`Design: Slalom geradeaus ohne Lenkung schaffbar: ${through.length}/${runs} (Versatz/Tempo: ${through.slice(0, 6).join(', ')})`);
+  else r.info.push(`Design: Slalom braucht Lenkung — ${runs} Geradeaus-Läufe (Versatz ±176 in 8 u, ${speeds[0]}–${speeds[speeds.length - 1]} u/s in ${SLALOM_STEP}er-Schritten) scheitern alle`);
 }
+
+/** Tempo-Schritt der Slalom-Lenkprobe (u/s). */
+const SLALOM_STEP = 5;
+
+/**
+ * Slalom flüssig für echte Hände (drittes Review l1l2): Hand 1.5°/2°/3° (RouteFollower mit Zielfehler) ab dem
+ * CP3-Spawn mit dem Tempo, mit dem Hände an der Wende ankommen (600/700/800 u/s, Median Hand 3°/2°/1° 603/688/806),
+ * bis zur Rutsche. Gezählt werden harte Einbrüche (in einem Tick > 10 % und > 40 u/s: Anprall an Nase, Stirn,
+ * Pylon, Tor) und Tode. Mit fünf Inseln und 32°-Nasen überall verloren diese Hände ~400 u/s je Slalom, fast alles
+ * an den Nasen knapp zu kurzer Querhops — der Slalom war für sie ein Zeitfresser. Soll: Einbruch im Mittel
+ * ≤ SLALOM_FLOW_MAX je Lauf, Tode ≤ 1 je 24 Läufe; sonst Warnung (die Lenkprobe prüft die Gegenrichtung).
+ */
+function slalomFlow(level: CompiledLevel, cfg: MovementConfig, r: DesignReport): void {
+  const route = level.def.route ?? [];
+  const from = route.findIndex((n) => groundTag(level, n) === 'turn');
+  const cp = level.triggers.find((t) => t.kind === 'checkpoint' && t.order === 3);
+  const islands = slalomIslands(level);
+  const chute = byTag(level, 'chutea');
+  const turn = byTag(level, 'turn');
+  if (from < 0 || !cp || islands.length < 3 || !chute || !turn) {
+    r.errors.push('Design: Slalom-Fluss-Probe findet Wende (turn), CP3, Slalom-Inseln oder chutea nicht');
+    return;
+  }
+  const fwd = center(islands[2]).sub(center(islands[0])).setY(0).normalize();
+  const sub = route.slice(from);
+  // Gezählt wird erst hinter der Wende (Slalom); der Start liegt 24 u über dem Spawn, damit der Bot wie im Lauf
+  // aus einem Hop weiterhüpft — vom Boden aus liefe er erst zum Wende-Knoten und verlöre Tempo an die Reibung.
+  const tc = center(turn);
+  const along = (x: number, z: number): number => (x - tc.x) * fwd.x + (z - tc.z) * fwd.z;
+  const turnEnd = Math.max(...[turn.bounds.min.x, turn.bounds.max.x].flatMap((x) => [turn.bounds.min.z, turn.bounds.max.z].map((z) => along(x, z))));
+  let runs = 0;
+  let deaths = 0;
+  let loss = 0;
+  let worst = 0;
+  const times: number[] = [];
+  for (const aim of SLALOM_FLOW_HANDS) {
+    for (const v0 of SLALOM_FLOW_SPEEDS) {
+      for (let seed = 1; seed <= SLALOM_FLOW_SEEDS; seed++) {
+        const pm = new PlayerMovement(level.world, cfg);
+        pm.teleport(cp.spawnPos.clone().setY(cp.spawnPos.y + 24));
+        pm.state.vel.set(fwd.x * v0, 0, fwd.z * v0);
+        const bot = new RouteFollower(sub, cfg, { aimNoiseDeg: aim, seed, killY: level.def.killY, world: level.world, start: { x: cp.spawnPos.x, z: cp.spawnPos.z }, stallTimeout: 6, timeout: 14 });
+        let prev = v0;
+        let lost = 0;
+        const ctl: Controller = {
+          next: (s, n) => {
+            const past = along(s.pos.x, s.pos.z) > turnEnd;
+            if (past && prev - s.speed > Math.max(40, 0.1 * prev)) lost += prev - s.speed;
+            prev = s.speed;
+            return bot.next(s, n);
+          },
+        };
+        const res = simulate(level, pm, ctl, { cfg, goal: chute.bounds, timeout: 14, botStatus: () => bot.status });
+        runs++;
+        loss += lost;
+        worst = Math.max(worst, lost);
+        if (res.ok) times.push(res.time);
+        else if (res.reason === 'kill' || res.reason === 'fell') deaths++;
+      }
+    }
+  }
+  times.sort((a, b) => a - b);
+  const mean = loss / Math.max(1, runs);
+  const text = `Hand ${SLALOM_FLOW_HANDS.join('/')}° ab der Wende (${SLALOM_FLOW_SPEEDS.join('/')} u/s, ${runs} Läufe): Einbruch Ø ${f0(mean)} u/s je Lauf (höchstens ${f0(worst)}), ${deaths} Tode, bis zur Rutsche Median ${times.length ? times[Math.floor((times.length - 1) / 2)].toFixed(2) : '–'} s`;
+  if (mean > SLALOM_FLOW_MAX || deaths * 24 > runs) r.warnings.push(`Design: Slalom nicht flüssig für echte Hände (Soll Ø ≤ ${SLALOM_FLOW_MAX} u/s, ≤ 1 Tod je 24 Läufe): ${text}`);
+  else r.info.push(`Design: Slalom flüssig — ${text}`);
+}
+
+const SLALOM_FLOW_HANDS: readonly number[] = [1.5, 2, 3];
+const SLALOM_FLOW_SPEEDS: readonly number[] = [600, 700, 800];
+const SLALOM_FLOW_SEEDS = 8;
+/** Höchster mittlerer Einbruch je Slalom-Lauf (u/s). */
+const SLALOM_FLOW_MAX = 150;
 
 /**
  * Crouch-Kante: H7 reicht bis an die Wand. Für jedes Tempo vom Sprint-Anlauf
@@ -407,14 +493,17 @@ function crouchHop(level: CompiledLevel, cfg: MovementConfig, start: Vector3, v:
  * W an der Rampe gibt keinen Schub), bei jedem Tempo vom Sprint bis 1300 u/s
  * und seitlich ±96 — jeder Lauf muss im Ziel ankommen (Auffangfläche unter und
  * neben der Rampe, keine Kill-Zone). Dazu die Zeit: der saubere Surf muss
- * schneller sein als der Weg über die Auffangfläche.
+ * schneller sein als der Weg über die Auffangfläche. Zusätzlich W + Leertaste-Halter,
+ * deren Blick in 2 s bis ±30° neben die Route schwenkt (Luftlenkung dreht sie mit), mit
+ * C nie/immer/am Boden/ab 1 s — kein Tod (2875 Läufe, Review l1l2).
  */
 function chuteCatch(level: CompiledLevel, cfg: MovementConfig, r: DesignReport): void {
   const route = level.def.route ?? [];
   const fin = level.triggers.find((t) => t.kind === 'finish');
-  const from = route.findIndex((n) => groundTag(level, n) === 'slalom6');
+  const lastIsland = slalomIslands(level).at(-1)?.tag ?? null;
+  const from = lastIsland === null ? -1 : route.findIndex((n) => groundTag(level, n) === lastIsland);
   if (!fin || from < 0 || from + 1 >= route.length) {
-    r.errors.push('Design: Rutschen-Probe findet slalom6-Knoten oder Ziel nicht');
+    r.errors.push('Design: Rutschen-Probe findet den Knoten der letzten Slalom-Insel oder das Ziel nicht');
     return;
   }
   const speeds = band(cfg.sprintSpeed, 1300, 40);
@@ -431,12 +520,44 @@ function chuteCatch(level: CompiledLevel, cfg: MovementConfig, r: DesignReport):
       else slow = Math.max(slow, res.time);
     }
   }
+  // Review l1l2: Luftlenkung dreht W-Halter mit, deren Blick neben der Route liegt, und C gibt den
+  // Crouch-Hop (+18 u) — beides trug über die 128er-Bande (236/7000 tot), die Probe sah es nicht
+  // (Blick immer auf dem Knoten, nie C). Blick schwenkt in 2 s auf den Versatz; nur Tode zählen hier
+  // (wer mit W allein in eine Ecke läuft, steht — das deckt der Knoten-Blick oben ab).
+  let swept = 0;
+  const sweptFails: string[] = [];
+  for (const lateral of LATERALS) {
+    for (const v of speeds) {
+      for (const sweepDeg of CHUTE_SWEEPS) {
+        for (const crouch of CROUCH_MODES) {
+          if (sweepDeg === 0 && crouch === 'never') continue; // = W-Halter oben
+          const res = wHolder(level, cfg, from, v, lateral, fin.bounds, { sweepDeg, crouch });
+          swept++;
+          if (!res.ok && res.reason !== 'timeout') sweptFails.push(`Blick ${sweepDeg}°, C ${crouch}, ${v} u/s, Versatz ${lateral}: ${res.reason} bei ${f0(res.end.x)},${f0(res.end.y)},${f0(res.end.z)}`);
+        }
+      }
+    }
+  }
   if (fails.length) r.errors.push(`Design: Surf-Rutsche fängt nicht jeden: ${fails.length}/${runs} Läufe (z. B. ${fails.slice(0, 4).join('; ')})`);
   else r.info.push(`Design: Surf-Rutsche fängt jeden — ${runs} Läufe ab der letzten Insel (${f0(cfg.sprintSpeed)}–1300 u/s, ±96, geradeaus ohne Surfen und W-Halter) im Ziel, langsamster W-Halter ${slow.toFixed(1)} s`);
+  if (sweptFails.length) r.errors.push(`Design: Surf-Rutsche — W-Halter mit Blickversatz/C sterben: ${sweptFails.length}/${swept} (z. B. ${sweptFails.slice(0, 3).join('; ')})`);
+  else r.info.push(`Design: Surf-Rutsche — ${swept} W + Leertaste-Halter mit Blickversatz ${CHUTE_SWEEPS.filter((s) => s !== 0).join('/')}° und C (${CROUCH_MODES.join('/')}) ohne Tod`);
+}
+
+/** Blickversatz der W-Halter an der Rutsche (Grad, in 2 s eingeschwenkt): Luftlenkung dreht die Flugbahn mit. */
+const CHUTE_SWEEPS: readonly number[] = [0, -30, -20, -15, 15, 30];
+/** C gedrückt: nie, immer (Crouch-Hops), nur am Boden (Rutschen), ab 1 s (nach dem ersten Flug). */
+export type CrouchMode = 'never' | 'always' | 'ground' | 'late';
+const CROUCH_MODES: readonly CrouchMode[] = ['never', 'always', 'ground', 'late'];
+
+/** Varianten des W-Halters: Blick in 2 s um `sweepDeg` neben den Knoten schwenken, C nach `crouch`. */
+export interface WHolderOptions {
+  readonly sweepDeg?: number;
+  readonly crouch?: CrouchMode;
 }
 
 /** W + Leertaste gehalten, Blick auf den nächsten Route-Knoten (wie novice.ts "W+Space"), Start mit Tempo v am Knoten. */
-export function wHolder(level: CompiledLevel, cfg: MovementConfig, from: number, v: number, lateral: number, goal: Box3): ReturnType<typeof simulate> {
+export function wHolder(level: CompiledLevel, cfg: MovementConfig, from: number, v: number, lateral: number, goal: Box3, opts: WHolderOptions = {}): ReturnType<typeof simulate> {
   const route = level.def.route ?? [];
   const A = route[from];
   const B = route[from + 1];
@@ -449,6 +570,10 @@ export function wHolder(level: CompiledLevel, cfg: MovementConfig, from: number,
   const out = makeBotInput();
   let node = from + 1;
   let first = true;
+  let t = 0;
+  const sweep = ((opts.sweepDeg ?? 0) * Math.PI) / 180;
+  const crouch = opts.crouch ?? 'never';
+  const dt = 1 / cfg.tickRate;
   const ctl: Controller = {
     next: (s) => {
       while (node < route.length - 1) {
@@ -457,15 +582,16 @@ export function wHolder(level: CompiledLevel, cfg: MovementConfig, from: number,
         else break;
       }
       const n = route[node].pos;
-      out.yaw = Math.atan2(-(n[0] - s.pos.x), -(n[2] - s.pos.z));
+      out.yaw = Math.atan2(-(n[0] - s.pos.x), -(n[2] - s.pos.z)) + Math.min(1, t / 2) * sweep;
       out.pitch = 0;
       out.forward = 1;
       out.side = 0;
       out.sprint = true;
-      out.crouch = false;
+      out.crouch = crouch === 'always' || (crouch === 'ground' && s.onGround) || (crouch === 'late' && t > 1);
       out.jumpHeld = true;
       out.jumpPressed = first;
       first = false;
+      t += dt;
       return out;
     },
   };
@@ -474,18 +600,24 @@ export function wHolder(level: CompiledLevel, cfg: MovementConfig, from: number,
 
 /**
  * Könner-Inseln (Level 1): die Abkürzung Kehren-Pad 1 → Inseln → Wende muss sich
- * lohnen. RouteFollower mit Zielfehler 1° über sechs Seeds, einmal die normale
- * Route, einmal über die Inseln (wie tools/critique/level-flow/veteran.ts, aber
- * mit dem Ende an der Wende). Soll: ≥ 5/6 durch, im Mittel ≥ 1 s schneller; der
- * perfekte Bot muss durchkommen.
+ * lohnen. Zwei Kennzahlen:
+ * - Hand 1° (RouteFollower mit Zielfehler 1°) über zwölf Seeds, einmal die normale Route,
+ *   einmal über die Inseln: Spiel-Uhr CP2 → CP3, der Abschnitt der Abkürzung (die Wende ist
+ *   CP3). Soll: ≥ 5/6 durch, im Mittel ≥ 1 s schneller. Die Zielzeit einer Hand streut hinter
+ *   CP3 je nach Einflug ±5 s (24 Seeds) — über zwölf Seeds wäre ihr Vorzeichen Zufall.
+ * - Perfekter Bot über die 49 Start-Jitter (wie Gold/Autor in build.ts): ZIELZEIT-Median über
+ *   die Inseln ≤ Median der Normalroute, und kein Zweig. Seine Zeit ist über den Start-Kasten
+ *   robust; eine Abkürzung, die ihn erst hinter CP3 Zeit kostet (falscher Takt in den Slalom),
+ *   zeigt nur die Zielzeit (Review l1l2: CP2 → CP3 +0.26 s, am Ziel −1.7 s mit zwei Zweigen).
  */
 function expertIslands(level: CompiledLevel, cfg: MovementConfig, r: DesignReport): void {
   const route = level.def.route ?? [];
   const cuts = level.brushes.filter((b) => b.tag !== null && /^cut\d+$/.test(b.tag)).sort((a, b) => Number(a.tag?.slice(3)) - Number(b.tag?.slice(3)));
   const from = route.findIndex((n) => groundTag(level, n) === 'curve1');
   const to = route.findIndex((n) => groundTag(level, n) === 'turn');
-  if (!cuts.length || from < 0 || to <= from) {
-    r.errors.push('Design: Inseln-Probe findet cut-Inseln, Kehren-Pad 1 oder Wende nicht');
+  const cps = level.triggers.filter((t) => t.kind === 'checkpoint').length;
+  if (!cuts.length || from < 0 || to <= from || cps < 3) {
+    r.errors.push('Design: Inseln-Probe findet cut-Inseln, Kehren-Pad 1, Wende oder CP3 nicht');
     return;
   }
   const minSpeed = route[from].minSpeed;
@@ -494,27 +626,40 @@ function expertIslands(level: CompiledLevel, cfg: MovementConfig, r: DesignRepor
     ...cuts.map((b): RouteNode => ({ pos: [center(b).x, b.bounds.max.y, center(b).z], jump: true, ...(minSpeed !== undefined ? { minSpeed } : {}) })),
     ...route.slice(to),
   ];
+  const cutLevel = compileLevel({ ...level.def, route: cutRoute });
+  /** Spiel-Uhr CP2 → CP3; null ohne Ziel (dann fehlt die Wertung ganz). */
+  const section = (lv: CompiledLevel, model: StrafeModel, seed: number): number | null => {
+    const run = timedRun(lv, model, seed, cfg);
+    return run.time === null || run.splits.length < 3 ? null : run.splits[2] - run.splits[1];
+  };
   const cells: string[] = [];
   let ok = 0;
   let saved = 0;
   let pairs = 0;
-  const seeds = [1, 2, 3, 4, 5, 6];
+  const seeds = Array.from({ length: 12 }, (_, i) => i + 1);
   for (const seed of seeds) {
-    const a = runRoute(level, cfg, { aimNoiseDeg: 1, seed });
-    const b = runRoute(level, cfg, { aimNoiseDeg: 1, seed, route: cutRoute });
-    if (b.touchedFinish) ok++;
-    if (a.touchedFinish && b.touchedFinish) {
-      saved += a.time - b.time;
+    const a = section(level, { aimNoiseDeg: 1 }, seed);
+    const b = section(cutLevel, { aimNoiseDeg: 1 }, seed);
+    if (b !== null) ok++;
+    if (a !== null && b !== null) {
+      saved += a - b;
       pairs++;
     }
-    cells.push(b.touchedFinish ? b.time.toFixed(1) : 'x');
+    cells.push(b !== null ? b.toFixed(1) : 'x');
   }
-  const perfect = runRoute(level, cfg, { sync: 1, seed: 11, route: cutRoute });
-  const perfectBase = runRoute(level, cfg, { sync: 1, seed: 11 });
   const avg = pairs ? saved / pairs : 0;
-  const text = `Hand 1° über die Inseln ${ok}/${seeds.length} durch (${cells.join(' ')} s), Ersparnis Ø ${avg.toFixed(2)} s (${pairs} Paare); perfekter Bot ${perfect.touchedFinish ? `${(perfectBase.time - perfect.time).toFixed(2)} s schneller` : 'scheitert'}`;
-  if (!perfect.touchedFinish) r.errors.push(`Design: Könner-Inseln: ${text}`);
-  else if (ok < 5 || avg < 1) r.warnings.push(`Design: Könner-Inseln lohnen nicht (Soll ≥ 5/6, ≥ 1 s): ${text}`);
+  // Perfekter Bot: Zielzeit über den Start-Kasten, Normalroute gegen Inseln.
+  const base = jitterMedian(level, { sync: 1 }, cfg);
+  const over = jitterMedian(cutLevel, { sync: 1 }, cfg);
+  const gain = base.median !== null && over.median !== null ? base.median - over.median : null;
+  const perfectText =
+    gain === null
+      ? `perfekter Bot scheitert (${over.runs.filter((x) => x.time === null).length}/${over.runs.length} Starts ohne Ziel)`
+      : `perfekter Bot am Ziel ${Math.abs(gain).toFixed(2)} s ${gain >= 0 ? 'schneller' : 'LANGSAMER'} (Median über ${over.runs.length} Starts ${over.median?.toFixed(2)} gegen ${base.median?.toFixed(2)} s${over.branches ? `, ZWEIGE ${describeBranches(over.branches)}` : ', ein Zweig'})`;
+  const text = `Hand 1° über die Inseln ${ok}/${seeds.length} durch (CP2 → CP3 ${cells.join(' ')} s), Ersparnis Ø ${avg.toFixed(2)} s (${pairs} Paare); ${perfectText}`;
+  if (gain === null) r.errors.push(`Design: Könner-Inseln: ${text}`);
+  else if (ok * 6 < seeds.length * 5 || avg < 1 || gain < 0 || over.branches !== null)
+    r.warnings.push(`Design: Könner-Inseln lohnen nicht (Soll ≥ 5/6 durch, Hand 1° CP2 → CP3 ≥ 1 s, perfekter Bot am Ziel ≥ 0 s in einem Zweig): ${text}`);
   else r.info.push(`Design: Könner-Inseln — ${text}`);
 }
 
@@ -540,9 +685,19 @@ export interface AutoHopSpec {
   readonly onLine?: (node: number, v: number, lateral: number, line: string) => void;
 }
 
+export interface AutoHopFail {
+  readonly node: number;
+  readonly v: number;
+  readonly lateral: number;
+  readonly text: string;
+  /** Grund aus simulate ('timeout', 'kill', 'fall', …) und Endlage — trennt Tod, Hänger und Stau in einer Grube. */
+  readonly reason: string;
+  readonly end: Vector3;
+}
+
 export interface AutoHopResult {
   readonly runs: number;
-  readonly fails: Array<{ readonly node: number; readonly v: number; readonly lateral: number; readonly text: string }>;
+  readonly fails: AutoHopFail[];
 }
 
 /**
@@ -554,7 +709,7 @@ export interface AutoHopResult {
 export function autoHopRaster(level: CompiledLevel, cfg: MovementConfig, spec: AutoHopSpec): AutoHopResult {
   const route = level.def.route ?? [];
   const axis = routeAxis(route);
-  const fails: Array<{ node: number; v: number; lateral: number; text: string }> = [];
+  const fails: AutoHopFail[] = [];
   let runs = 0;
   for (const i of spec.from) {
     const A = route[i];
@@ -604,7 +759,7 @@ export function autoHopRaster(level: CompiledLevel, cfg: MovementConfig, spec: A
         runs++;
         spec.onLine?.(i, v, lateral, line);
         if (!res.ok)
-          fails.push({ node: i, v, lateral, text: `ab Knoten ${i} ${v} u/s Versatz ${lateral}: ${res.reason} bei ${f0(res.end.x)},${f0(res.end.y)},${f0(res.end.z)} (${line || '–'})` });
+          fails.push({ node: i, v, lateral, reason: res.reason, end: res.end, text: `ab Knoten ${i} ${v} u/s Versatz ${lateral}: ${res.reason} bei ${f0(res.end.x)},${f0(res.end.y)},${f0(res.end.z)} (${line || '–'})` });
       }
     }
   }
@@ -678,12 +833,38 @@ function exitTiers(level: CompiledLevel, cfg: MovementConfig, r: DesignReport): 
     r.errors.push(`Design: Ausfahrt hat Todesstreifen mit Auto-Hop: ${res.fails.length}/${res.runs} Läufe (z. B. ${res.fails.slice(0, 4).map((x) => x.text).join('; ')})`);
   else r.info.push(`Design: Ausfahrt ohne Todesstreifen mit Auto-Hop (${res.runs} Läufe ab Ring und T0, ${f0(cfg.sprintSpeed)}–1500 u/s, seitlich ±96)`);
   r.info.push(`Design: Ausfahrt-Linien ab T0 (geradeaus, Auto-Hop): ${[...lines].map(([k, v]) => `${k} ab ${v}`).join(', ')} u/s`);
+  // Rand bis an die Vorfeldkante (Review l1l2): erst ein dichteres Raster fand die Hänger an der
+  // Finnen-Stirn (62 bei −160…−148). Wer so weit außen fährt, darf in der S0-Grube landen (sie fängt
+  // Nicht-Surfer, ein Rückweg führt hinaus) — aber nicht sterben; Hänger in der Luft meldet sie laut.
+  // Tempo in EXIT_EDGE_STEP (zweites Review): in 20er-Schritten traf das Raster den Todesstreifen bei
+  // 875–886 u/s (Versatz 150–160, S2 1024 breit) nur an seinen überlebenden Rändern.
+  const edge = autoHopRaster(level, cfg, { from: [t0i - 1, t0i], speeds: band(cfg.sprintSpeed, 1500, EXIT_EDGE_STEP), laterals: EXIT_EDGE, goal: goal.bounds, surf: true, timeout: 14 });
+  const deaths = edge.fails.filter((x) => x.reason !== 'timeout');
+  const stuck = edge.fails.filter((x) => x.reason === 'timeout');
+  // Grube = Grundriss der S0-Auffangflächen (auch unter dem S1-Anfang), bis 300 u über ihrer Oberkante.
+  const pit = new Box3();
+  for (const b of level.brushes) if (b.tag === 's0Catch') pit.union(b.bounds);
+  pit.max.y += 300;
+  const inPit = stuck.filter((x) => pit.containsPoint(x.end));
+  const hangs = stuck.filter((x) => !pit.containsPoint(x.end));
+  const where = (xs: readonly AutoHopFail[]): string => [...new Set(xs.map((x) => `${f0(x.end.x)},${f0(x.end.y)},${f0(x.end.z)}`))].slice(0, 3).join('; ');
+  if (deaths.length) r.errors.push(`Design: Ausfahrt-Rand (Versatz ${EXIT_EDGE.join('/')}) tödlich: ${deaths.length}/${edge.runs} Läufe (z. B. ${deaths.slice(0, 3).map((x) => x.text).join('; ')})`);
+  // Hänger in der Kerbe S0-Flanke/E1-Westwand (x ≈ 1200) sind ein Physik-Befund (fallen.md #98, Movement-Strang):
+  // keine Eingabe kommt heraus, nur F. Warnung mit dem dichten Zähler, bis die Wand-Tasche-Regel die Kerbe kennt.
+  if (hangs.length) r.warnings.push(`Design: Ausfahrt-Rand — ${hangs.length}/${edge.runs} Läufe (${EXIT_EDGE_STEP} u/s) hängen außerhalb der S0-Grube (bei ${where(hangs)}; Kerbe S0-Flanke/E1-Westwand, fallen.md #98)`);
+  if (!deaths.length) r.info.push(`Design: Ausfahrt-Rand ohne Tod — ${edge.runs} Läufe (Versatz bis ±${EXIT_EDGE[EXIT_EDGE.length - 1]}, ${EXIT_EDGE_STEP} u/s), ${edge.runs - edge.fails.length} bis CP3, ${inPit.length} in der S0-Grube, ${hangs.length} Hänger`);
 }
+
+/** Versätze des Ausfahrt-Rands (u): zwischen dem Kernraster (±96) und der Vorfeldkante (±160). */
+const EXIT_EDGE: readonly number[] = [-160, -152, -144, -128, -112, 112, 128, 144, 152, 160];
+/** Tempo-Schritt des Rand-Rasters (u/s): chaotische Streifen sind wenige u/s breit (fallen.md #117). */
+const EXIT_EDGE_STEP = 2.5;
 
 /**
  * Die erste Surf-Berührung (S0) tötet niemanden, der nicht surft: ab dem CP2-Spawn
- * (E1) W gehalten, mit und ohne Leertaste, Blick fest in 5 Richtungen (±30° um
- * Nord) oder immer auf den nächsten Route-Knoten (wie novice.ts) — 12 s ohne Tod.
+ * (E1) W gehalten, mit und ohne Leertaste und Shift, C nie/immer/spät, Blick fest in
+ * 1°-Schritten über ±90° oder immer auf den nächsten Route-Knoten (wie novice.ts) — 12 s
+ * ohne Tod (2184 Läufe, ~7 s).
  * Vorher (S1 direkt hinter E1, ohne Auffangfläche) starb so ein Lauf nach ~3 s.
  */
 function s0Catch(level: CompiledLevel, cfg: MovementConfig, r: DesignReport): void {
@@ -698,38 +879,50 @@ function s0Catch(level: CompiledLevel, cfg: MovementConfig, r: DesignReport): vo
   const never = new Box3(new Vector3(1e9, 1e9, 1e9), new Vector3(1e9 + 1, 1e9 + 1, 1e9 + 1));
   const fails: string[] = [];
   let runs = 0;
-  for (const look of [-30, -15, 0, 15, 30, NaN]) {
+  // Blick fest in 1°-Schritten über ±90° (Review l1l2: sechs Richtungen sahen weder die Tode bei −14…−18°
+  // noch die bei 53–90°) oder auf den nächsten Knoten; mit/ohne Leertaste, mit/ohne Shift, C nie /
+  // immer / ab 0.6 s (Rutschen nach dem Anlauf).
+  const looks = [Number.NaN, ...Array.from({ length: 181 }, (_, i) => i - 90)];
+  const dt = 1 / cfg.tickRate;
+  for (const look of looks) {
     for (const hold of [false, true]) {
-      const pm = new PlayerMovement(level.world, cfg);
-      pm.teleport(cp.spawnPos);
-      const out = makeBotInput();
-      let node = from + 1;
-      let first = true;
-      const ctl: Controller = {
-        next: (st) => {
-          if (Number.isNaN(look)) {
-            while (node < route.length - 1 && (Math.hypot(route[node].pos[0] - st.pos.x, route[node].pos[2] - st.pos.z) < 80 || passedNode(route, node, st.pos))) node++;
-            const n = route[node].pos;
-            out.yaw = Math.atan2(-(n[0] - st.pos.x), -(n[2] - st.pos.z));
-          } else out.yaw = (-look * Math.PI) / 180;
-          out.pitch = 0;
-          out.forward = 1;
-          out.side = 0;
-          out.sprint = true;
-          out.crouch = false;
-          out.jumpHeld = hold;
-          out.jumpPressed = hold && first;
-          first = false;
-          return out;
-        },
-      };
-      const res = simulate(level, pm, ctl, { cfg, goal: never, timeout: 12 });
-      runs++;
-      if (res.reason !== 'timeout') fails.push(`${Number.isNaN(look) ? 'Blick auf Knoten' : `Blick ${look}°`}${hold ? ' + Leertaste' : ''}: ${res.reason} nach ${res.time.toFixed(1)} s bei ${f0(res.end.x)},${f0(res.end.y)},${f0(res.end.z)}`);
+      for (const sprint of [true, false]) {
+        for (const crouch of ['never', 'always', 'late'] as const) {
+          const pm = new PlayerMovement(level.world, cfg);
+          pm.teleport(cp.spawnPos);
+          const out = makeBotInput();
+          let node = from + 1;
+          let first = true;
+          let t = 0;
+          const ctl: Controller = {
+            next: (st) => {
+              if (Number.isNaN(look)) {
+                while (node < route.length - 1 && (Math.hypot(route[node].pos[0] - st.pos.x, route[node].pos[2] - st.pos.z) < 80 || passedNode(route, node, st.pos))) node++;
+                const n = route[node].pos;
+                out.yaw = Math.atan2(-(n[0] - st.pos.x), -(n[2] - st.pos.z));
+              } else out.yaw = (-look * Math.PI) / 180;
+              out.pitch = 0;
+              out.forward = 1;
+              out.side = 0;
+              out.sprint = sprint;
+              out.crouch = crouch === 'always' || (crouch === 'late' && t > 0.6);
+              out.jumpHeld = hold;
+              out.jumpPressed = hold && first;
+              first = false;
+              t += dt;
+              return out;
+            },
+          };
+          const res = simulate(level, pm, ctl, { cfg, goal: never, timeout: 12 });
+          runs++;
+          if (res.reason !== 'timeout')
+            fails.push(`${Number.isNaN(look) ? 'Blick auf Knoten' : `Blick ${look}°`}${hold ? ' + Leertaste' : ''}${sprint ? '' : ' ohne Shift'}, C ${crouch}: ${res.reason} nach ${res.time.toFixed(1)} s bei ${f0(res.end.x)},${f0(res.end.y)},${f0(res.end.z)}`);
+        }
+      }
     }
   }
   if (fails.length) r.errors.push(`Design: S0 fängt Nicht-Surfer nicht: ${fails.length}/${runs} W-Halter ab CP2 tot (${fails.slice(0, 3).join('; ')})`);
-  else r.info.push(`Design: S0 fängt Nicht-Surfer — ${runs} W-Halter ab CP2 (Blick ±30° / auf Knoten, mit und ohne Leertaste) 12 s ohne Tod`);
+  else r.info.push(`Design: S0 fängt Nicht-Surfer — ${runs} W-Halter ab CP2 (Blick −90…+90° in 1°-Schritten / auf Knoten, mit/ohne Leertaste und Shift, C nie/immer/ab 0.6 s) 12 s ohne Tod`);
 }
 
 /**
@@ -784,6 +977,110 @@ function s0BackWay(level: CompiledLevel, cfg: MovementConfig, r: DesignReport): 
   }
   if (fails.length) r.errors.push(`Design: Rückweg von der S0-Fläche nicht begehbar (${fails.join('; ')})`);
   else r.info.push(`Design: Rückweg von der S0-Fläche aufs Vorfeld begehbar (W / W + Leertaste, ≤ ${slow.toFixed(1)} s)`);
+}
+
+/**
+ * L2-Ringbande gegen Flucht nach außen (Plan 007 Phase 3, Fehlerklasse aus L4: seit dem Kanten-Assist kommt ein
+ * Crouch-Hop über eine 80-u-Bande — ohne Clip 10/3864 Läufe hinaus, 1 auf der Bande stehend). Start mit der
+ * Hull-Front 4/24 u vor der Bande an jedem 2. Bandenstück, Blick fest, W + Sprint + Leertaste, nie / in der Luft /
+ * immer geduckt, 0–80° zur Wandnormalen in beide Richtungen, 300–900 u/s, 3 s. Wer durch eine offene Stelle
+ * (Ausfahrt, Anflug) hinausfliegt, zählt nicht — die ist gewollt. Soll: 0 über die Bande, 0 auf der Bande.
+ */
+function ringBoardEscape(level: CompiledLevel, cfg: MovementConfig, r: DesignReport): void {
+  const rb = level2RingBoard();
+  const o = rb.outer;
+  const kills = level.triggers.filter((t) => t.kind === 'kill');
+  const inp = makeBotInput();
+  const hMin = new Vector3();
+  const hMax = new Vector3();
+  const hb = new Box3();
+  const out: string[] = [];
+  const onTop: string[] = [];
+  let runs = 0;
+  let maxFeet = 0;
+  const openAt = (phi: number, pad: number): boolean => rb.open.some(([a, b]) => phi >= a - pad && phi < b + pad);
+  // Winkel des nächsten Ringpunkts (Konvention von Ring.point; grob genügt, die offenen Sektoren sind breit).
+  const phiOf = (x: number, z: number, rr: number): number => {
+    let best = 0;
+    let bd = Infinity;
+    for (let q = 0; q < 360; q += 1) {
+      const [qx, qz] = o.point(q, rr);
+      const d = (qx - x) ** 2 + (qz - z) ** 2;
+      if (d < bd) {
+        bd = d;
+        best = q;
+      }
+    }
+    return best;
+  };
+  const dPhi = 360 / o.o.segments;
+  for (let phi = dPhi / 2; phi < 360; phi += 2 * dPhi) {
+    if (openAt(phi, 6)) continue;
+    for (const front of [4, 24]) {
+      const r0 = o.rOut - 16 - front;
+      const [x, z] = o.point(phi, r0);
+      const [x2, z2] = o.point(phi, r0 + 10);
+      const [ox, oz] = [(x2 - x) / 10, (z2 - z) / 10];
+      const [xa, za] = o.point(phi + 0.1, r0);
+      const tl = Math.hypot(xa - x, za - z);
+      const [tx, tz] = [(xa - x) / tl, (za - z) / tl];
+      const y = o.surfaceY(x, z) + 2;
+      for (const alpha of [0, 30, 60, 80]) {
+        const [ca, sa] = [Math.cos((alpha * Math.PI) / 180), Math.sin((alpha * Math.PI) / 180)];
+        for (const dir of alpha === 0 ? [1] : [1, -1]) {
+          const dx = ca * ox + dir * sa * tx;
+          const dz = ca * oz + dir * sa * tz;
+          const yaw = Math.atan2(-dx, -dz);
+          for (const v0 of [300, 600, 900]) {
+            for (const mode of ['hop', 'crouchAir', 'crouchHold'] as const) {
+              runs++;
+              const pm = new PlayerMovement(level.world, cfg);
+              pm.teleport(new Vector3(x, y, z));
+              pm.state.vel.set(dx * v0, 0, dz * v0);
+              let exited = false;
+              let viaGap = false;
+              const name = `φ ${phi.toFixed(1)} Front ${front} ${alpha}° ${v0} u/s ${mode}`;
+              for (let k = 0; k < 3 * cfg.tickRate; k++) {
+                inp.yaw = yaw;
+                inp.pitch = 0;
+                inp.forward = 1;
+                inp.side = 0;
+                inp.sprint = true;
+                inp.jumpHeld = true;
+                inp.jumpPressed = k === 0;
+                inp.crouch = mode === 'crouchHold' || (mode === 'crouchAir' && !pm.state.onGround);
+                pm.tick(inp);
+                const s = pm.state;
+                const rr = Math.hypot(s.pos.x - rb.center[0], s.pos.z - rb.center[1]);
+                if (rr > o.rOut - 20 && rr < o.rOut + rb.boardT + 16) maxFeet = Math.max(maxFeet, s.pos.y - o.hOut);
+                // Auf der Bande = der Boden unter den Füßen IST Bande oder Clip (am Rand liegt auch die Anlaufbahn).
+                if (s.onGround && rr > o.rOut - 16 && s.pos.y > o.hOut + 60 && /^ring(Board|Clip)$/.test(groundTagAt(level, s.pos))) {
+                  onTop.push(`${name}: steht bei ${f0(s.pos.x)},${f0(s.pos.y)},${f0(s.pos.z)}`);
+                  break;
+                }
+                if (!exited && rr > o.rOut + rb.boardT + 16) {
+                  exited = true;
+                  viaGap = openAt(phiOf(s.pos.x, s.pos.z, rr), 2);
+                }
+                hMin.copy(s.pos).add(pm.hullMins);
+                hMax.copy(s.pos).add(pm.hullMaxs);
+                hb.set(hMin, hMax);
+                const dead = s.pos.y < level.def.killY || kills.some((t) => t.bounds.intersectsBox(hb));
+                if (exited && !viaGap && (dead || (k === 3 * cfg.tickRate - 1 && !s.onGround && s.pos.y < o.hOut - 300))) {
+                  out.push(`${name}: ${dead ? 'tot' : 'fällt'} bei ${f0(s.pos.x)},${f0(s.pos.y)},${f0(s.pos.z)}`);
+                  break;
+                }
+                if (dead) break;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  const line = `Ringbande nach außen — ${runs} Läufe (Hop/Crouch-Hop/Ducken gehalten, 0–80°, 300–900 u/s): ${out.length} über die Bande, ${onTop.length} auf der Bande; Füße am Außenrand höchstens ${f0(maxFeet)} u über der Außenkante (Bande ${rb.boardH}, Clip bis ${rb.clipH}; dort liegt auch die Anlaufbahn)`;
+  if (out.length || onTop.length) r.errors.push(`Design: ${line} (${[...out, ...onTop].slice(0, 3).join('; ')})`);
+  else r.info.push(`Design: ${line}`);
 }
 
 /**

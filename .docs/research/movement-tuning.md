@@ -839,7 +839,7 @@ selbst hält den Betrag exakt (45°-Zeile). Die Abnahme "30–35° **und** ±1 u
 ### Level-Stand mit der finalen Physik (M11, Übergabe an l1l2)
 
 `levels:check` auf den unveränderten L1/L2-JSONs: **2 F / 1 W** (vorher 0 F / 2 W) — genau die in Plan 007
-§1 vorhergesagten chaotischen Proben. Liste mit Zahlen: `.docs/learnings/inbox/movement.md`.
+§1 vorhergesagten chaotischen Proben. Liste mit Zahlen: Plan 007, Abschnitt "Ergebnis" (M11), Fallen dazu in fallen.md #117.
 
 Nach der Review-Runde (28.09., mit dem erweiterten Validator von level-tools): **2 F / 3 W**. Neu gegenüber
 der Physik-Liste sind nur Validator-Proben: "Crouch-Kante 64.0 u Reserve 0.5 u < 2 u" (Kanten-Assist +

@@ -46,6 +46,11 @@ export interface HandModel {
   readonly strafe: boolean;
   /** Blick am Boden zurück zum Ziel/Kurs (°/s). */
   readonly groundTurn: number;
+  /**
+   * Nur 'steer': Rate je Hop aus der Kursabweichung zum Ziel (einholen in einem Hop, höchstens rateDeg) statt fest.
+   * So fliegt die Vorführung eine Kurve durch Tore: fest 120 °/s überzog sie bei 700+ u/s und verfehlte das Tor.
+   */
+  readonly aimRate?: boolean;
 }
 
 const BASE: HandModel = {
@@ -67,6 +72,8 @@ const BASE: HandModel = {
 export const HAND_MODELS = {
   /** Vorführung: 120 °/s, 0.1 s Verzug, fehlerfrei. */
   demo: { ...BASE, name: 'Demo-Hand', rateDeg: 120, rateJitter: 0, delay: 0.1, delayJitter: 0, holdW: false, groundTurn: 300 },
+  /** Vorführung entlang einer Route (T5-Tore): wie demo, Seite zum nächsten Tor, Rate aus der Kursabweichung (60–120 °/s). */
+  demoLenker: { ...BASE, name: 'Demo-Hand (Tore)', rateDeg: 120, rateJitter: 0, delay: 0.1, delayJitter: 0, holdW: false, groundTurn: 300, pattern: 'steer', aimRate: true },
   /** Hat die Anweisung verstanden: 60 °/s, 0.2 s Verzug, jeder 5. Hop geht schief. */
   anfaenger: { ...BASE, name: 'ordentlicher Anfänger', pAgainst: 0.08, pNoMouse: 0.08, pWOnly: 0.04 },
   geuebt: { ...BASE, name: 'geübter Anfänger', rateDeg: 100, rateJitter: 0.3, delay: 0.12, delayJitter: 0.06, pAgainst: 0.04, pNoMouse: 0.04, pWOnly: 0.02, holdW: false, groundTurn: 300 },
@@ -76,6 +83,10 @@ export const HAND_MODELS = {
   // Fehlerbilder: dürfen Strafe-Aufgaben nie bestehen; der Judge muss sie erkennen.
   nurW: { ...BASE, name: 'Fehler: nur W + Maus', pWOnly: 1 },
   gegen: { ...BASE, name: 'Fehler: Taste gegen Maus', pAgainst: 1 },
+  // Dieselben Fehler mit schneller Maus (Neulinge ziehen oft 180–360 °/s): der Blick streicht zufällig durchs
+  // Gewinnfenster — mit 60 °/s allein blieb verdeckt, dass "nur W" T4/T5 bestand (Review rv-tc3).
+  nurWSchnell: { ...BASE, name: 'Fehler: nur W + schnelle Maus (360 °/s)', rateDeg: 360, pWOnly: 1 },
+  gegenSchnell: { ...BASE, name: 'Fehler: Taste gegen schnelle Maus (360 °/s)', rateDeg: 360, pAgainst: 1 },
   keineMaus: { ...BASE, name: 'Fehler: A/D ohne Maus', pNoMouse: 1 },
   spaet: { ...BASE, name: 'Fehler: zu spät (0.45 s)', rateDeg: 25, delay: 0.45, delayJitter: 0.05 },
   // 10 °/s: sicher unter der Gut-Schwelle (0.8 × Gewinn bei 20 °/s ≈ 16 °/s ohne Verzug) — 16 °/s lag genau darauf.
@@ -103,10 +114,22 @@ export interface BeginnerHandOptions {
 }
 
 const DEG = Math.PI / 180;
+/** Double-Startwert für Kommazahl-Felder (vor dem ersten Lesen überschrieben; s. engine/strafeJudge). */
+const D0 = 0.5;
 /** Ohne Auto-Hop: erster Sprung nach so viel Anlauf am Boden (s), wie der Smart-Auto-Hop (autoHopGroundTime). */
 const RUNUP = 0.2;
 /** Zigzag: ab dieser Kursabweichung zum Ziel dreht die Hand zurück (Mensch korrigiert Drift). */
 const DRIFT_LIMIT = 60 * DEG;
+/** aimRate: typische Luftzeit eines Hops (s), in der der Blick die Kursabweichung einholen soll. */
+const AIM_HOP = 0.65;
+/** aimRate: langsamste Rate (rad/s) — 40 °/s sind bei 300–1000 u/s noch sicher 'good' (turnwindow.ts). */
+const AIM_MIN_RATE = 40 * DEG;
+/**
+ * aimRate: mindestens dieser Anteil von rateDeg — auch geradeaus zieht die Hand zügig (Tempo für Bonus/Meister).
+ * T5-Bogen, Demo-Hand 120–240 °/s, Tor-Reichweite 300/400: mit 0.5 alle Stufen 380/300/450/600 in 14–16 s; mit 0.33
+ * reichte das Tempo für 600 nicht, mit 0.66 überzog sie bei 1100+ u/s und verfehlte Tore.
+ */
+const AIM_MIN_SHARE = 0.5;
 
 export class BeginnerHand implements Bot {
   private readonly rand: () => number;
@@ -114,19 +137,23 @@ export class BeginnerHand implements Bot {
   private readonly dt: number;
   /** Auto-Hop aus: bei jeder Landung frisch drücken. */
   private readonly manualHop: boolean;
-  private groundT = 0;
+  // Kommazahl-Felder mit Double-Startwert (D0), im Konstruktor gesetzt: mit Smi-Start (0, Blick 0 am Spawn) boxte
+  // next() je Tick ~29 B — die Vorführung läuft im Tick-Pfad (fallen.md #107 Punkt 4).
+  private groundT = D0;
   private model: HandModel;
   /** Aktueller Blick (rad). */
-  yaw: number;
+  yaw = D0;
   /** +1 = Linkskurve (A, yaw steigt), −1 = Rechtskurve (D). Stufenwechsel dürfen sie setzen. */
   side: 1 | -1;
   goal: Point2 | null;
-  heading: number;
+  heading = D0;
+  /** Blick zum Ziel in diesem Tick (rad). */
+  private target = D0;
   private wasGround = true;
   private pressed = false;
-  private rate = 0;
-  private delay = 0;
-  private airT = 0;
+  private rate = D0;
+  private delay = D0;
+  private airT = D0;
   private planned = false;
   /** Modus des laufenden bzw. letzten Luftabschnitts. */
   mode: HopMode = 'match';
@@ -142,6 +169,10 @@ export class BeginnerHand implements Bot {
     this.heading = opts.heading ?? 0;
     this.yaw = this.heading;
     this.side = opts.side === 'right' ? -1 : 1;
+    this.groundT = 0;
+    this.rate = 0;
+    this.delay = 0;
+    this.airT = 0;
   }
 
   get handModel(): HandModel {
@@ -158,12 +189,15 @@ export class BeginnerHand implements Bot {
     const o = this.out;
     const m = this.model;
     const dt = this.dt;
-    const target = this.goal ? yawOf(this.goal.x - s.pos.x, this.goal.z - s.pos.z) : this.heading;
+    // Ziel-Blick als Feld, Drehschritte als Klemme (min/max): ein Zweig um Kommazahlen boxt am Zusammenfluss (#107).
+    this.target = this.heading;
+    if (this.goal) this.target = yawOf(this.goal.x - s.pos.x, this.goal.z - s.pos.z);
+    const target = this.target;
     o.jumpHeld = true;
     if (this.manualHop) {
       // Landung (vorher Luft) oder genug Anlauf: frischer Druck; sonst nichts (gehalten springt ohne Auto-Hop nicht).
       o.jumpPressed = s.onGround && (!this.wasGround || this.groundT + dt >= RUNUP);
-      this.groundT = s.onGround ? this.groundT + dt : 0;
+      this.groundT = (this.groundT + dt) * (s.onGround ? 1 : 0);
     } else o.jumpPressed = !this.pressed;
     this.pressed = true;
     o.sprint = true;
@@ -174,7 +208,7 @@ export class BeginnerHand implements Bot {
       if (!this.wasGround || !this.planned) this.planHop(s, target);
       const d = wrapAngle(target - this.yaw);
       const step = m.groundTurn * DEG * dt;
-      this.yaw += Math.abs(d) <= step ? d : Math.sign(d) * step;
+      this.yaw += Math.max(-step, Math.min(step, d));
       o.yaw = this.yaw;
       o.forward = 1;
       o.side = 0;
@@ -201,7 +235,7 @@ export class BeginnerHand implements Bot {
       if (vx * vx + vz * vz > 1) {
         const d = wrapAngle(Math.atan2(-vx, -vz) - this.yaw);
         const step = m.groundTurn * DEG * dt;
-        this.yaw += Math.abs(d) <= step ? d : Math.sign(d) * step;
+        this.yaw += Math.max(-step, Math.min(step, d));
       }
     } else {
       if (this.mode !== 'noMouse') this.yaw += this.side * this.rate * dt;
@@ -235,7 +269,68 @@ export class BeginnerHand implements Bot {
     } else {
       // steer: Flugrichtung links vom Ziel → rechts drehen.
       this.side = err > 0 ? -1 : 1;
+      // aimRate: so fest ziehen, dass der Blick die Abweichung in einem Hop einholt (Mensch sieht das Tor und zieht hin) —
+      // höchstens rateDeg, mindestens AIM_MIN_SHARE davon (≥ AIM_MIN_RATE, darunter kein guter Hop mehr).
+      if (m.aimRate === true) this.rate = Math.max(Math.max(AIM_MIN_RATE, m.rateDeg * DEG * AIM_MIN_SHARE), Math.min(m.rateDeg * DEG, Math.abs(err) / AIM_HOP));
     }
+  }
+}
+
+/** Prestrafe-Hand: so lange (s) nur W (mit Sprint) geradeaus, bevor A/D und Maus einsetzen — Anlauf auf Lauftempo. */
+export const PRESTRAFE_RUNUP = 0.5;
+
+export interface PrestrafeHandOptions {
+  /** Mausrate (°/s), konstant. Gemessen tragen 150–300 °/s über 350 u/s (T4, drivers.prestrafeRate). */
+  readonly rateDeg: number;
+  /** 'left' = W + A, Maus nach links (Default); 'right' = W + D, Maus nach rechts. */
+  readonly side?: 'left' | 'right';
+  /** Anfangsblick (yaw, rad). */
+  readonly heading?: number;
+  /** Anlauf nur mit W (s), Default PRESTRAFE_RUNUP. */
+  readonly runUp?: number;
+}
+
+/**
+ * Prestrafe-Hand (T4-Bonus, Vorführung per H): wie ein Mensch nach dem Stufentext "W + A HALTEN, MAUS ZÜGIG LINKS" —
+ * erst Anlauf mit W, dann W + A/D und die Maus mit konstanter Rate in Tastenrichtung. Am Boden, nie ein Sprung (vorher
+ * gab es für PRESTRAFE keine Vorführung, nur Text). Deterministisch, next() ohne Allokation.
+ */
+export class PrestrafeHand {
+  private readonly out = makeBotInput();
+  private readonly dt: number;
+  /** Drehrate mit Vorzeichen (rad/s, + = links wie yaw). */
+  private readonly rate: number;
+  private readonly key: -1 | 1;
+  private readonly runUp: number;
+  /** Zeit seit dem Start (s) und Blick (rad): Double-Startwert (D0), im Konstruktor gesetzt (fallen.md #107). */
+  private t = D0;
+  yaw = D0;
+
+  constructor(cfg: Pick<MovementConfig, 'tickRate'>, opts: PrestrafeHandOptions) {
+    this.dt = 1 / cfg.tickRate;
+    const left = opts.side !== 'right';
+    this.rate = (left ? 1 : -1) * opts.rateDeg * DEG;
+    this.key = left ? -1 : 1;
+    this.runUp = opts.runUp ?? PRESTRAFE_RUNUP;
+    this.t = 0;
+    this.yaw = opts.heading ?? 0;
+  }
+
+  next(): PlayerInput {
+    const o = this.out;
+    this.t += this.dt;
+    // Ganzzahliger Schalter statt Zweig um die Kommazahl-Rechnung (fallen.md #107.2).
+    const turning = this.t > this.runUp ? 1 : 0;
+    this.yaw += this.rate * this.dt * turning;
+    o.yaw = this.yaw;
+    o.pitch = 0;
+    o.forward = 1;
+    o.side = this.key * turning;
+    o.sprint = true;
+    o.crouch = false;
+    o.jumpHeld = false;
+    o.jumpPressed = false;
+    return o;
   }
 }
 
@@ -250,6 +345,11 @@ export interface SurfHandOptions {
   readonly mode?: SurfMode;
   /** Zielfehler des Blicks entlang der Rampe (Grad, 1σ, AR(1) mit 0.15 s). 0 = exakt. */
   readonly noiseDeg?: number;
+  /**
+   * Fester Blickfehler an der Flanke (Grad): > 0 = in die Rampe hinein, < 0 = die Flanke hinab. Der typische
+   * Neulingsfehler; das Rauschen allein ist mittelwertfrei und zeigt das Toleranzband der Lektion nicht.
+   */
+  readonly biasDeg?: number;
   /** Reaktion: so lange (s) nach dem ersten Flankenkontakt drückt die Hand noch nichts. */
   readonly react?: number;
   /** Rampenachse (yaw, rad): Anlauf und Blick. Default 0 (= −Z). */
@@ -268,6 +368,7 @@ export class SurfHand {
   private readonly dt: number;
   private readonly mode: SurfMode;
   private readonly noise: number;
+  private readonly bias: number;
   private readonly react: number;
   private readonly heading: number;
   private grounded = false;
@@ -281,6 +382,7 @@ export class SurfHand {
     this.rand = mulberry32((opts.seed ?? DEMO_SEED) * 977 + 3);
     this.mode = opts.mode ?? 'grund';
     this.noise = ((opts.noiseDeg ?? 0) * Math.PI) / 180;
+    this.bias = ((opts.biasDeg ?? 0) * Math.PI) / 180;
     this.react = opts.react ?? 0;
     this.heading = opts.heading ?? 0;
   }
@@ -325,7 +427,9 @@ export class SurfHand {
       const k = Math.exp(-dt / 0.15);
       this.aim = this.aim * k + gaussian(this.rand) * this.noise * Math.sqrt(1 - k * k);
     }
-    o.yaw = this.heading + this.aim;
+    // Blickfehler erst, wenn die Seite der Rampe bekannt ist. Rampe rechts (D, into = 1) → hinein = nach rechts
+    // drehen (yaw sinkt); Rampe links (A) → nach links (yaw steigt).
+    o.yaw = this.heading + this.aim - (this.rampSide !== 0 ? this.rampSide * this.bias : 0);
     o.forward = 0;
     o.side = 0;
     if (this.contact < this.react) return o;

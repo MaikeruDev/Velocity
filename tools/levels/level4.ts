@@ -7,7 +7,8 @@
  *
  *   E1 WENDEL   θ   0–135  Rampe 0 → 384      bergauf hüpfen + einseitig Kurven-Strafen
  *   P1          θ 135–155  384                CP1
- *   E2 GRÄBEN   θ 155–290  384 → 768          Linienwahl: außen lückenlos, innen drei Gräben (kürzer)
+ *   E2 GRÄBEN   θ 155–290  384 → 768          außen lückenlos (Tempo-Bahn); innen kürzer, steiler, drei flache
+ *                                             Gräben — schneller bis ~550 u/s, darüber höchstens ~0.2 s langsamer
  *   P2          θ 290–310  768                CP2
  *   E3 KANTEN   θ 310–450  768 → 1088         zwei Crouch-Kanten (66 u) mit Terrasse davor
  *   P3          θ 450–470  1088               CP3
@@ -16,11 +17,13 @@
  *   KRONE       1536, Sprungbrett            CP4
  *   ABFAHRT     Surf-Kette nach Westen, 4 Drops (CP5), Kicker → Ziel
  *
- * Im Aufstieg stirbt man nicht: innen der Kern, außen die Bande (80 u > Crouch-Jump 75),
- * Gräben mit Auffang-Mulde, Crouch-Kanten prallen auf die eigene Terrasse zurück. Keine Pads
- * (Plan 007 §4: gemessen schlechter). Vorlage: Prototyp tools/critique/v2/level4 — hier gegen die
- * finale Physik (Hang-Landung mit Schuld, Kanten-Assist, Cap 40) neu gemessen; Zahlen in
- * .docs/research/levels/level4.md.
+ * Im Aufstieg stirbt man nicht: innen der Kern, außen die sichtbare 80-u-Bande plus unsichtbarer Clip bis 256 u
+ * (CLIP_H; die Bande allein hielt nicht — Crouch-Jump + Kanten-Assist reichen bis 80 u, bergab mehr), dahinter ein
+ * Kill-Ring als Rückfallebene. Gräben mit Auffang-Mulde und Warnstreifen, Crouch-Kanten prallen auf die eigene
+ * Terrasse zurück (das Absprungband davor zeigt, wo man springen muss). Keine Pads (Plan 007 §4: gemessen schlechter),
+ * kein Route-Knoten auf dem Sprungbrett (der Bot bremste dort). Vorlage: Prototyp
+ * tools/critique/v2/level4 — hier gegen die finale Physik (Hang-Landung mit Schuld, Kanten-Assist, Cap 40) neu
+ * gemessen; Zahlen in .docs/research/levels/level4.md.
  */
 import { Vector3 } from 'three';
 import { BrushWorld } from '../../src/world/collision/BrushWorld';
@@ -69,9 +72,12 @@ const RISE = 384;
 const P_W = 20;
 const SEC = 135;
 /**
- * E2: die Bahn teilt sich bei R_SPLIT. Innen (224 u breit) kürzer, aber mit drei Gräben
- * [Beginn relativ zum Abschnitt, Breite] (Grad); außen lückenlos. Tiefe 72 (> PREDICT_MAX_DROP 64:
- * der Bot hüpft nicht absichtlich hinein, fallen.md #32).
+ * E2: die Bahn teilt sich bei R_SPLIT. Innen (224 u breit) 25 % kürzer, aber steiler und mit drei Gräben
+ * [Beginn relativ zum Abschnitt, Breite] (Grad); außen lückenlos. Auf dem 12°-Hang ist ein Hop tempo-unabhängig
+ * ~250 u lang: die Gräben trifft man fast immer (fallen.md #166) — die Tiefe bestimmt, was das kostet. 72 u (Sohle
+ * 26–33° steil, Landung wirft hoch) machte die Innenlinie ab 450 u/s zur Falle (W + Leertaste bis +1.33 s); 24 u
+ * (Sohle ~18°): innen schneller bis ~550 u/s, darüber höchstens +0.2 s — eine Wahl nach Tempo, keine Falle
+ * (level4.md "Innenbahn"). Die Route läuft außen; die Innenlinie misst nur die Probe (`inner`).
  */
 export const R_SPLIT = 864;
 const TRENCHES: ReadonlyArray<readonly [number, number]> = [
@@ -79,7 +85,7 @@ const TRENCHES: ReadonlyArray<readonly [number, number]> = [
   [62, 18],
   [100, 20],
 ];
-const TRENCH_DEPTH = 72;
+export const TRENCH_DEPTH = 24;
 /** Route-Radius in E2 (Außenbahn, weit weg von der Grabenkante) und die Innenlinie der Proben. */
 export const R_E2_OUT = 1000;
 export const R_E2_IN = 752;
@@ -93,7 +99,10 @@ const E3_RAMP0 = 62;
 const E3_RAMP1 = 126;
 /** Lippe (mat duck, ↑C) oben an jeder Kante, Grad. */
 const LIP = 3;
-/** Terrasse vor jeder Kante (Grad): 391 u auf der Planlinie deckt das Crouch-Fenster bis ~900 u/s. */
+/**
+ * Terrasse vor jeder Kante (Grad): 391 u auf der Planlinie. Bis ~650 u/s liegt das ganze Crouch-Fenster darauf (Wandkontakt
+ * ≤ 0.56 s nach dem Absprung), darüber reicht es auf die Rampe davor — von dort (tiefer) prallt man öfter ab.
+ */
 const E3_TERRACE = 25;
 /** Himmelssteg: Länge nach Westen, Anstieg bis zur Krone. */
 const STEG_LEN = 1100;
@@ -113,11 +122,12 @@ const UNDER = 100;
  */
 const RIDGE_OFF = 128;
 /**
- * Sprungbrett quer, nördlich des Grats (u): über der Nordflanke, 83–499 u unter dem Grat. Der Prototyp (32–320)
- * warf am Südrand auf den Grat (Surfer mit Blick zur Rampe kletterten hinauf und hingen dort) und am Nordrand
- * tief an den Fuß: Drop-In über die Brettbreite 77/80 → 80/80.
+ * Sprungbrett quer, nördlich des Grats (u): über der Nordflanke. Der Prototyp (32–320) warf am Nordrand tief an den
+ * Fuß; 48–288 hielt vom CP4-Spawn 80/80. Wer wie ein Mensch vom Steg anhüpft und nach Norden driftet (Kurs −8°), traf
+ * die Flanke dort zu tief: Anlauf vom Steg (Probe dropIn) 144/150 → mit 16–256 148/150, Spawn weiter 80/80. Grat-Hänger
+ * (Blick bis +14° zur Rampe) unabhängig von der Brettlage — der Blick bremst, nicht das Brett.
  */
-const BOARD: V2 = [48, 288];
+const BOARD: V2 = [16, 256];
 const LANE_HALF = (R_OUT - R_IN) / 2;
 /** Surf-Kette. */
 const SURF_W = 768;
@@ -152,8 +162,11 @@ export interface Level4Options {
   readonly s2?: number;
   /** Radien, an denen die Wendel-Fläche zusätzlich radial geteilt wird (Mess-Sweep). */
   readonly rings?: readonly number[];
-  /** Gräben der Innenbahn [Beginn relativ zu E2, Breite] (Grad; Mess-Sweep). */
+  /** Gräben der Innenbahn [Beginn relativ zu E2, Breite] (Grad; Mess-Sweep) und ihre Tiefe an der Absprungseite (u). */
   readonly trenches?: ReadonlyArray<readonly [number, number]>;
+  readonly trenchDepth?: number;
+  /** Grabensohle: 'ramp' steigt bündig zur Landekante (Default), 'flat' liegt überall trenchDepth unter der Bahn. */
+  readonly trenchShape?: 'ramp' | 'flat';
   /** Segmentwinkel der Wendel (Grad). */
   readonly seg?: number;
   /** E3: Terrasse vor Kante 1/2 (Grad) und Anstieg der Rampe vor Kante 1 (u; Rest geht an die Rampe vor Kante 2). */
@@ -162,6 +175,8 @@ export interface Level4Options {
   readonly r0?: number;
   /** Crouch-Knoten so weit vor der Kante (u); Default aus vCrouch und dem Crouch-Fenster. */
   readonly crouchBack?: number;
+  /** Mess-Sweep: zusätzlicher Knoten ohne Sprung so weit vor jeder Kante (u; Default keiner). */
+  readonly terraceNode?: number;
   /** Grat der Abfahrt südlich der Kronen-Mitte (u) und Länge des Trichters (u). */
   readonly ridgeOff?: number;
   readonly funnelLen?: number;
@@ -228,7 +243,7 @@ export function level4Layout(o: Level4Options = {}): Level4Layout {
   sections.push({ from: e1[0], to: e1[1], y0, y1: yP1, tag: 'w1' });
   sections.push({ from: p1[0], to: p1[1], y0: yP1, y1: yP1, mat: 'checkpoint', tag: 'p1' });
   // E2: Außen- und Innenbahn mit denselben θ-Grenzen (sonst Z-Fighting an der Trennkante). Gräben mit
-  // Auffang-Mulde: 72 u tief an der Absprungseite, bündig an der Landekante — wer zu kurz springt, hüpft heraus.
+  // Auffang-Mulde: TRENCH_DEPTH tief an der Absprungseite, bündig an der Landekante — wer zu kurz springt, hüpft heraus.
   const base2 = (t: number): number => yP1 + ((t - e2[0]) * RISE) / SEC;
   const trenches = o.trenches ?? TRENCHES;
   const cuts: number[] = [e2[0]];
@@ -239,9 +254,9 @@ export function level4Layout(o: Level4Options = {}): Level4Layout {
     sections.push({ from: a, to: b, y0: base2(a), y1: base2(b), rIn: R_SPLIT, tag: `w2out${i}` });
     sections.push(
       i % 2 === 1
-        ? // Grabensohle ohne Trims: sie steigt 26–33° und ist verwunden — jede Dreiecksfuge bekäme ein Leuchtband (Zickzack
+        ? // Grabensohle ohne Trims: sie steigt steiler als die Bahn und ist verwunden — jede Dreiecksfuge bekäme ein Leuchtband (Zickzack
           // quer durch die Grube). Die Absprungkante trägt die Bahn davor, die Sohle bleibt dunkles Metall.
-          { from: a, to: b, y0: base2(a) - TRENCH_DEPTH, y1: base2(b), rOut: R_SPLIT, noBoard: true, mat: 'metal', trim: false, tag: `trench${(i + 1) / 2}` }
+          { from: a, to: b, y0: base2(a) - (o.trenchDepth ?? TRENCH_DEPTH), y1: base2(b) - (o.trenchShape === 'flat' ? (o.trenchDepth ?? TRENCH_DEPTH) : 0), rOut: R_SPLIT, noBoard: true, mat: 'metal', trim: false, tag: `trench${(i + 1) / 2}` }
         : { from: a, to: b, y0: base2(a), y1: base2(b), rOut: R_SPLIT, noBoard: true, tint: '#c8d0ff', tag: `w2in${i / 2}` },
     );
   }
@@ -400,61 +415,80 @@ function undersideLights(helix: Helix, surface: BrushWorld, radii: readonly numb
   return out;
 }
 
-/** ↑C als Pixel-Glyph, Form wie L1 H7 (level1.ts) und das ↑C an der Wand; Zeile 0 = zur Wand. */
-const DUCK_ARROW_ROWS = ['..#..', '.###.', '#####', '.###.', '.###.', '.###.', '.###.', '.###.'];
-const DUCK_C_ROWS = ['.###.', '##.##', '##...', '##...', '##...', '##...', '##.##', '.###.'];
-const DUCK_GLYPH: readonly string[] = DUCK_ARROW_ROWS.map((a, i) => `${a}.${DUCK_C_ROWS[i]}`);
+/**
+ * Absprungband vor einer Crouch-Kante (Semantik wie T6: "am Band springen"), parallel zur Wand — der Abstand zur Wand
+ * ist auf jedem Radius derselbe. Hull-Front-Abstand (u) zur Wand:
+ * - TAKEOFF_NEAR, durchgehend eisblau: dort kommt jeder Crouch-Jump ohne Tempoverlust hoch, von 250 bis 950 u/s
+ *   (Raster 5 Radien × 8-u-Schritte: sauber bei 250 u/s ab 16 bis 104 u, bei 700–950 u/s ab 32 u);
+ * - TAKEOFF_FAR, drei dunklere Streifen davor: erst ab 450 u/s sauber (400 u/s bis 168 u, 250 u/s nur bis 104 u).
+ * Vorher lag ein ↑C-Glyph Hull-Front 32–238 u vor der Wand: seine wandferne Hälfte ließ genau die Langsamen abprallen
+ * (Wiederholer nach Anprall, Neulinge ~320 u/s, Respawn an CP2; Review 29.09.). Das ↑C steht weiter an der Wand.
+ */
+export const TAKEOFF_NEAR: V2 = [32, 104];
+export const TAKEOFF_FAR: V2 = [112, 208];
+const TAKEOFF_TINT = COL.ice;
+const TAKEOFF_FAR_TINT = '#3f7fa0';
 
-/** Glyph → Rechtecke [Zeile von, bis (exkl.), Spalte von, bis (exkl.)]: waagerechte Läufe, gleiche Läufe untereinander zusammengefasst. */
-function glyphRects(rows: readonly string[]): Array<readonly [number, number, number, number]> {
-  const open = new Map<string, [number, number, number, number]>();
-  const done: Array<readonly [number, number, number, number]> = [];
-  rows.forEach((row, r) => {
-    const cur = new Set<string>();
-    for (let c = 0; c < row.length; ) {
-      if (row[c] !== '#') {
-        c++;
-        continue;
-      }
-      const c0 = c;
-      while (c < row.length && row[c] === '#') c++;
-      const key = `${c0}:${c}`;
-      cur.add(key);
-      const o = open.get(key);
-      if (o) o[1] = r + 1;
-      else open.set(key, [r, r + 1, c0, c]);
-    }
-    for (const [key, o] of [...open]) {
-      if (cur.has(key)) continue;
-      done.push(o);
-      open.delete(key);
-    }
-  });
-  return [...done, ...open.values()];
+function takeoffBands(L: LevelBuilder, helix: Helix, wall: number, y: number): void {
+  // Frame an der Wand: u = Fahrtrichtung (senkrecht zur radialen Wand), v = radial nach außen.
+  const F = Frame.at(helix.xz(wall, R_LINE), helix.yawAt(wall));
+  // Quer über die Bahn, innen frei vom Kern-Pilaster (20 u), außen frei von der Bande.
+  const v: V2 = [R_IN + 40 - R_LINE, R_OUT - 44 - R_LINE];
+  const hw = PHYS.hullHalf;
+  const band = (front: V2, tint: string, tag: string): void => {
+    const [u0, u1] = [-(front[1] + hw), -(front[0] + hw)];
+    L.marking(F, [[u0, v[0]], [u1, v[0]], [u1, v[1]], [u0, v[1]]], y, tint, tag);
+  };
+  band(TAKEOFF_NEAR, TAKEOFF_TINT, 'duckMark');
+  const [a, b] = TAKEOFF_FAR;
+  const n = 3;
+  const w = (b - a) / (n + (n - 1) / 2); // Streifen und halb so breite Lücken
+  for (let i = 0; i < n; i++) band([a + i * 1.5 * w, a + i * 1.5 * w + w], TAKEOFF_FAR_TINT, 'duckMarkFar');
 }
 
 /**
- * Absprungzone vor einer Crouch-Kante als Bodenmarke (wie L1 H7): ↑C in Eisblau auf der Terrasse, Hull-Mitte 54–246 u vor
- * der Wand. Gemessen (Crouch-Jump von der Terrasse, Hull-Front d vor der Wand): oben ohne Tempoverlust bei d 40–240 u für
- * 450 u/s, 40–300 für 550, 40–≥ 380 für 700–950 — wer in der Marke springt, kommt bei jedem Tempo ab 450 u/s hoch. Mit
- * gehaltener Leertaste entscheidet sonst die Landephase (≈ 30 % Anprall). Gerader Frame tangential zur Glyph-Mitte
- * (Marken müssen Parallelogramme sein); die Kurve weicht an den Enden ≤ 5 u ab.
+ * Warnstreifen (Bernstein, schräg) auf der Innenbahn direkt vor jedem Graben: die Innenlinie ist kürzer, aber holprig —
+ * schneller nur bis ~550 u/s (W + Leertaste, level4.md "Innenbahn"); sie darf sich nicht wie eine freie Abkürzung lesen
+ * (Review 29.09.). Nur Optik (mat marking, ohne Kollision). Jeder Streifen liegt
+ * auf der schrägen, verwundenen Bahn: drei Ecken per Trace auf die Fläche, die vierte als Parallelogramm-Ergänzung.
  */
-function duckMark(L: LevelBuilder, helix: Helix, wall: number, y: number, tint: string): void {
-  const ROW = 24;
-  const COLW = 16;
-  const mid = 150;
-  const tc = wall - helix.dTheta(mid, R_LINE);
-  const F = Frame.at(helix.xz(tc, R_LINE), helix.yawAt(tc));
-  const rows = DUCK_GLYPH.length;
-  const cols = DUCK_GLYPH[0].length;
-  for (const [r0, r1, c0, c1] of glyphRects(DUCK_GLYPH)) {
-    // Zeile 0 liegt vorn (+u, zur Wand), v rechts = nach außen.
-    const u0 = (rows / 2 - r1) * ROW;
-    const u1 = (rows / 2 - r0) * ROW;
-    const v0 = (c0 - cols / 2) * COLW;
-    const v1 = (c1 - cols / 2) * COLW;
-    L.marking(F, [[u0, v0], [u1, v0], [u1, v1], [u0, v1]], y, tint, 'duckMark');
+function trenchWarnings(L: LevelBuilder, helix: Helix, surface: BrushWorld, trenches: ReadonlyArray<readonly [number, number]>): void {
+  const DEPTH: V2 = [-56, -10]; // u vor der Grabenkante
+  const W = 20;
+  const SLANT = 28;
+  const PERIOD = 44;
+  const v: V2 = [R_IN + 20 - R_E2_IN, R_SPLIT - 16 - R_E2_IN];
+  const a = new Vector3();
+  const b = new Vector3();
+  const mins = new Vector3(-0.25, 0, -0.25);
+  const maxs = new Vector3(0.25, 0.25, 0.25);
+  // Nur lokal suchen (± 80 u um die Bahnhöhe): über E2 liegen weitere Etagen.
+  const yAt = (x: number, z: number, y0: number): number => {
+    const tr = surface.traceBox(a.set(x, y0 + 80, z), b.set(x, y0 - 80, z), mins, maxs);
+    if (tr.fraction >= 1 || tr.startSolid) throw new Error(`level4: Warnstreifen ohne Boden bei ${x.toFixed(0)}, ${z.toFixed(0)}`);
+    return tr.endPos.y;
+  };
+  for (const [ta] of trenches) {
+    const F = Frame.at(helix.xz(ta, R_E2_IN), helix.yawAt(ta));
+    const y0 = helix.yAt(ta);
+    const at = (u: number, vv: number): Vec3Tuple => {
+      const [x, z] = F.xz(u, vv);
+      return [x, yAt(x, z, y0), z];
+    };
+    for (let v0 = v[0]; v0 + W + SLANT <= v[1] + 1e-6; v0 += PERIOD) {
+      const A = at(DEPTH[0], v0);
+      const B = at(DEPTH[1], v0 + SLANT);
+      const D = at(DEPTH[0], v0 + W);
+      // Die verwundene Bahn wölbt sich zwischen B und D bis ~0.7 u über die Sehne: die Mitte 0.35 u über die Fläche
+      // heben (Validator: Mitte ± 0.5 u; die Ecken liegen dann −0.03…0.7 u darüber, Marken-LIFT 0.35 hält sie sichtbar).
+      const cx = (B[0] + D[0]) / 2;
+      const cz = (B[2] + D[2]) / 2;
+      const lift = yAt(cx, cz, y0) + 0.35 - (B[1] + D[1]) / 2;
+      const C: Vec3Tuple = [B[0] + D[0] - A[0], B[1] + D[1] - A[1], B[2] + D[2] - A[2]];
+      const pts: Vec3Tuple[] = [];
+      for (const p of [A, B, C, D]) pts.push([p[0], p[1] + lift, p[2]], [p[0], p[1] + lift - 4, p[2]]);
+      L.add({ type: 'hull', points: pts, mat: 'marking', tint: COL.amber, collide: false, tag: 'trenchWarn' });
+    }
   }
 }
 
@@ -523,7 +557,8 @@ function safeKill(L: LevelBuilder, helix: Helix, min: V3, max: V3, tag: string):
 
 /**
  * Kill-Ring außen um die Wendel: Stücke à 15° (≤ 512 u Bogen), KILL_OUT außerhalb der Bande, Oberkante KILL_BELOW
- * unter der tiefsten Bahn des Stücks — eine Flucht über den Clip endet in < 1 s statt nach 3 s freiem Fall.
+ * unter der tiefsten Bahn des Stücks. Rückfallebene — mit Clip kommt niemand hinaus (Probe bandeEscape). Gemessen an
+ * der Variante ohne Clip (clipH 80): Tod ≈ 1 s nach dem Austritt (Median 1.0, p90 1.3 s) statt 2.9 s freiem Fall.
  */
 function killRing(L: LevelBuilder, helix: Helix): void {
   const DT = 15;
@@ -606,7 +641,9 @@ export function buildLevel4(o: Level4Options = {}): LevelFile {
   const clipH = o.clipH ?? CLIP_H;
   if (clipH > BOARD_H) L.add(...boardClips(helix.boards, clipH - BOARD_H));
   // Natriumgelb statt Trim-Farben: die Linien unter der nächsten Etage dürfen nicht wie begehbare Kanten aussehen.
-  if (o.underLights !== false) L.add(...undersideLights(helix, new BrushWorld(surface.map((b, i) => compileBrush(b, i))), [760, 1024], o.underTint ?? COL.sodium));
+  const surfaceWorld = new BrushWorld(surface.map((b, i) => compileBrush(b, i)));
+  if (o.underLights !== false) L.add(...undersideLights(helix, surfaceWorld, [760, 1024], o.underTint ?? COL.sodium));
+  trenchWarnings(L, helix, surfaceWorld, lay.trenches);
   const y0 = 0;
 
   // ── Kern (Innenwand der Wendel) ─────────────────────────────────────────
@@ -634,8 +671,8 @@ export function buildLevel4(o: Level4Options = {}): LevelFile {
     L.box([Math.min(lo[0], hi[0]), lo[1], Math.min(lo[2], hi[2])], [Math.max(lo[0], hi[0]), hi[1], Math.max(lo[2], hi[2])], { mat: 'wall', tint: COL.core, trim: false, tag: 'pilaster' });
   }
 
-  // ↑C-Absprungzone auf beiden Terrassen (L1 H7): das ↑C an der Wand steht dort, wo es zu spät ist.
-  for (const wall of crouchWalls) duckMark(L, helix, wall, helix.yAt(wall - 0.5), COL.ice);
+  // Absprungband auf beiden Terrassen (T6-Semantik): das ↑C an der Wand steht dort, wo es zu spät ist.
+  for (const wall of crouchWalls) takeoffBands(L, helix, wall, helix.yAt(wall - 0.5));
 
   // ── Anlauf (y 0): Start, eine Lücke mit Auffang-Mulde, dann Wendel-Fuß ───
   const FA = new Frame(CENTER[0], CENTER[1] + R_LINE, 270); // u nach Osten, v nach Süden
@@ -829,6 +866,7 @@ export function buildLevel4(o: Level4Options = {}): LevelFile {
       crouchWalls.forEach((wall, i) => {
         const start = i === 0 ? e3[0] : prev + LIP;
         for (let q = start + 8; q < wall - lay.terraces[i]; q += 8) L.node(onHelix(q), { minSpeed: 320 });
+        if (o.terraceNode !== undefined) L.node(onHelix(wall - helix.dTheta(o.terraceNode, R_LINE)), { minSpeed: 320 });
         const back = o.crouchBack ?? PHYS.hullHalf + 0.5 * (ra + rb) * vPlan; // Hull-Front im Fenster an der Wand
         crouchNodes.push(L.route.length);
         L.node(onHelix(wall - helix.dTheta(back, R_LINE)), { jump: true, crouch: true, minSpeed: vPlan, note: `Kante ${i + 1}` });
@@ -840,9 +878,10 @@ export function buildLevel4(o: Level4Options = {}): LevelFile {
     for (let t = e4[0] + STEP; t < e4[1]; t += STEP) L.node(onHelix(t), { minSpeed: 320, note: t === e4[0] + STEP ? 'E4 Auslauf' : undefined });
     L.node(onHelix(e4[1] - 0.5), { minSpeed: 320 });
     for (const u of [300, 700]) L.node(onSteg(u), { minSpeed: 320, note: u === 300 ? 'Steg' : undefined });
+    // Kein Knoten auf dem Sprungbrett: der Bot bremste nach dem Kronen-Hop 4 Ticks per S (745 → 436 u/s), um dort zu
+    // landen (kein Surf-Knoten → Luftbremse), und alle Bots waren in der Abfahrt ~1.1 s langsamer (Review 29.09.).
+    // Krone (v 0) → erster Surf-Knoten (v ≈ 3) läuft ohnehin über das Brett (v −112…128).
     L.node(onSteg(STEG_LEN + 100), { minSpeed: 320, note: 'Krone' });
-    const [bx, bz] = FS.xz(STEG_LEN + KRONE_LEN + 128, (BOARD_V[0] + BOARD_V[1]) / 2);
-    L.node(rest(bx, bz, kroneTop - 22), { minSpeed: 320, note: 'Absprung' });
   });
 
   // Surf-Knoten an der Nordflanke (rechts in Fahrtrichtung), LINE_DEPTH unter dem Grat. Die ersten zwei

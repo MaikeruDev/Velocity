@@ -124,6 +124,25 @@ export class TrainingProgress implements TrainingProgressView {
     this.record(lessonId, stages, stages.map((s) => s.id));
   }
 
+  /**
+   * Admin: Sterne einer Lektion genau setzen (auch senken) — erledigt gelten dann die Stufen, die diese
+   * Sterne tragen (★ Pflicht, ★★ + Bonus, ★★★ + Meister); 0 = zurücksetzen.
+   */
+  setStars(lessonId: string, stages: readonly StageRankRef[], stars: LessonStars): void {
+    this.items.delete(lessonId);
+    if (stars === 0) {
+      this.save();
+      this.emit();
+      return;
+    }
+    const ranks: readonly StageRank[] = stars >= 3 ? ['required', 'bonus', 'master'] : stars === 2 ? ['required', 'bonus'] : ['required'];
+    this.record(
+      lessonId,
+      stages,
+      stages.filter((s) => ranks.includes(s.rank ?? 'required')).map((s) => s.id),
+    );
+  }
+
   /** Admin: eine Lektion (oder alle) zurücksetzen. */
   reset(lessonId?: string): void {
     if (lessonId === undefined) this.items.clear();

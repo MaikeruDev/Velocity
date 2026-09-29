@@ -300,7 +300,7 @@ export class HandMotion {
   }
 
   update(dtRaw: number, inp: HandFrameInput): void {
-    const dt = Number.isFinite(dtRaw) ? clamp(dtRaw, 0, 0.1) : 0;
+    const dt = dtRaw - dtRaw === 0 ? clamp(dtRaw, 0, 0.1) : 0;
     if (dt <= 0) return;
     this.t += dt;
     this.frameDt = dt;

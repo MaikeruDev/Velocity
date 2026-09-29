@@ -3,7 +3,7 @@
  * dev/viewmodel.html (deterministisch: feste Zeit, eigener WebGL-Kontext, kein Spiel) und schreibt
  * je Kachel einen FNV-Hash über die RGBA-Pixel. Zwei Stände vergleichen = Hash-Listen vergleichen.
  * Warum nicht die In-Game-Blätter (viewmodel-shots props): die streuen schon zwischen zwei Läufen
- * desselben Codes um 29–42 Tsd. Pixel (fallen.md #57, inbox/cosmetics.md).
+ * desselben Codes um 29–42 Tsd. Pixel (fallen.md #57, #109).
  *
  *   node tools/cosmetics/vm-hash.mjs check [game|menu]                 gegen die eingecheckte Baseline (Exit 1 bei Unterschied)
  *   node tools/cosmetics/vm-hash.mjs write <out.json> [game|menu] [--png out.png]

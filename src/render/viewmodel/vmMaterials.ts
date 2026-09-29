@@ -17,8 +17,9 @@ import { GLSL_BAYER } from '../materials/shared';
  * Beide können per Bayer-Screen-Door ausblenden (`uVis`, Karten-Zaubertrick) — kein Blending.
  *
  * Plan 007: optional Vertex-Farbe (USE_VCOLOR, Teile eines Slots in einer Geometrie), gestuftes
- * Glanzband (SHEEN, Gold/Chrom — 3 harte Stufen statt PBR-Glanz) und ein Leucht-Regler (GLOW,
- * Roboter-LED im Takt). Ohne diese Optionen erzeugt der Präprozessor denselben Shader wie vorher.
+ * Glanzband (SHEEN, Gold/Chrom — 3 harte Stufen statt PBR-Glanz), ein Leucht-Regler (GLOW,
+ * Roboter-LED im Takt) und Tigerstreifen je Pixel (TABBY, Katze). Ohne diese Optionen erzeugt der
+ * Präprozessor denselben Shader wie vorher.
  */
 
 export interface VmLightUniforms {
@@ -77,6 +78,11 @@ out vec3 vPos;
 #ifdef USE_VCOLOR
 out vec3 vCol;
 #endif
+#ifdef TABBY
+in float aTabby;
+out float vTabby;
+out vec3 vLoc;
+#endif
 void main() {
   vec3 n = normalize(normalMatrix * normal);
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
@@ -99,6 +105,10 @@ void main() {
   vPos = mv.xyz;
 #ifdef USE_VCOLOR
   vCol = color;
+#endif
+#ifdef TABBY
+  vTabby = aTabby;
+  vLoc = position;
 #endif
   gl_Position = projectionMatrix * mv;
 }
@@ -125,6 +135,15 @@ uniform vec3 uSheenColor;
 #ifdef GLOW
 uniform float uGlow;
 #endif
+#ifdef TABBY
+uniform vec3 uStripe;
+in float vTabby;
+in vec3 vLoc;
+#endif
+#ifdef RUFF
+uniform vec3 uRuff[RUFF_N];
+uniform vec2 uRuffShape;
+#endif
 in vec3 vLight;
 in vec3 vRim;
 in vec2 vUv;
@@ -140,6 +159,28 @@ void main() {
   vec3 base = uColor * vCol;
 #else
   vec3 base = uColor;
+#endif
+#ifdef TABBY
+  // Tigerstreifen im Objektraum des Teils, je Pixel: Vertex-Farbe zwischen weit entfernten Ringen
+  // verschwamm zu einer Fläche (Kontaktblatt). 1 = Pfote/Finger: Querstreifen auf Rücken und Seiten
+  // (Innenseite −z bleibt hell); 2 = Bein: breite, gewellte Ringe unterhalb des Halsbands.
+  float st = 0.0;
+  if (vTabby > 1.5) st = step(0.25, sin(vLoc.y * 0.78 + 0.5 * sin(atan(vLoc.x, vLoc.z) * 2.0))) * step(vLoc.y, -5.6);
+  else if (vTabby > 0.5) st = step(0.3, sin(vLoc.y * 2.4 + vLoc.x * 0.6)) * step(-0.9, vLoc.z);
+#ifdef RUFF
+  // Fell-Saum (Bein): je Zacken-Reihe eine Zickzack-Kante im Objektraum, darunter ein schmaler dunkler Streifen
+  // (Schatten unter den Büscheln) — je Pixel scharf wie die Streifen; die Zacken der Geometrie (Ring.fur) liegen
+  // genau auf dieser Kante. uRuff[i] = (y der Kante, Versatz der Spitzen, Phase 0/1), uRuffShape = (Zacken rundum, Breite).
+  if (vTabby > 1.5) {
+    float tri = abs(2.0 * fract(atan(vLoc.x * RUFF_ASPECT, vLoc.z) * uRuffShape.x / 6.2831853) - 1.0);
+    for (int i = 0; i < RUFF_N; i++) {
+      float tooth = uRuff[i].z > 0.5 ? 1.0 - tri : tri;
+      float e = uRuff[i].x + uRuff[i].y * tooth;
+      st = max(st, step(e - uRuffShape.y, vLoc.y) * step(vLoc.y, e));
+    }
+  }
+#endif
+  base = mix(base, uStripe, st);
 #endif
   float emis = 0.0;
 #ifdef USE_TEX
@@ -235,6 +276,20 @@ export interface LitOptions {
   readonly scroll?: IUniform<number>;
   /** Einziehbare Krallen (Katze): Vertex-Attribut aClaw (0/1) fährt um (1 − uClaw) · Länge zurück (−y). */
   readonly claws?: ClawUniforms;
+  /** Tigerstreifen je Pixel (Katze): Vertex-Attribut aTabby (0/1/2, markTabby) wählt das Muster, Farbe `stripe`. */
+  readonly tabby?: { readonly stripe: number; readonly ruff?: RuffPattern };
+}
+
+/**
+ * Zickzack-Kanten des Fell-Saums (Katze, auf aTabby = 2): je Reihe y der Kante, Versatz der Spitzen entlang y und
+ * welche Vertices Spitzen sind (Ring.furPhase); `teeth` Zacken rundum, `aspect` = rz/rx der Ringe (Winkel wie in
+ * tubeGeometry), `band` Breite des dunklen Streifens unter der Kante.
+ */
+export interface RuffPattern {
+  readonly rows: readonly { readonly y: number; readonly drop: number; readonly phase: 0 | 1 }[];
+  readonly teeth: number;
+  readonly aspect: number;
+  readonly band: number;
 }
 
 /** Krallen-Ausfahren (Katzen-Skin): Anteil 0..1 (skinFx) und Rückzugs-Länge (Hand-Einheiten). */
@@ -265,6 +320,7 @@ export function createLitMaterial(light: VmLightUniforms, o: LitOptions): Shader
   if (sheen > 0) defines.SHEEN = '';
   if (o.glow) defines.GLOW = '';
   if (o.scroll) defines.UV_SCROLL = '';
+  if (o.tabby) defines.TABBY = '';
   const uniforms: Record<string, IUniform> = {
     uAmbSky: light.uAmbSky,
     uAmbGround: light.uAmbGround,
@@ -291,6 +347,15 @@ export function createLitMaterial(light: VmLightUniforms, o: LitOptions): Shader
   if (o.claws) {
     uniforms.uClaw = o.claws.out;
     uniforms.uClawLen = o.claws.len;
+  }
+  if (o.tabby) uniforms.uStripe = { value: hexVec(o.tabby.stripe) };
+  const ruff = o.tabby?.ruff;
+  if (ruff && ruff.rows.length > 0) {
+    defines.RUFF = '';
+    defines.RUFF_N = String(ruff.rows.length);
+    defines.RUFF_ASPECT = ruff.aspect.toFixed(6);
+    uniforms.uRuff = { value: ruff.rows.map((r) => new Vector3(r.y, r.drop, r.phase)) };
+    uniforms.uRuffShape = { value: new Vector2(ruff.teeth, ruff.band) };
   }
   const m = new ShaderMaterial({
     name: 'VmLit',

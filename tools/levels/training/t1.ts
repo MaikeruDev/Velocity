@@ -12,6 +12,7 @@
  * die Rinne mit Tempo — hinein kommt nur, wer geduckt ist; ein reines Tempo-Ziel am Hang schafft
  * W + Leertaste genauso (Hang-Landung A4: Hüpfen vom Grat bringt 456–629 u/s).
  */
+import { VELOCITY_DEFAULT } from '../../../src/player/MovementConfig';
 import type { LevelFile } from '../../../src/world/level/LevelFormat';
 import { Frame } from '../lib';
 import { naive, p2, routeHand, slider } from './drivers';
@@ -43,6 +44,8 @@ const U = {
   end: 7200,
 };
 const STEP = 48;
+/** Rutschen ab diesem Tempo (Lehr-Config = VELOCITY). */
+const SLIDE_MIN = VELOCITY_DEFAULT.slideMinSpeed;
 const LOW = STEP - Math.round((U.slope[1] - U.slope[0]) * Math.tan((SLOPE_DEG * Math.PI) / 180));
 
 export function buildT1(): LevelFile {
@@ -113,8 +116,11 @@ export function buildT1(): LevelFile {
   L.node([0, STEP, z(U.step + 180)], { note: 'oben' }); // 10
   L.node([0, STEP, z(U.tor3 + 150)], { note: 'rutsch-start' }); // 11
   L.node([0, STEP, z(U.tunnel[0] + 96)], { note: 'tunnel' }); // 12
-  L.node([-192, STEP, z(U.slope[0] - 40)]); // 13
-  L.node([-192, LOW, z(U.slope[1] + 80)]); // 14
+  // Weiter durch die Rutsch-Rinne (Meister-Vorführung 13→14): vor dem Hang auf die Rinnen-Seite, dann unten 40 u
+  // hinter dem Hangfuß — die Rutsche führt durch die Messzone. Kein Knoten im Hang: unter dem Dach findet die
+  // Boden-Sonde des Validators keinen Platz (Stand-Hull steckt, Duck-Hull 8.2–8.3 u über der Fläche).
+  L.node([192, STEP, z(U.slope[0] - 40)]); // 13
+  L.node([192, LOW, z(U.slope[1] + 40)], { note: 'rinne' }); // 14
   L.node([0, LOW, z(U.end - 300)], { note: 'portal' }); // 15
 
   B.stage({
@@ -124,7 +130,8 @@ export function buildT1(): LevelFile {
     task: { kind: 'reach', zone: 'linie' },
     opens: ['tor1'],
     spawn: { pos: [0, 0, 0], yaw: 0 },
-    demo: { kind: 'route', from: 0, to: 1, seconds: 6 },
+    // Vorführung wie die Anweisung: nur W laufen (vorher bhoppte der RouteFollower strafend mit ~500 u/s).
+    demo: { kind: 'route', from: 0, to: 1, style: 'walk', seconds: 6 },
   });
   B.stage({
     id: 'springen',
@@ -148,13 +155,15 @@ export function buildT1(): LevelFile {
   B.stage({
     id: 'rutschen',
     title: 'RUTSCHEN',
-    text: 'VOLLES TEMPO, DANN C DRÜCKEN:\nSO RUTSCHST DU DURCH DEN TUNNEL',
+    // Ohne Sprint bleibt das Tempo bei 250 — unter der Rutsch-Schwelle (Sprint + C 20/20, ohne 0/20, Review rv-tc3).
+    // Lektionen erzwingen deshalb Auto-Sprint (Game.applyLevel); Shift hieße dort "langsamer" — nicht erwähnen.
+    text: 'VOLL ANLAUFEN, DANN C DRÜCKEN:\nSO RUTSCHST DU DURCH DEN TUNNEL',
     task: { kind: 'event', event: 'slideStart', count: 1 },
     opens: ['tunnel'],
     spawn: { pos: [0, STEP, z(U.tor3 + 150)], yaw: 0 },
-    // Vorführung: der Bot läuft an und duckt vor der niedrigen Decke (Training.createDemo) — Sprint + C.
+    // Vorführung ('jump', Lektion ohne Drehbalken): läuft mit Sprint an und duckt vor der niedrigen Decke — Sprint + C.
     demo: { kind: 'route', from: 11, to: 12, seconds: 6 },
-    tips: [{ on: 'stuck', after: 10, text: 'ERST ANLAUFEN, DANN C:\nRUTSCHEN GEHT NUR MIT TEMPO' }],
+    tips: [{ on: 'stuck', after: 10, text: `ZU LANGSAM? RUTSCHEN ERST AB ${SLIDE_MIN} u/s:\nVOLL ANLAUFEN (OHNE SHIFT), DANN C` }],
   });
   B.stage({
     id: 'flink',
@@ -162,6 +171,8 @@ export function buildT1(): LevelFile {
     text: 'C ERST KURZ VOR DEM TUNNEL:\nMIT TEMPO DURCH DEN TUNNEL',
     task: { kind: 'course', zones: ['tunnel-rein', 'tunnel-raus'], minSpeed: 200 },
     rank: 'bonus',
+    // Dieselbe Vorführung wie RUTSCHEN: sie duckt erst 0.35 s vor der Decke (DuckAhead) — genau "C erst kurz davor".
+    demo: { kind: 'route', from: 11, to: 12, seconds: 6 },
   });
   B.stage({
     id: 'rinne',
@@ -170,6 +181,8 @@ export function buildT1(): LevelFile {
     task: { kind: 'course', zones: ['rinne-mess'], minSpeed: 450 },
     rank: 'master',
     spawn: { pos: [192, STEP, z(U.tunnel[1] + 40)], yaw: 0 },
+    // Vorführung ('jump', ohne A/D): läuft mit Sprint auf die Rinne zu, duckt vor dem Dach und rutscht den Hang hinab.
+    demo: { kind: 'route', from: 13, to: 14, seconds: 8 },
     tips: [{ on: 'stuck', after: 15, text: 'ANLAUFEN, VOR DER RINNE C DRÜCKEN\nDER HANG MACHT DICH SCHNELLER' }],
   });
   return B.build();

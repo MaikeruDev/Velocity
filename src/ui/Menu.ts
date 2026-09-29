@@ -7,7 +7,7 @@ import './menu.css';
 import type { BestTimes, SettingsPatch, SettingsStore } from '../engine/Settings';
 import type { BindAction, GameSettings, GloveId, HeldItemId } from '../engine/settingsTypes';
 import type { UnlockId, UnlockStore } from '../engine/Unlocks';
-import { PENDING_UNLOCKS, UNLOCKS, deriveUnlocks, gloveUnlock, itemUnlock, requirementMet, unlockDef } from '../engine/Unlocks';
+import { UNLOCKS, deriveUnlocks, gloveUnlock, itemUnlock, requirementMet, unlockDef } from '../engine/Unlocks';
 import type { GameEvent } from '../engine/events';
 import { ViewHand, hasPropTricks } from './hand/ViewHand';
 import { makeHandInput } from './hand/handMotion';
@@ -83,6 +83,8 @@ export interface MenuTraining extends TrainingProgressView {
   readonly playable: boolean;
   /** Admin: Lektion komplett abhaken. false = die Lektion ist noch nicht geladen (Stufen unbekannt). */
   complete(lessonId: string): boolean;
+  /** Admin: Sterne genau setzen (0 = zurücksetzen, auch senken). false = Lektion noch nicht geladen. */
+  setStars(lessonId: string, stars: LessonStars): boolean;
   /** Admin: Lektion zurücksetzen. */
   reset(lessonId: string): void;
 }
@@ -674,11 +676,18 @@ export class Menu {
     this.levels.forEach((lv, i) => {
       const bestTime = this.best.get(lv.id);
       const medal = medalFor(bestTime, lv.medals);
+      const prep = this.prepText(lv);
       const b = h(
         'button',
         `vel-btn vel-level${i === this.selected ? ' is-selected' : ''}`,
         h('span', 'vel-level-num', String(i + 1).padStart(2, '0')),
-        h('span', 'vel-level-name', listName(lv.name), lv.subtitle ? h('span', 'vel-level-sub', lv.subtitle) : null),
+        h(
+          'span',
+          'vel-level-name',
+          listName(lv.name),
+          lv.subtitle ? h('span', 'vel-level-sub', lv.subtitle) : null,
+          prep ? h('span', 'vel-level-prep', prep) : null,
+        ),
         h(
           'span',
           'vel-level-best',
@@ -765,6 +774,20 @@ export class Menu {
       h('div', '', h('h1', 'vel-logo', 'VELOCITY'), h('div', 'vel-logo-bar'), h('p', 'vel-subtitle', 'Bunnyhop · Air-Strafe · Surf — Neon-Parcours mit 128 Tick')),
       h('div', 'vel-title-grid', h('div', 'vel-col', band, levelPanel, start, this.lockHint('')), side),
     );
+  }
+
+  /**
+   * "Empfohlen: T7/T8" (Plan 007 I3, LevelIndexEntry.prepLessons): Lektionen, die das Level voraussetzt
+   * (L3 Surfen, L4 Crouch-Jump + Surfen) — nur solange eine davon noch keinen Stern hat, danach null.
+   */
+  private prepText(lv: LevelIndexEntry): string | null {
+    const ids = lv.prepLessons ?? [];
+    if (ids.length === 0) return null;
+    const lessons = this.training?.lessons() ?? [];
+    const open = ids.filter((id) => (this.training?.stars(id) ?? 0) === 0);
+    if (open.length === 0) return null;
+    const short = (id: string): string => lessons.find((l) => l.id === id)?.short ?? id.toUpperCase();
+    return `Empfohlen: ${open.map(short).join('/')}`;
   }
 
   /** Neuling: keine Bestzeit in irgendeinem Level und kein Trainingsfortschritt. */
@@ -869,8 +892,8 @@ export class Menu {
       h(
         'div',
         'vel-training-grid',
-        group('basics', 'Grundlagen', `bestanden → Fidget-Spinner${soon('item.spinner')}`),
-        group('advanced', 'Fortgeschritten', `alles bestanden → Roboter-Hand${soon('glove.robot')}`),
+        group('basics', 'Grundlagen', 'bestanden → Fidget-Spinner'),
+        group('advanced', 'Fortgeschritten', 'alles bestanden → Roboter-Hand'),
       ),
       start,
       playable || lessons.length === 0 ? this.lockHint('') : h('p', 'vel-hint vel-lock-hint', 'Die Lektions-Logik fehlt in diesem Build — Lektionen lassen sich nur ansehen.'),
@@ -1054,13 +1077,20 @@ export class Menu {
       : this.btn('Nochmal', 'vel-btn--primary vel-again', () => this.emit('restart', undefined), 'Enter');
     again.dataset.lock = '1';
 
-    return h(
-      'section',
-      (r.unlocked ?? []).length > 0 ? 'vel-screen vel-finish-screen vel-finish-screen--unlock' : 'vel-screen vel-finish-screen',
+    const head = [
       h('h1', 'vel-h1', 'Ziel', h('span', 'vel-dim', `· ${r.levelName}`)),
       h('p', 'vel-finish-time', formatTime(r.time)),
       r.isBest ? h('div', 'vel-record', 'NEUE BESTZEIT!') : null,
-      this.unlockBanner(r.unlocked ?? []),
+    ];
+    // Ziel-Foto (Handy, Plan 007 I3): Polaroid rechts neben der Zeit, sonst wie bisher.
+    const headBlock = r.photo ? h('div', 'vel-finish-head', h('div', 'vel-finish-head-main', ...head), polaroid(r, r.photo)) : h('div', 'vel-finish-headcol', ...head);
+    return h(
+      'section',
+      ((r.unlocked ?? []).length > 0 ? 'vel-screen vel-finish-screen vel-finish-screen--unlock' : 'vel-screen vel-finish-screen') +
+        (r.photo ? ' vel-finish-screen--photo' : ''),
+      // Kopf und Freischalt-Banner in einer Hülle: sonst `display: contents` (Layout wie bisher), in niedrigen Fenstern
+      // nebeneinander — bei 1280×720 lagen die Knöpfe sonst bis 340 px unter dem Rand (menu.css, max-height 800px).
+      h('div', 'vel-finish-top', headBlock, this.unlockBanner(r.unlocked ?? [])),
       stats,
       splits,
       h(
@@ -1317,43 +1347,71 @@ export class Menu {
       h('p', 'vel-hint', 'Medaille setzen schreibt eine Bestzeit knapp unter der Grenze. „Bestzeit löschen“ entfernt auch den Ghost.'),
     );
 
-    // --- Training (Plan 007): Lektion abhaken/zurücksetzen; Abhaken schaltet über die Ableitung frei.
+    // --- Training (Plan 007): Sterne je Lektion setzen (0 … ★★★, auch senken); Freischaltungen über die Ableitung.
     const t = this.training;
+    const STAR_OPTS: readonly LessonStars[] = [0, 1, 2, 3];
+    const setLesson = (id: string, n: LessonStars, note: HTMLElement): boolean => {
+      if (!t || !t.setStars(id, n)) {
+        note.textContent = 'nicht geladen';
+        return false;
+      }
+      return true;
+    };
     const lessonRows = (t ? t.lessons() : []).map((lv) => {
       const stars = h('span', 'vel-admin-time vel-stars', '');
-      const done = this.btn('Abhaken', 'vel-btn--small', () => {
-        if (!t || !t.complete(lv.id)) {
-          stars.textContent = 'nicht geladen';
-          return;
-        }
-        this.grantTraining();
-        refreshAll();
-      });
-      done.dataset.lesson = lv.id;
-      const reset = this.btn('Zurücksetzen', 'vel-btn--small', () => {
-        t?.reset(lv.id);
-        refreshAll();
+      const wrap = h('div', 'vel-seg vel-admin-seg vel-admin-stars');
+      const buttons = STAR_OPTS.map((n) => {
+        const b = h('button', 'vel-btn vel-admin-star', n === 0 ? 'keine' : STAR_ON.repeat(n));
+        b.type = 'button';
+        b.dataset.lesson = lv.id;
+        b.dataset.stars = String(n);
+        b.title = n === 0 ? 'Lektion zurücksetzen' : n === 3 ? 'Abhaken: alle Stufen' : n === 2 ? 'Pflicht + Bonus' : 'Pflichtstufen';
+        b.addEventListener('click', () => {
+          if (!setLesson(lv.id, n, stars)) return;
+          this.grantTraining();
+          refreshAll();
+        });
+        wrap.append(b);
+        return b;
       });
       refreshers.push(() => {
         const n = t ? t.stars(lv.id) : 0;
         stars.textContent = starText(n);
         stars.className = `vel-admin-time vel-stars vel-stars--${n}`;
-        reset.disabled = n === 0;
+        STAR_OPTS.forEach((m, i) => buttons[i].setAttribute('aria-pressed', String(m === n)));
       });
       return h(
         'div',
         'vel-admin-level vel-admin-lesson',
         h('div', 'vel-admin-level-head', h('span', 'vel-admin-name', `${lv.short} ${lessonName(lv)}`), stars),
-        h('div', 'vel-admin-level-ctl', h('div', 'vel-row', done, reset)),
+        h('div', 'vel-admin-level-ctl', wrap),
       );
     });
+    // Alle Lektionen auf einmal (Admin "kann alles"): ★★★ bzw. zurücksetzen.
+    const allNote = h('span', 'vel-hint', '');
+    const allLessons = (n: LessonStars): void => {
+      if (!t) return;
+      let ok = true;
+      for (const lv of t.lessons()) ok = setLesson(lv.id, n, allNote) && ok;
+      if (ok) allNote.textContent = '';
+      this.grantTraining();
+      refreshAll();
+    };
     const trainingPanel = h(
       'div',
       'vel-panel',
       h('h2', 'vel-h2', 'Training'),
-      lessonRows.length > 0 ? null : h('div', 'vel-hint', t ? 'Keine Lektionen gefunden.' : 'Lektionen werden geladen …'),
+      lessonRows.length > 0
+        ? h(
+            'div',
+            'vel-row vel-admin-actions',
+            this.btn('Alle ★★★', 'vel-btn--small vel-admin-all-lessons', () => allLessons(3)),
+            this.btn('Alle zurücksetzen', 'vel-btn--small', () => allLessons(0)),
+            allNote,
+          )
+        : h('div', 'vel-hint', t ? 'Keine Lektionen gefunden.' : 'Lektionen werden geladen …'),
       ...lessonRows,
-      h('p', 'vel-hint', 'Abhaken = alle Stufen (★★★). Freischaltungen aus dem Training (Spinner, Roboter) folgen sofort.'),
+      h('p', 'vel-hint', '★ = Pflichtstufen, ★★ + Bonus, ★★★ + Meister. Freischaltungen aus dem Training (Spinner, Roboter) folgen sofort; Zurücksetzen nimmt keine Freischaltung weg.'),
     );
 
     refreshAll();
@@ -1368,8 +1426,8 @@ export class Menu {
 
   /**
    * Admin hat Training abgehakt: alles, was laut Ableitung (deriveUnlocks mit Trainings-Fortschritt)
-   * am Training hängt und jetzt erfüllt ist, freischalten — auch vor Phase 3 (PENDING_UNLOCKS gilt
-   * nur für die automatische Ableitung; Admin darf alles, wie "Alles freischalten").
+   * am Training hängt und jetzt erfüllt ist, freischalten — sofort, wie ein echter Lektions-Abschluss
+   * (Game.sync holt es sonst erst beim nächsten Ziel/Start nach).
    */
   private grantTraining(): void {
     const t = this.training;
@@ -1954,12 +2012,24 @@ function isMenuEvent(k: string): k is keyof MenuEvents {
 }
 
 /**
- * " (bald)", solange die Ableitung eine Freischaltung noch zurückhält (Unlocks.PENDING_UNLOCKS bis Phase 3) —
- * die Liste soll nichts versprechen, was ein bestandener Lauf heute nicht vergibt. Leert Phase 3 die Menge,
- * verschwindet der Zusatz von selbst.
+ * Polaroid des Ziel-Fotos (Plan 007 I3): das Selfie (96×54, schon gedithert) ganzzahlig ×3 hochskaliert
+ * (image-rendering: pixelated, nie gedreht — gedrehte Pixel wären verschmiert), darunter Zeit und Medaille
+ * dieses Laufs wie auf einem beschrifteten Sofortbild.
  */
-function soon(id: UnlockId): string {
-  return PENDING_UNLOCKS.has(id) ? ' (bald)' : '';
+function polaroid(r: FinishResult, photo: HTMLCanvasElement): HTMLElement {
+  photo.classList.add('vel-polaroid-img');
+  const got = r.medals ? medalFor(r.time, r.medals) : null;
+  return h(
+    'figure',
+    'vel-polaroid',
+    photo,
+    h(
+      'figcaption',
+      'vel-polaroid-cap',
+      h('span', 'vel-polaroid-time', formatTime(r.time)),
+      got !== null ? h('span', `vel-medal vel-medal--${got}`, MEDAL_NAMES[got]) : h('span', 'vel-polaroid-level', listName(r.levelName)),
+    ),
+  );
 }
 
 /** Index der empfohlenen Lektion: die erste ohne Stern (−1 = alle bestanden oder keine). */

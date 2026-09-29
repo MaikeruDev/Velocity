@@ -64,6 +64,7 @@ import type { MutablePlayerInput } from '../src/player/types';
 import { hasGlyph } from '../src/ui/glyphs';
 import { MIN_GROUND_NORMAL_Y } from '../src/world/collision/types';
 import { OVERSHOOT, PHYS, RESERVE, airTime } from './levels/ballistics';
+import { LEVELS } from './levels/build';
 import { designProbes, type DesignReport } from './levels/designProbes';
 import { checkTrainingLevel } from './levels/training/check';
 import { isParallelogram } from '../src/render/trims';
@@ -80,6 +81,7 @@ import {
   respawnSurf,
   sectionFromStart,
   jitterMedian,
+  medianOf,
   surfGrid,
   timedMedian,
   withRoute,
@@ -985,7 +987,7 @@ export function crouchSpeeds(cfg: MovementConfig, minSpeed: number | undefined):
 /**
  * Ein Anlauf auf eine Kante OHNE Ducken: ab `start` mit Tempo v in Richtung (fx, fz), W + Sprint + Leertaste
  * gehalten (Auto-Hop, mehrere Versuche), 1.5 s. true = Füße stehen auf Kantenhöhe (≥ top − 1) und `past`.
- * Füße selbst prüfen, kein simulate-Ziel: das wird gegen die ganze Hull geprüft (inbox level-tools).
+ * Füße selbst prüfen, kein simulate-Ziel: das wird gegen die ganze Hull geprüft (fallen.md #93).
  */
 function climbsWithoutDuck(
   world: CollisionWorld,
@@ -1427,8 +1429,17 @@ export function validateLevel(file: string, def: LevelFile, opts: ValidateOption
     if (par !== undefined && bots.perfect !== null && par < bots.perfect) r.warnings.push(`Par ${par} s liegt unter der Zeit des perfekten Bots (${fmt(bots.perfect, 1)} s)`);
     // Par = Ansage für Gelegenheitsspieler (3°-Hand + ~5 %, build.ts, Spiel-Uhr): darunter unerreichbar, weit darüber bedeutungslos.
     // Mit Gabel misst build.ts Bronze auf der sicheren Linie — also auch hier.
-    const h3 = safeBots ? safeBots.hand3Timed : bots.hand3Timed;
-    if (par !== undefined && h3 !== null && par < h3) r.warnings.push(`Par ${par} s liegt unter der 3°-Hand mit Spiel-Uhr (${fmt(h3, 1)} s)`);
+    // Hat das Level eine Medaillen-Referenz (build.ts LEVELS[].reference, L4: Hybrid mit Surf-Grundtechnik), zählt wie
+    // in build.ts die schnellere Technik der 3°-Hand.
+    const h3bot = safeBots ? safeBots.hand3Timed : bots.hand3Timed;
+    const refEntry = physics && par !== undefined ? LEVELS.find((e) => e.id === def.id) : undefined;
+    const ref = refEntry?.reference ? refEntry.reference() : null;
+    const refRuns = ref ? ref.runs(safe ?? level, { aimNoiseDeg: 3 }, safe ? 'safeRoute' : 'route', false, FULL_RUN_SEEDS) : null;
+    const h3ref = refRuns ? medianOf(refRuns.runs) : null;
+    const h3 = h3bot === null ? h3ref : h3ref === null ? h3bot : Math.min(h3bot, h3ref);
+    if (par !== undefined && h3 !== null && par < h3)
+      r.warnings.push(`Par ${par} s liegt unter der 3°-Hand mit Spiel-Uhr (${fmt(h3, 1)} s${h3ref !== null ? `; RouteFollower ${h3bot === null ? '–' : fmt(h3bot, 1)}, Referenz ${fmt(h3ref, 1)}` : ''})`);
+    else if (par !== undefined && h3ref !== null) r.info.push(`Par ${par} s: 3°-Hand mit Spiel-Uhr RouteFollower ${h3bot === null ? '–' : fmt(h3bot, 1)} s, Referenz (${ref?.name ?? ''}) ${fmt(h3ref, 1)} s`);
     if (par !== undefined && h3 !== null && par > PAR_SLACK_MAX * h3) r.warnings.push(`Par ${par} s liegt über ${PAR_SLACK_MAX} × 3°-Hand (${fmt(h3, 1)} s) — bedeutungslos`);
   }
   return r;

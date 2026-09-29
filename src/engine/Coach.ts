@@ -19,8 +19,12 @@ import type { Verdict } from './trainingTypes';
  *   letzten guten Hop → Hinweis mit dem Text genau dieses Fehlers (Maus steht → "Maus mitziehen").
  *   Nur unter 600 u/s Absprungtempo: darüber sind Fehlurteile verrauschter Hände meist Zielfehler,
  *   keine Technik (Plan 007 §4.3: 30–50 % weak/tooFast bei 600–1000 u/s). 'wOnly'/'noSide' zählen
- *   nicht — das ist kein Strafe-Versuch, sondern W + Leertaste (mit Luftlenkung gewollt).
+ *   hier nicht — das ist kein Strafe-Versuch, sondern W + Leertaste (mit Luftlenkung gewollt).
  *   Gelernt: ein guter Hop.
+ * - noStrafe: bewusste Abweichung vom Entwurf (dort 'wOnly' als Fehler-Hinweis "W LOSLASSEN"): W + Leertaste
+ *   ist mit Luftlenkung legitim, bringt aber kein Tempo. Wer NO_STRAFE_HOPS Hops ohne Strafe-Versuch unter
+ *   NO_STRAFE_MAX_SPEED macht und noch nie gut gestrafet hat, bekommt EINMAL je Sitzung einen Anstoß mit
+ *   Verweis aufs Training — sonst erfuhr ein W-Hüpfer in L1 nie, dass es Strafen gibt.
  *
  * In Lektionen (lesson = true) ist der Coach stumm: die Lektion lehrt selbst (Karte, Urteile, eigene
  * Tipps über TrainingSession.tip).
@@ -29,9 +33,9 @@ import type { Verdict } from './trainingTypes';
  * dieses Ticks).
  */
 
-export type HintId = 'crouch' | 'surf' | 'strafe';
+export type HintId = 'crouch' | 'surf' | 'strafe' | 'noStrafe';
 
-export const HINT_IDS: readonly HintId[] = ['crouch', 'surf', 'strafe'];
+export const HINT_IDS: readonly HintId[] = ['crouch', 'surf', 'strafe', 'noStrafe'];
 
 /** Horizontaler Umkreis um die Crouch-Kante (Knoten → nächster Knoten), in dem Bonks zählen. */
 const CROUCH_RADIUS = 400;
@@ -53,6 +57,12 @@ export const JUDGE_MAX_SPEED = 600;
 export const JUDGE_SAME = 3;
 /** Derselbe Hinweis frühestens wieder nach … s (die Anzeige steht ~5 s). */
 const COOLDOWN = 6;
+/** Anstoß "Schneller?": so viele Hops ohne Strafe-Versuch ('wOnly'/'noSide') seit dem letzten guten Hop … */
+export const NO_STRAFE_HOPS = 6;
+/** … mit Absprung unter diesem Tempo (u/s) — darüber ist man schon schnell genug unterwegs. */
+export const NO_STRAFE_MAX_SPEED = 400;
+/** Text des Anstoßes (≤ 2 Zeilen à ≤ 40 Zeichen). */
+const NO_STRAFE_TEXT = 'SCHNELLER? IN DER LUFT A ODER D HALTEN\nUND DIE MAUS MITZIEHEN · TRAINING T3';
 
 /** Fehlurteile, die kein Strafe-Versuch sind (nur W / gar nichts) — zählen weder für noch gegen. */
 function isStrafeAttempt(v: Verdict): boolean {
@@ -69,6 +79,7 @@ const STRAFE_GENERIC = 'MAUS UND A/D IN DIESELBE RICHTUNG\nA + MAUS LINKS · D +
 export function hintText(id: HintId, verdict: Verdict | null, crouchKey: string): string {
   if (id === 'crouch') return `IN DER LUFT DUCKEN [${crouchKey}]\nZIEHT DIE FÜSSE 18 u HÖHER`;
   if (id === 'surf') return 'W LOS · A/D IN DIE RAMPE · MAUS ENTLANG';
+  if (id === 'noStrafe') return NO_STRAFE_TEXT;
   const long = verdict !== null ? VERDICT_TEXT[verdict].long : '';
   return long !== '' ? long : STRAFE_GENERIC;
 }
@@ -82,12 +93,14 @@ export class Coach {
   onHint: (id: HintId, verdict: Verdict | null) => void = () => undefined;
 
   private time = 0;
-  private readonly learnedMap: Record<HintId, boolean> = { crouch: false, surf: false, strafe: false };
-  private readonly shownMap: Record<HintId, number> = { crouch: 0, surf: 0, strafe: 0 };
-  private readonly lastShown: Record<HintId, number> = { crouch: -Infinity, surf: -Infinity, strafe: -Infinity };
+  private readonly learnedMap: Record<HintId, boolean> = { crouch: false, surf: false, strafe: false, noStrafe: false };
+  private readonly shownMap: Record<HintId, number> = { crouch: 0, surf: 0, strafe: 0, noStrafe: 0 };
+  private readonly lastShown: Record<HintId, number> = { crouch: -Infinity, surf: -Infinity, strafe: -Infinity, noStrafe: -Infinity };
   private readonly judge: StrafeJudge;
   /** Fehlurteile je Art seit dem letzten guten Hop (Index = VERDICTS). */
   private readonly verdictCounts = new Int32Array(VERDICTS.length);
+  /** Hops ohne Strafe-Versuch unter NO_STRAFE_MAX_SPEED seit dem letzten guten Hop (Sitzung, nicht je Lauf). */
+  private noStrafeHops = 0;
   private lastVerdict: Verdict | null = null;
 
   // Crouch-Kanten: je 6 Werte (Knoten A xyz, Knoten B xyz), B = Oberkante.
@@ -213,17 +226,25 @@ export class Coach {
 
   /**
    * Ein Urteil des StrafeJudge (tick ruft das selbst; öffentlich für Tests). Guter Hop = gelernt;
-   * dreimal dasselbe Fehlurteil unter 600 u/s → Hinweis mit dem Text dieses Fehlers.
+   * dreimal dasselbe Fehlurteil unter 600 u/s → Hinweis mit dem Text dieses Fehlers. Kein Strafe-Versuch
+   * (nur W / gar nichts) zählt nur für den einmaligen Anstoß 'noStrafe'.
    */
   judged(verdict: Verdict, takeoffSpeed: number): void {
     if (!this.enabled || this.lesson) return;
     const counts = this.verdictCounts;
     if (verdict === 'good') {
       this.learn('strafe');
+      this.learn('noStrafe');
       counts.fill(0);
+      this.noStrafeHops = 0;
       return;
     }
-    if (!isStrafeAttempt(verdict) || takeoffSpeed >= JUDGE_MAX_SPEED) return;
+    if (!isStrafeAttempt(verdict)) {
+      if (takeoffSpeed >= NO_STRAFE_MAX_SPEED || this.shownMap.noStrafe > 0) return;
+      if (++this.noStrafeHops >= NO_STRAFE_HOPS) this.show('noStrafe', false, null);
+      return;
+    }
+    if (takeoffSpeed >= JUDGE_MAX_SPEED) return;
     const i = VERDICTS.indexOf(verdict);
     if (++counts[i] < JUDGE_SAME) return;
     counts.fill(0);

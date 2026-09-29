@@ -5,7 +5,6 @@ import { BEST_KEY, BestTimes, SETTINGS_KEY, SettingsStore } from '../src/engine/
 import type { StorageLike } from '../src/engine/Settings';
 import { DEFAULT_SETTINGS } from '../src/engine/settingsTypes';
 import {
-  PENDING_UNLOCKS,
   UNLOCKS,
   UNLOCKS_KEY,
   UnlockStore,
@@ -36,7 +35,7 @@ import { PropOut, PropTricks as PropTricksBase } from '../src/ui/hand/propTricks
 import { ViewHand, hasPropTricks } from '../src/ui/hand/ViewHand';
 import { SPINNER_HOLD_POS, SPINNER_OMEGA_BASE, SPINNER_OMEGA_MAX, SPINNER_OMEGA_PER_SPEED, SPINNER_STEP_CAP, SPINNER_TIER_TRICKS, SPINNER_TRICKS, SpinnerTricks } from '../src/ui/hand/spinnerTricks';
 import type { SpinnerTrick } from '../src/ui/hand/spinnerTricks';
-import { VM_PARAM, VM_STRING_POINTS } from '../src/render/types';
+import { VM_PARAM, VM_RIG, VM_STRING_POINTS } from '../src/render/types';
 import { hasItemView } from '../src/render/viewmodel/items';
 import { annulusGeometry, boneGeometry, mergeGeometries, tubeGeometry } from '../src/render/viewmodel/vmGeometry';
 import type { BufferGeometry } from 'three';
@@ -45,12 +44,13 @@ import { makeHandInput } from '../src/ui/hand/handMotion';
 import { POSE, POSE_JOINTS } from '../src/ui/hand/poses';
 import { PROP_FACTORIES } from '../src/ui/hand/ViewHand';
 import type { PropControl } from '../src/ui/hand/propTricks';
-import { YOYO_STRING, YOYO_TIER_TRICKS, YoyoTricks } from '../src/ui/hand/yoyoTricks';
+import { CRADLE_FRONT, CRADLE_INDEX_BEYOND, CRADLE_THUMB_BEYOND, YOYO_STRING, YOYO_TIER_TRICKS, YoyoTricks } from '../src/ui/hand/yoyoTricks';
+import { fingerTip, thumbPoint } from '../src/ui/hand/fk';
 import { BLOW_SPEED, BLOW_TIME, CALM_SPEED, LIGHTER_TIER_TRICKS, LighterTricks, RELIGHT_TIME } from '../src/ui/hand/lighterTricks';
 import { COIN_TIER_TRICKS, CoinTricks, HEADS, TAILS } from '../src/ui/hand/coinTricks';
 import { KEN_BIG_CUP, KEN_SMALL_CUP, KEN_SPIKE, KENDAMA_TIER_TRICKS, KendamaTricks } from '../src/ui/hand/kendamaTricks';
 import { PHONE_TIER_TRICKS, PhoneTricks, SHUTTER_AT } from '../src/ui/hand/phoneTricks';
-import { VIEW_AXES } from '../src/ui/hand/rot';
+import { VIEW_AXES, axisAngle, fromEulerXYZ, mat3, mul, mulT, toAxisAngleQ } from '../src/ui/hand/rot';
 import { UNITS_PER_IMAGE_HEIGHT } from '../src/ui/hand/rope';
 import { socketPoint } from '../src/ui/hand/view';
 import { VM_PHONE_MODE } from '../src/render/types';
@@ -78,8 +78,10 @@ const LEVELS = [
   { id: 'level2', medals: M2 },
   { id: 'sandbox', medals: null },
 ];
-/** Die vier Freischaltungen aus Plan 005/006 — die Ableitung aus Bestzeiten vergibt bis Phase 3 nur diese. */
+/** Die vier Freischaltungen aus Plan 005/006 (Zuordnung unverändert). */
 const ALL: UnlockId[] = ['glove.neon', 'item.card', 'item.can', 'item.knife'];
+/** Alles, was L1/L2 allein vergeben (alle Medaillen in beiden): Plan-006-Vier + Jo-Jo, Feuerzeug, Skelett. */
+const L12: UnlockId[] = ['item.yoyo', 'item.lighter', 'glove.neon', 'glove.skeleton', 'item.card', 'item.can', 'item.knife'];
 /** Alle 14 aus der Freischalt-Tabelle (Plan 007 §7), in Leiter-Reihenfolge. */
 const ALL14: UnlockId[] = UNLOCKS.map((u) => u.id);
 const legacy = (ids: readonly UnlockId[]): UnlockId[] => ids.filter((id) => ALL.includes(id));
@@ -148,32 +150,34 @@ describe('Freischaltungen (Plan 006, Tabelle Plan 007)', () => {
     expect(deriveUnlocks(LEVELS, () => null, trainingView({}, 0))).toEqual([]);
   });
 
-  it('bis Phase 3 vergibt die Ableitung nur die vier bestehenden (neue Kosmetik gibt es noch nicht), Admin kann alle 14', () => {
-    expect(ALL14.filter((id) => !PENDING_UNLOCKS.has(id))).toEqual(ALL);
+  it('Phase 3: die Ableitung vergibt alle 14 (nichts mehr zurückgehalten), Admin-Medaille ebenso', () => {
     const mem = new MemoryStorage();
     const s = new UnlockStore(mem);
     const four = [...LEVELS, { id: 'level3', medals: M1 }, { id: 'level4', medals: M2 }];
     const full = trainingView({ t1: 3, t2: 3, t3: 3, t4: 3, t5: 3, t6: 3, t7: 3, t8: 3 });
-    expect(s.sync(four, () => 1, full)).toEqual(ALL);
-    expect(s.list()).toEqual(ALL);
-    const best = new BestTimes(mem);
-    best.set('level1', adminTimeFor('silver', M1));
-    expect(s.grantEarnedFor('level1', LEVELS, (id) => best.get(id))).toEqual([]);
-    expect(s.has('item.yoyo')).toBe(false);
-    s.unlockAll();
+    expect(s.sync(four, () => 1, full)).toEqual(ALL14);
     expect(s.list()).toEqual(ALL14);
-    expect(new UnlockStore(mem).list()).toEqual(ALL14);
+    const m = new MemoryStorage();
+    const t = new UnlockStore(m);
+    const best = new BestTimes(m);
+    best.set('level1', adminTimeFor('silver', M1));
+    expect(t.grantEarnedFor('level1', LEVELS, (id) => best.get(id))).toEqual(['item.yoyo']);
+    expect(new UnlockStore(m).list()).toEqual(['item.yoyo']);
+    t.unlockAll();
+    expect(new UnlockStore(m).list()).toEqual(ALL14);
   });
 
   it('die echten Level-Medaillen passen zur Ableitung', () => {
     const idx = parseIndex(JSON.parse(readFileSync('public/levels/index.json', 'utf8')));
-    // L3/L4 kommen in Plan 007 Phase 2 — Phase 3 (Integration) streicht diese Ausnahme.
-    const planned = new Set(['level3', 'level4']);
+    // Plan 007 Phase 3: alle vier Level stehen mit Medaillen im Index (keine Ausnahme mehr für L3/L4).
+    expect(idx.map((l) => l.id)).toEqual(['level1', 'level2', 'level3', 'level4']);
     for (const u of UNLOCKS) {
       for (const r of u.requires) {
-        if (r.kind === 'medal' && !planned.has(r.levelId)) expect(idx.find((l) => l.id === r.levelId)?.medals, u.id).toBeDefined();
+        if (r.kind === 'medal') expect(idx.find((l) => l.id === r.levelId)?.medals, u.id).toBeDefined();
       }
     }
+    // Index = Level-Datei (build.ts schreibt beide; die Freischaltung liest den Index, das Ergebnis die Datei).
+    for (const e of idx) expect(JSON.parse(readFileSync(`public/levels/${e.file}`, 'utf8')).medals, e.id).toEqual(e.medals);
     const l1 = idx.find((l) => l.id === 'level1');
     if (!l1?.medals) throw new Error('level1 ohne Medaillen');
     expect(deriveUnlocks(idx, (id) => (id === 'level1' ? (l1.medals?.gold ?? null) : null))).toEqual(['item.yoyo', 'glove.neon']);
@@ -185,7 +189,8 @@ describe('Freischaltungen (Plan 006, Tabelle Plan 007)', () => {
     const store = new UnlockStore(mem);
     expect(store.list()).toEqual([]);
     const best = (id: string): number | null => (id === 'level2' ? 16.0 : null);
-    expect(store.sync(LEVELS, best)).toEqual(['item.can']);
+    const l2: UnlockId[] = ['item.lighter', 'glove.skeleton', 'item.can'];
+    expect(store.sync(LEVELS, best)).toEqual(l2);
     expect(store.sync(LEVELS, best)).toEqual([]);
     const raw: unknown = JSON.parse(mem.getItem(UNLOCKS_KEY) ?? 'null');
     expect(raw).toMatchObject({ v: 3, unlocked: { 'item.can': expect.any(String) }, locked: [] });
@@ -196,7 +201,7 @@ describe('Freischaltungen (Plan 006, Tabelle Plan 007)', () => {
     expect(new UnlockStore(mem).list()).toEqual([]);
     expect(parseUnlocks({ v: 4, unlocked: { 'item.can': 'x' } }).size).toBe(0);
     expect([...parseUnlocks({ v: 2, unlocked: { 'item.can': 'x', 'hat.crown': 'y' } }).keys()]).toEqual(['item.can']);
-    expect(new UnlockStore(mem).sync(LEVELS, best)).toEqual(['item.can']);
+    expect(new UnlockStore(mem).sync(LEVELS, best)).toEqual(l2);
   });
 
   it('Migration v1: Neon behalten (+ Karte), Neon + Dose → auch Messer; Stand wird als v3 neu geschrieben', () => {
@@ -220,9 +225,9 @@ describe('Freischaltungen (Plan 006, Tabelle Plan 007)', () => {
   it('verdient bleibt verdient: Freischaltung hält auch, wenn die Bestzeit fehlt', () => {
     const mem = new MemoryStorage();
     new UnlockStore(mem).sync(LEVELS, () => 1);
-    expect(new UnlockStore(mem).list()).toEqual(ALL);
+    expect(new UnlockStore(mem).list()).toEqual(L12);
     expect(new UnlockStore(mem).sync(LEVELS, () => null)).toEqual([]);
-    expect(new UnlockStore(mem).list()).toEqual(ALL);
+    expect(new UnlockStore(mem).list()).toEqual(L12);
   });
 
   it('unlockAll / reset: reset hält dauerhaft gegen die Ableitung (auch nach Neuladen)', () => {
@@ -262,11 +267,11 @@ describe('Freischaltungen (Plan 006, Tabelle Plan 007)', () => {
     expect(re.has('glove.neon')).toBe(false);
     expect(re.isLocked('glove.neon')).toBe(true);
     // Die anderen bleiben unberührt.
-    expect(re.list()).toEqual(['item.card', 'item.can', 'item.knife']);
+    expect(re.list()).toEqual(L12.filter((id) => id !== 'glove.neon'));
     // Wieder an: Sperre weg.
     re.set('glove.neon', true);
     expect(re.isLocked('glove.neon')).toBe(false);
-    expect(new UnlockStore(mem).list()).toEqual(ALL);
+    expect(new UnlockStore(mem).list()).toEqual(L12);
     expect(parseLocked(JSON.parse(mem.getItem(UNLOCKS_KEY) ?? 'null')).size).toBe(0);
   });
 
@@ -278,13 +283,13 @@ describe('Freischaltungen (Plan 006, Tabelle Plan 007)', () => {
     best.set('level1', adminTimeFor('velocity', M1));
     // Echte Ableitung respektiert die Sperre ...
     expect(s.sync(LEVELS, (id) => best.get(id))).toEqual([]);
-    // ... die Admin-Medaille nicht: L1-VELOCITY → Neon + Karte; Messer braucht noch L2, Dose ist L2.
-    expect(s.grantEarnedFor('level1', LEVELS, (id) => best.get(id))).toEqual(['glove.neon', 'item.card']);
+    // ... die Admin-Medaille nicht: L1-VELOCITY → Jo-Jo (Silber), Neon (Gold), Karte; Messer braucht noch L2.
+    expect(s.grantEarnedFor('level1', LEVELS, (id) => best.get(id))).toEqual(['item.yoyo', 'glove.neon', 'item.card']);
     expect(s.isLocked('item.can')).toBe(true);
     expect(s.isLocked('item.knife')).toBe(true);
     best.set('level2', adminTimeFor('velocity', M2));
-    expect(s.grantEarnedFor('level2', LEVELS, (id) => best.get(id))).toEqual(['item.can', 'item.knife']);
-    expect(new UnlockStore(mem).list()).toEqual(ALL);
+    expect(s.grantEarnedFor('level2', LEVELS, (id) => best.get(id))).toEqual(['item.lighter', 'glove.skeleton', 'item.can', 'item.knife']);
+    expect(new UnlockStore(mem).list()).toEqual(L12);
   });
 
   it('Migration v2 → v3: nichts gesperrt, Einträge bleiben, Neuschreiben mit locked: []', () => {
@@ -295,14 +300,14 @@ describe('Freischaltungen (Plan 006, Tabelle Plan 007)', () => {
     expect(UNLOCKS.every((u) => !s.isLocked(u.id))).toBe(true);
     expect(JSON.parse(mem.getItem(UNLOCKS_KEY) ?? 'null')).toEqual({ v: 3, unlocked: { 'item.can': '2026-09-28T02:00:00Z' }, locked: [] });
     // Ableitung wirkt normal weiter.
-    expect(s.sync(LEVELS, () => 1)).toEqual(['glove.neon', 'item.card', 'item.knife']);
+    expect(s.sync(LEVELS, () => 1)).toEqual(L12.filter((id) => id !== 'item.can'));
     // Kaputte/fremde Sperr-Einträge fallen weg; frei gewinnt gegen gesperrt.
     mem.setItem(UNLOCKS_KEY, JSON.stringify({ v: 3, unlocked: { 'item.can': 'x' }, locked: ['item.can', 'hat.crown', 'glove.neon', 7] }));
     const t = new UnlockStore(mem);
     expect(t.has('item.can')).toBe(true);
     expect(t.isLocked('item.can')).toBe(false);
     expect(t.isLocked('glove.neon')).toBe(true);
-    expect(t.sync(LEVELS, () => 1)).toEqual(['item.card', 'item.knife']);
+    expect(t.sync(LEVELS, () => 1)).toEqual(L12.filter((id) => id !== 'item.can' && id !== 'glove.neon'));
   });
 
   it('Kosmetik-Zuordnung und Sofort-Anlegen', () => {
@@ -1426,24 +1431,29 @@ function upOf(x: number, y: number, z: number): number {
 const RUN_JOINTS = POSE_JOINTS[POSE.run];
 
 /**
- * Ein Trick ab t = 1/6 s, JEDER Frame; Zustände (Surf) mit 1 s Surf, Ende auf dem Raster. Wie trickRun
- * beim Spinner — für alle Gegenstände. `after` = afterPose rufen (Schnur/zweiter Körper).
+ * Ein Trick ab t = 1/6 s, JEDER Frame; Zustände (Surf) mit `surfFor` s Surf (Standard 1 s — vor der ersten Einlage),
+ * Ende auf dem Raster. Wie trickRun beim Spinner — für alle Gegenstände. `after` = afterPose rufen (Schnur/zweiter Körper).
  */
-function runTrick(item: HeldItemId, name: string, fps: number): { every: number[][]; sub: number[][]; free: boolean } {
+function runTrick(item: HeldItemId, name: string, fps: number, finishAt = -1, surfFor = 1): { every: number[][]; sub: number[][]; free: boolean; flourishes: number } {
   const p = makeProp(item);
   const dt = 1 / fps;
   const start = Math.round(fps / 6);
-  const surfEnd = Math.round((fps * 7) / 6);
+  const surfEnd = start + Math.round(fps * surfFor);
+  // Optional: Ziel zur Zeit finishAt (auf dem 1/6-s-Raster) — bricht Trick oder Zustand ab.
+  const finishFrame = finishAt > 0 ? Math.round(fps * finishAt) : -1;
   const state = SURF_STATE[item] === name;
   const every: number[][] = [];
   const sub: number[][] = [];
   let free = false;
-  for (let f = 1; f <= Math.round(2.6 * fps); f++) {
+  // Auf das 1/6-s-Raster (alle Frameraten teilen es), sonst endeten die Läufe je Framerate verschieden.
+  const total = Math.round((Math.max(15.6, Math.ceil((1 / 6 + surfFor + 1.4) * 6)) / 6) * fps);
+  for (let f = 1; f <= total; f++) {
     const surfing = state && f >= start && f < surfEnd;
     if (f === start) {
       if (state) p.onEvent({ type: 'surfStart' });
       else p.debugPlayName(name, -1);
     }
+    if (f === finishFrame) p.onEvent(FINISH(true));
     const inp = surfing ? SURF(800) : AIR(800);
     p.update(dt, inp);
     p.afterPose(RUN_JOINTS, inp, dt);
@@ -1453,11 +1463,18 @@ function runTrick(item: HeldItemId, name: string, fps: number): { every: number[
     sub.push([p.out.sub[0], p.out.sub[1], p.out.sub[2]]);
     if ((p instanceof YoyoTricks || p instanceof KendamaTricks) && p.rope.freeEnd) free = true;
   }
-  return { every, sub, free };
+  return { every, sub, free, flourishes: p.flourishes };
 }
 
-/** Anzeige-Kanäle des Handys (Modus, Wert) sind diskret — eigener Test, hier nicht verglichen. */
+/**
+ * Anzeige-Kanäle des Handys (Modus, Wert) sind diskret — eigener Test, hier nicht verglichen. Ebenso Sichtbarkeit
+ * und Größe der Karte: der Plan-006-Vanish (Ziel-Trick) springt bei V_POP = 1.45 s hart von 0 / 1 auf 1 / 0.05 —
+ * 1.45 s liegt auf jedem 60-Hz-Raster, welche Seite ein Frame nimmt, entscheidet die Float-Summe.
+ */
 function compared(item: HeldItemId, k: number): boolean {
+  if (item === 'card' && (k === 7 || k === 8)) return false;
+  // Spinner: Rotor-Winkel und Unschärfe hängen absichtlich an der Framerate (Aliasing-Deckel, fallen.md #111).
+  if (item === 'spinner' && (k === 22 || k === 23)) return false;
   return !(item === 'phone' && (k === 22 || k === 23));
 }
 
@@ -1466,20 +1483,37 @@ function compared(item: HeldItemId, k: number): boolean {
  * 1/6-s-Raster: geführt in Einheiten; war das Ende irgendwann frei (Pendel), in Pixeln je Framerate
  * (Plan 007: freies Pendel ≤ 2.5 px bei 30 Hz, ≤ 1.3 px ab 60 Hz).
  */
-function worstDt(item: HeldItemId, name: string): { worst: number; worstSub: number; pendulumPx: number[]; moved: boolean } {
+function worstDt(item: HeldItemId, name: string, finishAt = -1, surfFor = 1): { worst: number; worstSub: number; pendulumPx: number[]; moved: boolean; skipped: number } {
   const REF = 1440;
-  const ref = runTrick(item, name, REF);
+  const ref = runTrick(item, name, REF, finishAt, surfFor);
   let worst = 0;
   let worstSub = 0;
   const pendulumPx: number[] = [];
   let moved = false;
+  // Mit Ziel läuft ein Plan-006-Ziel-Trick mit, dessen Zeitleiste an Phasen-Grenzen springt (Messer-Aerial bei
+  // 0.1 s, fallen.md #111): liegt die Grenze auf dem Raster, entscheidet die Float-Summe die Seite. Frames im
+  // Umkreis eines Frames um eine solche Stufe des Referenzlaufs (ein 1440-Hz-Schritt > 0.2) auslassen, zählen.
+  const steps: number[] = [];
+  if (finishAt > 0) {
+    for (let j = 1; j < ref.every.length; j++) {
+      let d = 0;
+      for (let k = 0; k < ref.every[j].length; k++) if (compared(item, k)) d = Math.max(d, diff(ref.every[j][k], ref.every[j - 1][k], cyclic(item, k)));
+      if (d > 0.2) steps.push(j);
+    }
+  }
+  let skipped = 0;
   for (const fps of [30, 60, 144, 240]) {
-    const got = runTrick(item, name, fps);
+    const got = runTrick(item, name, fps, finishAt, surfFor);
     let px = 0;
+    const per = REF / fps;
     for (let i = 0; i < got.every.length; i++) {
       const j = ((i + 1) * REF) / fps - 1;
       const a = got.every[i];
       const b = ref.every[j];
+      if (steps.some((st) => Math.abs(st - j) <= per)) {
+        skipped++;
+        continue;
+      }
       for (let k = 0; k < a.length; k++) if (compared(item, k)) worst = Math.max(worst, diff(a[k], b[k], cyclic(item, k)));
       if (a.some((v, k) => v !== got.every[0][k])) moved = true;
       if (((i + 1) * 6) % fps === 0) {
@@ -1490,7 +1524,7 @@ function worstDt(item: HeldItemId, name: string): { worst: number; worstSub: num
     }
     pendulumPx.push(px);
   }
-  return { worst, worstSub, pendulumPx, moved };
+  return { worst, worstSub, pendulumPx, moved, skipped };
 }
 
 /** 20 000 wilde Schritte (Events, Eingaben, NaN) inkl. afterPose: alles endlich, Sichtbarkeit 0..1. */
@@ -1642,6 +1676,300 @@ describe('Neue Gegenstände (Plan 007 Phase 2): gemeinsame Regeln', () => {
   });
 });
 
+/** Ziel-Trick je Gegenstand (Dose ungeöffnet: Wurf hinter dem Rücken). */
+const FINISH_TRICK: { readonly [K in HeldItemId]?: string } = {
+  can: 'behindThrow',
+  card: 'vanish',
+  knife: 'doubleAerial',
+  spinner: 'ufo',
+  yoyo: 'cradle',
+  lighter: 'finale',
+  coin: 'call',
+  kendama: 'spike',
+  phone: 'photo',
+};
+const FINISH_ITEMS = Object.keys(FINISH_TRICK) as HeldItemId[];
+
+interface Shot {
+  readonly pos: number[];
+  readonly rot: Float64Array;
+  readonly sub: number[];
+  readonly hand: number[];
+}
+function shot(p: PropControl): Shot {
+  const o = p.out;
+  return {
+    pos: [o.pos[0], o.pos[1], o.pos[2]],
+    rot: fromEulerXYZ(mat3(), o.rot[0], o.rot[1], o.rot[2]),
+    sub: [o.sub[0], o.sub[1], o.sub[2]],
+    hand: [o.hx, o.hy, o.hz, o.hpitch, o.hyaw, o.hroll, o.spin, o.visible, o.scale],
+  };
+}
+const dist3 = (a: readonly number[], b: readonly number[]): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+/** Winkel zwischen zwei Lagen (rad). */
+function angleOf(a: Float64Array, b: Float64Array): number {
+  let tr = 0;
+  for (let i = 0; i < 9; i++) tr += a[i] * b[i];
+  return Math.acos(Math.max(-1, Math.min(1, (tr - 1) / 2)));
+}
+/** Größte Frame-Schritte (Position, Lage, zweiter Körper) einer Folge. */
+function maxSteps(list: readonly Shot[]): [number, number, number] {
+  const r: [number, number, number] = [0, 0, 0];
+  for (let i = 1; i < list.length; i++) {
+    r[0] = Math.max(r[0], dist3(list[i].pos, list[i - 1].pos));
+    r[1] = Math.max(r[1], angleOf(list[i].rot, list[i - 1].rot));
+    r[2] = Math.max(r[2], dist3(list[i].sub, list[i - 1].sub));
+  }
+  return r;
+}
+
+type FinishScene = 'surf' | 'trick' | 'rest';
+/**
+ * 60 Hz: Szene aufbauen, Ziel (withFinish = false: ohne), 0.5 s weiter. before = letzte Frames davor,
+ * after[0] = letzter Frame davor, after[1] = Frame, an dessen Ende das Ziel gilt (#77).
+ */
+function finishScene(item: HeldItemId, scene: FinishScene, withFinish = true): { before: Shot[]; after: Shot[] } {
+  const p = makeProp(item);
+  const dt = 1 / 60;
+  let inp: PropFrameInput = AIR(900);
+  const step = (): void => {
+    p.update(dt, inp);
+    p.afterPose(RUN_JOINTS, inp, dt);
+    p.out.kickY = 0;
+    p.out.kickSq = 0;
+  };
+  step();
+  if (scene === 'surf') {
+    p.onEvent({ type: 'surfStart' });
+    inp = SURF(900);
+  } else if (scene === 'trick') p.onEvent(JUMP(950, 3, false));
+  const before: Shot[] = [];
+  for (let f = 0; f < 48; f++) {
+    step();
+    before.push(shot(p));
+  }
+  // Abbruch-Szenarien: beim Ziel läuft wirklich ein Trick bzw. Zustand (sonst prüfte das den freien Fall).
+  if (scene !== 'rest') expect(p.trick, `${item}/${scene} beim Ziel`).not.toBe('none');
+  if (withFinish) p.onEvent(FINISH(true));
+  const after: Shot[] = [before[before.length - 1]];
+  for (let f = 0; f < 30; f++) {
+    step();
+    after.push(shot(p));
+  }
+  return { before: before.slice(-16), after };
+}
+
+describe('Drehungs-Helfer fürs Überblenden (rot.ts)', () => {
+  it('toAxisAngleQ kehrt axisAngle um (Winkel 0..π, kürzester Weg, stabil nahe π); mulT = a·bᵀ', () => {
+    let seed = 5;
+    const rnd = (): number => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    const q = new Float64Array(4);
+    for (let k = 0; k < 500; k++) {
+      const ax = rnd() - 0.5;
+      const ay = rnd() - 0.5;
+      const az = rnd() - 0.5;
+      const l = Math.hypot(ax, ay, az);
+      // Auch genau π und knapp darunter (dort kippt die Achse bei naiver Rechnung).
+      const angle = k % 50 === 0 ? Math.PI : k % 50 === 1 ? Math.PI - 1e-7 : rnd() * Math.PI;
+      const m = axisAngle(mat3(), ax / l, ay / l, az / l, angle);
+      toAxisAngleQ(m, q);
+      expect(q[3]).toBeCloseTo(angle, 6);
+      const back = axisAngle(mat3(), q[0], q[1], q[2], q[3]);
+      for (let i = 0; i < 9; i++) expect(back[i]).toBeCloseTo(m[i], 6);
+    }
+    // Winkel > π wird zum kürzeren Weg um die Gegenachse.
+    toAxisAngleQ(axisAngle(mat3(), 0, 0, 1, 1.5 * Math.PI), q);
+    expect(q[3]).toBeCloseTo(0.5 * Math.PI, 9);
+    expect(q[2]).toBeCloseTo(-1, 9);
+    toAxisAngleQ(mat3(), q);
+    expect(q[3]).toBe(0);
+    // mulT(a, b)·b = a (Differenz-Drehung).
+    const a = fromEulerXYZ(mat3(), 0.3, -1.2, 2.5);
+    const b = fromEulerXYZ(mat3(), -2.0, 0.4, 0.9);
+    const d = mulT(mat3(), a, b);
+    const ab = mul(mat3(), d, b);
+    for (let i = 0; i < 9; i++) expect(ab[i]).toBeCloseTo(a[i], 12);
+  });
+});
+
+describe('Ziel-Reaktion (Phase-2-Review): sofort, auch mitten im Trick, im Surf-Zustand und beim Rutschen', () => {
+  it('jeder Gegenstand startet seinen Ziel-Trick im Frame des Ziels (Trick-Zeit 0); dieser Frame zeigt genau, was der alte Trick gezeigt hätte', () => {
+    for (const item of FINISH_ITEMS) {
+      for (const scene of ['surf', 'trick', 'slide'] as const) {
+        const p = makeProp(item);
+        p.update(1 / 60, AIR(900));
+        if (scene === 'surf') {
+          p.onEvent({ type: 'surfStart' });
+          for (let f = 0; f < 30; f++) p.update(1 / 60, SURF(900));
+          expect(p.inState, `${item} im Surf-Zustand`).toBe(true);
+        } else if (scene === 'trick') {
+          p.onEvent(JUMP(950, 3, false));
+          expect(p.trick, `${item} Trick läuft`).not.toBe('none');
+        } else p.hold = true;
+        p.onEvent(FINISH(true));
+        p.update(1 / 60, scene === 'surf' ? SURF(900) : AIR(900));
+        expect(p.trick, `${item}/${scene}`).toBe(FINISH_TRICK[item]);
+        expect(p.trickTime).toBe(0);
+      }
+      for (const scene of ['surf', 'trick'] as const) {
+        const a = finishScene(item, scene, false).after[1];
+        const b = finishScene(item, scene).after[1];
+        expect(dist3(a.pos, b.pos), `${item}/${scene} Position`).toBeLessThan(1e-4);
+        expect(angleOf(a.rot, b.rot), `${item}/${scene} Lage`).toBeLessThan(1e-3);
+        expect(dist3(a.sub, b.sub), `${item}/${scene} zweiter Körper`).toBeLessThan(1e-4);
+        // Spin (Index 6) ist ein Winkel: modulo 2π.
+        for (let i = 0; i < a.hand.length; i++) expect(diff(a.hand[i], b.hand[i], i === 6 ? Math.PI * 2 : 0), `${item}/${scene} #${i}`).toBeLessThan(1e-5);
+      }
+    }
+  });
+
+  it('Überblenden: kein Frame bewegt sich weiter als der Ziel-Trick selbst plus 12 % des harten Schnitts (Versatz klingt in 0.25 s ab)', () => {
+    const report: string[] = [];
+    for (const item of FINISH_ITEMS) {
+      // Der Ziel-Trick aus der Ruhe (ohne Abbruch) als Maßstab seiner eigenen Geschwindigkeit.
+      const plain = finishScene(item, 'rest');
+      const own = maxSteps(plain.after.slice(1));
+      for (const scene of ['surf', 'trick'] as const) {
+        const r = finishScene(item, scene);
+        const fade = maxSteps(r.after);
+        const old = maxSteps(r.before);
+        const last = r.after[0];
+        const first = plain.after[1];
+        const cut = [dist3(last.pos, first.pos), angleOf(last.rot, first.rot), dist3(last.sub, first.sub)];
+        report.push(`${item}/${scene}: ${fade.map((v) => v.toFixed(2)).join('/')} (Schnitt ${cut.map((v) => v.toFixed(2)).join('/')})`);
+        for (let k = 0; k < 3; k++) expect(fade[k], `${item}/${scene} Kanal ${k}`).toBeLessThanOrEqual(Math.max(own[k], old[k]) + 0.12 * cut[k] + 0.02);
+      }
+    }
+    expect(report.length).toBe(FINISH_ITEMS.length * 2);
+  });
+
+  it('Abbruch framerate-unabhängig: Surf-Zustand → Ziel-Trick, jeder Frame 30/60/144/240 Hz gegen 1440 Hz ≤ 0.01', () => {
+    for (const item of FINISH_ITEMS) {
+      const state = SURF_STATE[item];
+      if (!state) continue;
+      const r = worstDt(item, state, 5 / 6);
+      // Höchstens die Frames um wenige Stufen (Messer-Aerial: Ausholen → Luft, 2 Stufen × ≤ 3 Frames × 4 Raten).
+      expect(r.skipped, `${item} ausgelassene Frames`).toBeLessThanOrEqual(24);
+      expect(r.worst, `${item}`).toBeLessThanOrEqual(0.01);
+      expect(r.worstSub, `${item} zweiter Körper (geführt)`).toBeLessThanOrEqual(0.01);
+      expect(r.pendulumPx[0], `${item} Pendel 30 Hz`).toBeLessThanOrEqual(2.5);
+      for (let i = 1; i < 4; i++) expect(r.pendulumPx[i], `${item} Pendel`).toBeLessThanOrEqual(1.3);
+    }
+  });
+
+  it('Handy: Selfie bei JEDEM Ziel (aus dem Gimbal, mitten im spinToss, beim Rutschen) — Auslöser vor dem Ergebnis (1.1 s)', () => {
+    for (const scene of ['gimbal', 'spinToss', 'slide'] as const) {
+      const h = new ViewHand();
+      h.setItem('phone');
+      const inp = makeHandInput();
+      inp.onGround = false;
+      inp.speed = 900;
+      h.update(1 / 60, inp);
+      if (scene === 'gimbal') {
+        inp.surfing = true;
+        h.onEvent({ type: 'surfStart' });
+      } else if (scene === 'spinToss') h.forceTrick('spinToss');
+      else {
+        inp.onGround = true;
+        h.onEvent({ type: 'slideStart', speed: 400, boost: false });
+      }
+      for (let f = 0; f < 30; f++) h.update(1 / 60, inp);
+      if (scene !== 'slide') expect(h.state().trick).toBe(scene);
+      else expect(h.state().sliding).toBe(true);
+      h.onEvent(FINISH(true));
+      // Erster Frame nach dem Ziel = Trick-Zeit 0 (das Ziel gilt an seinem Ende, wie jeder Trick-Start).
+      let since = -1 / 60;
+      let shotAfter = -1;
+      for (let f = 0; f < 90; f++) {
+        h.update(1 / 60, inp);
+        since += 1 / 60;
+        if (f === 0) {
+          expect(h.state().trick, scene).toBe('photo');
+          expect(h.state().trickTime).toBe(0);
+        }
+        if (h.takeShutter()) {
+          expect(shotAfter, `${scene}: nur ein Auslöser`).toBe(-1);
+          shotAfter = since;
+        }
+      }
+      expect(shotAfter, scene).toBeGreaterThanOrEqual(SHUTTER_AT - 1e-9);
+      expect(shotAfter, scene).toBeLessThanOrEqual(SHUTTER_AT + 1 / 60 + 1e-9);
+      expect(shotAfter).toBeLessThan(1.1);
+    }
+  });
+
+  it('Handy ohne Bewegung (motionFx 0): Ziel-Foto trotzdem (Kamera → Auslöser → Foto), Handy steht still; takeShutterNow löst sofort aus', () => {
+    const P = VM_PARAM.phone;
+    const M = VM_PHONE_MODE;
+    const h = new ViewHand();
+    h.setItem('phone');
+    h.motionFx = 0;
+    const inp = makeHandInput();
+    h.update(1 / 60, inp);
+    const pos = Array.from(h.frame.propPos);
+    h.onEvent(FINISH(true));
+    const modes: number[] = [];
+    let shots = 0;
+    let shotAt = -1;
+    let t = -1 / 60;
+    for (let f = 0; f < 60 * 2.5; f++) {
+      h.update(1 / 60, inp);
+      t += 1 / 60;
+      if (h.takeShutter()) {
+        shots++;
+        shotAt = t;
+      }
+      const m = h.frame.propParam[P.mode];
+      if (modes[modes.length - 1] !== m) modes.push(m);
+      expect(h.state().trick).toBe('none');
+      expect(Array.from(h.frame.propPos)).toEqual(pos);
+    }
+    expect(shots).toBe(1);
+    expect(shotAt).toBeGreaterThanOrEqual(SHUTTER_AT - 1e-9);
+    expect(shotAt).toBeLessThanOrEqual(SHUTTER_AT + 1 / 60 + 1e-9);
+    expect(modes.slice(0, 3)).toEqual([M.camera, M.photo, M.feed]);
+    // Ergebnis kommt früher (Enter, Tod nach dem Ziel): sofort auslösen, genau einmal.
+    const e = new ViewHand();
+    e.setItem('phone');
+    e.update(1 / 60, inp);
+    e.onEvent(FINISH(false));
+    for (let f = 0; f < 10; f++) e.update(1 / 60, inp);
+    expect(e.takeShutter()).toBe(false);
+    expect(e.takeShutterNow()).toBe(true);
+    let later = 0;
+    for (let f = 0; f < 120; f++) {
+      e.update(1 / 60, inp);
+      if (e.takeShutter()) later++;
+    }
+    expect(later).toBe(0);
+    expect(e.takeShutterNow()).toBe(false);
+    // Ziel mitten im Trick, Ergebnis im selben Frame (Tod nach dem Ziel): Foto startet erst am Frame-Ende —
+    // takeShutterNow löst trotzdem aus, das Ziel-Foto danach nicht noch einmal.
+    const g = new ViewHand();
+    g.setItem('phone');
+    g.update(1 / 60, inp);
+    g.forceTrick('spinToss');
+    for (let f = 0; f < 10; f++) g.update(1 / 60, inp);
+    g.onEvent(FINISH(true));
+    expect(g.state().trick).toBe('spinToss');
+    expect(g.takeShutterNow()).toBe(true);
+    let again = 0;
+    for (let f = 0; f < 120; f++) {
+      g.update(1 / 60, inp);
+      if (g.takeShutter()) again++;
+    }
+    expect(again).toBe(0);
+    // Ohne Handy nie.
+    const c = new ViewHand();
+    c.setItem('coin');
+    c.onEvent(FINISH(true));
+    expect(c.takeShutterNow()).toBe(false);
+  });
+});
+
 describe('Jo-Jo (KI1)', () => {
   it('Leerlauf: Sleeper (jedes 3. Mal Cradle), Schnur voll ab und wieder aufgewickelt, Jo-Jo hängt unter der Schlaufe', () => {
     const h = new ViewHand();
@@ -1683,6 +2011,326 @@ describe('Jo-Jo (KI1)', () => {
     // Sleeper = Wurf 0.25 + Schlaf 0.7 + Rückweg 0.25 + Setzen 0.06.
     expect(dur('sleeper')).toBeCloseTo(0.25 + 0.7 + 0.25 + 0.06, 1);
     expect(dur('pass')).toBeCloseTo(0.5 * 0.85 + 0.25 + 0.06, 1);
+  });
+
+  it('Wiege ("Rock the Baby"): Schnur spannt ein Dreieck zwischen Daumen- und Zeigefingerspitze, Enden exakt', () => {
+    const h = new ViewHand();
+    h.setItem('yoyo');
+    const inp = makeHandInput();
+    for (let f = 0; f < 30; f++) h.update(1 / 60, inp);
+    h.forceTrick('cradle');
+    let seenFigure = false;
+    for (let f = 0; f < 60 * 1.2; f++) {
+      h.update(1 / 60, inp);
+      const fr = h.frame;
+      if (h.state().trick !== 'cradle' || h.state().trickTime < 0.6) continue;
+      expect(h.state().pose).toBe('cradle');
+      const P = fr.stringPts;
+      const pt = (i: number): [number, number, number] => [P[i * 3], P[i * 3 + 1], P[i * 3 + 2]];
+      const dist = (a: readonly number[], b: readonly number[]): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+      // Letzter Punkt = Jo-Jo (exakt), Dreieck: Daumen (1) ↔ Zeigefinger (2) ↔ Knoten (3) ↔ Daumen (4).
+      expect(dist(pt(8), [fr.subPos[0], fr.subPos[1], fr.subPos[2]])).toBeLessThan(1e-4);
+      expect(dist(pt(1), pt(4))).toBeLessThan(1e-4);
+      expect(dist(pt(3), pt(5))).toBeLessThan(1e-4);
+      expect(dist(pt(1), pt(2))).toBeGreaterThan(3);
+      expect(dist(pt(2), pt(3))).toBeGreaterThan(3);
+      // Knoten liegt zwischen Schlaufe und Jo-Jo (unterhalb der Spitzen im Bild).
+      expect(upOf(pt(3)[0] - pt(1)[0], pt(3)[1] - pt(1)[1], pt(3)[2] - pt(1)[2])).toBeLessThan(-3);
+      // Die Figur sitzt an den ECHTEN Fingerspitzen dieses Frames (FK aus den gezeigten Gelenken, Review: vorher
+      // hart kodierte Zahlen) — CRADLE_FRONT zur Kamera; Toleranz fürs Posen-Überblenden.
+      const cam = VIEW_AXES.cam;
+      const tT = thumbPoint(fr.joints, 2, 0, VM_RIG.thumb.len[2] + CRADLE_THUMB_BEYOND, 0, [0, 0, 0]);
+      const tI = fingerTip(fr.joints, 0, [0, 0, 0], CRADLE_INDEX_BEYOND);
+      const front = (p: ArrayLike<number>): number[] => [p[0] + cam[0] * CRADLE_FRONT, p[1] + cam[1] * CRADLE_FRONT, p[2] + cam[2] * CRADLE_FRONT];
+      expect(dist(pt(1), front(tT)), 'Daumenspitze').toBeLessThan(0.3);
+      expect(dist(pt(2), front(tI)), 'Zeigefingerspitze').toBeLessThan(0.3);
+      seenFigure = true;
+    }
+    expect(seenFigure).toBe(true);
+    // Nach der Wiege wieder eine gewöhnliche Schnur (kein Dreieck mehr) bzw. Jo-Jo in der Faust.
+    for (let f = 0; f < 60 * 1.5; f++) h.update(1 / 60, inp);
+    expect(h.state().pose).not.toBe('cradle');
+  });
+});
+
+describe('Jo-Jo: Abwechslung (Review Phase 2)', () => {
+  it('Breakaway nur noch in Stufe 2; Meilenstein Stufe 2 abwechselnd; Checkpoint vor der Bestzeit = Wiege, sonst Around', () => {
+    for (const tier of [1, 3]) expect(YOYO_TIER_TRICKS[tier], `Stufe ${tier}`).not.toContain('breakaway');
+    const y = new YoyoTricks();
+    const milestones: string[] = [];
+    for (let k = 0; k < 4; k++) {
+      y.stop();
+      y.update(1 / 60, AIR(700));
+      y.onEvent({ type: 'speedMilestone', speed: 700 });
+      milestones.push(y.trick);
+    }
+    expect(milestones).toEqual(['breakaway', 'snap', 'breakaway', 'snap']);
+    const cp = (split: number | null): string => {
+      const c = new YoyoTricks();
+      c.update(1 / 60, AIR(700));
+      c.onEvent(CP(split));
+      return c.trick;
+    };
+    expect(cp(-0.3)).toBe('cradle');
+    expect(cp(0.3)).toBe('around');
+    expect(cp(null)).toBe('around');
+  });
+});
+
+/** Tricks aus `n` Sprüngen gleicher Art (je Sprung ein freier Start, Abklingzeit abgewartet). */
+function jumpSeries(p: PropControl, speed: number, good: boolean, n: number): string[] {
+  const got: string[] = [];
+  for (let k = 0; k < n; k++) {
+    p.stop();
+    p.update(1 / 60, AIR(speed));
+    p.onEvent(JUMP(speed, 3, good));
+    got.push(p.trick);
+  }
+  return got;
+}
+
+describe('Abwechslung Kendama, Spinner, Feuerzeug, Handy (Review Phase 2)', () => {
+  it('Kendama: Lauf groß/klein, Flow mit Around Japan, guter Hop im Overdrive Spitze, Spitze, Around Japan', () => {
+    expect(jumpSeries(new KendamaTricks(), 400, false, 4)).toEqual(['bigCup', 'smallCup', 'bigCup', 'smallCup']);
+    expect(jumpSeries(new KendamaTricks(), 650, true, 3)).toEqual(['smallCup', 'aroundJapan', 'bigCup']);
+    expect(jumpSeries(new KendamaTricks(), 950, true, 6)).toEqual(['spike', 'spike', 'aroundJapan', 'spike', 'spike', 'aroundJapan']);
+    expect(jumpSeries(new KendamaTricks(), 950, false, 3)).toEqual(['spike', 'aroundJapan', 'bigCup']);
+  });
+
+  it('Kendama: Checkpoint vor der Bestzeit Around Japan, sonst klein/groß im Wechsel; Meilenstein im Flow ebenso', () => {
+    const cp = (split: number | null): string => {
+      const c = new KendamaTricks();
+      c.update(1 / 60, AIR(700));
+      c.onEvent(CP(split));
+      return c.trick;
+    };
+    expect(cp(-0.3)).toBe('aroundJapan');
+    expect(cp(0.3)).toBe('smallCup');
+    expect(cp(null)).toBe('smallCup');
+    const c2 = new KendamaTricks();
+    const cps: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      c2.stop();
+      c2.update(1 / 60, AIR(700));
+      c2.onEvent(CP(null));
+      cps.push(c2.trick);
+    }
+    expect(cps).toEqual(['smallCup', 'bigCup', 'smallCup']);
+    const k = new KendamaTricks();
+    const ms: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      k.stop();
+      k.update(1 / 60, AIR(700));
+      k.onEvent({ type: 'speedMilestone', speed: 700 });
+      ms.push(k.trick);
+    }
+    expect(ms).toEqual(['smallCup', 'bigCup', 'smallCup', 'bigCup']);
+  });
+
+  it('Around Japan fängt nach dem Straffen der Zeitleiste weiter in allen drei Fangpunkten (klein → groß → Spitze)', () => {
+    const k = new KendamaTricks();
+    k.debugPlayName('aroundJapan', -1);
+    const seen = new Set<string>();
+    for (let f = 0; f < 60 * 3 && (f === 0 || k.trick !== 'none'); f++) {
+      k.update(1 / 60, GROUND(0));
+      k.afterPose(RUN_JOINTS, GROUND(0), 1 / 60);
+      if (k.caughtOn(KEN_SMALL_CUP)) seen.add('klein');
+      if (k.caughtOn(KEN_BIG_CUP)) seen.add('groß');
+      if (k.caughtOn(KEN_SPIKE)) seen.add('Spitze');
+    }
+    expect([...seen]).toEqual(['klein', 'groß', 'Spitze']);
+  });
+
+  it('Spinner: Flow toss/swap im Wechsel (auch bei guten Hops), Overdrive guter Hop ufo/toss im Wechsel', () => {
+    expect(jumpSeries(new SpinnerTricks(), 650, true, 4)).toEqual(['toss', 'swap', 'toss', 'swap']);
+    expect(jumpSeries(new SpinnerTricks(), 950, true, 4)).toEqual(['ufo', 'toss', 'ufo', 'toss']);
+  });
+
+  it('Feuerzeug und Handy: im Lauf zwei Tricks im Wechsel (vorher einer — 54–56 % aller Starts)', () => {
+    expect(jumpSeries(new LighterTricks(), 400, false, 4)).toEqual(['lidFlick', 'strike', 'lidFlick', 'strike']);
+    expect(jumpSeries(new PhoneTricks(), 400, false, 4)).toEqual(['tap', 'scroll', 'tap', 'scroll']);
+  });
+
+  it('Feuerzeug am Checkpoint: brennend strike/twirl im Wechsel, aus immer strike (zündet wieder)', () => {
+    const l = new LighterTricks();
+    const got: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      l.stop();
+      l.lit = true;
+      l.lidOpen = true;
+      l.update(1 / 60, AIR(400));
+      l.onEvent(CP(null));
+      got.push(l.trick);
+    }
+    expect(got).toEqual(['strike', 'twirl', 'strike', 'twirl']);
+    const off = new LighterTricks();
+    off.lit = false;
+    off.update(1 / 60, AIR(400));
+    off.onEvent(CP(null));
+    expect(off.trick).toBe('strike');
+  });
+});
+
+/** Surf-Zustand eines Gegenstands laufen lassen (60 Hz): Zähler der Einlagen und alle Ausgaben je Frame. */
+function surfRun(item: HeldItemId, frames: number, sideAt: (f: number) => number, events: (f: number, p: PropControl) => void = () => {}): { p: PropControl; every: number[][]; states: boolean[] } {
+  const p = makeProp(item);
+  p.update(1 / 60, AIR(900));
+  p.onEvent({ type: 'surfStart' });
+  const every: number[][] = [];
+  const states: boolean[] = [];
+  for (let f = 0; f < frames; f++) {
+    events(f, p);
+    const inp = SURF(900, sideAt(f));
+    p.update(1 / 60, inp);
+    p.afterPose(RUN_JOINTS, inp, 1 / 60);
+    p.out.kickY = 0;
+    p.out.kickSq = 0;
+    every.push(sampleAll(p));
+    states.push(p.inState);
+  }
+  return { p, every, states };
+}
+
+describe('Einlagen im Surf-Zustand (Review Phase 2: L3 zeigte 10–20 s denselben statischen Zustand)', () => {
+  const STATE_ITEMS = [...NEW_ITEMS, ...KI8_ITEMS, 'spinner'] as const;
+
+  it('im Takt (1.05 s, dann alle 2.4 s Trick-Zeit), bewegt die Ausgabe, der Zustand bleibt; jeder Gegenstand', () => {
+    for (const item of STATE_ITEMS) {
+      const quiet = surfRun(item, 60, () => 0.5);
+      expect(quiet.p.flourishes, `${item} vor 1.05 s`).toBe(0);
+      const r = surfRun(item, Math.round(60 * 3.6), () => 0.5);
+      expect(r.p.flourishes, item).toBe(2);
+      expect(r.states.every((s) => s), `${item} bleibt im Zustand`).toBe(true);
+      // Sichtbar: eine per Meilenstein vorgezogene Einlage (ab Frame 40) gegen denselben Lauf ohne — bis Frame 55
+      // unterscheiden sich die Läufe nur darin.
+      const early = surfRun(item, 56, () => 0.5, (f, p) => {
+        if (f === 40) p.onEvent({ type: 'speedMilestone', speed: 1000 });
+      });
+      const plain = surfRun(item, 56, () => 0.5);
+      let d = 0;
+      for (let k = 0; k < early.every[55].length; k++) d = Math.max(d, Math.abs(early.every[55][k] - plain.every[55][k]));
+      // Jo-Jo: die Einlage kippt das Handgelenk (hroll), das Pendel folgt über HandMotion (hier ohne).
+      expect(d, `${item} sichtbar`).toBeGreaterThan(0.05);
+    }
+  });
+
+  it('Kehre (surfSide wechselt das Vorzeichen) und Tempo-Meilenstein ziehen die Einlage vor — am Frame-Ende, mit Mindestabstand', () => {
+    const carve = surfRun('kendama', 60, (f) => (f < 40 ? 0.6 : -0.6));
+    expect(carve.p.flourishes).toBe(1);
+    // Zu früh (unter 0.5 s Zustand): keine.
+    expect(surfRun('kendama', 20, (f) => (f < 10 ? 0.6 : -0.6)).p.flourishes).toBe(0);
+    const ms = surfRun('coin', 60, () => 0.5, (f, p) => {
+      if (f === 40 || f === 45) p.onEvent({ type: 'speedMilestone', speed: 1000 });
+    });
+    expect(ms.p.flourishes).toBe(1);
+  });
+
+  it('framerate-unabhängig: jeder Frame 30/60/144/240 Hz gegen 1440 Hz ≤ 0.01 (3.5 s Surf, zwei Einlagen; Jo-Jo-Pendel in px)', () => {
+    for (const item of STATE_ITEMS) {
+      const name = SURF_STATE[item];
+      if (!name) throw new Error(`${item} ohne Surf-Zustand`);
+      const r = worstDt(item, name, -1, 3.5);
+      expect(r.worst, `${item}/${name}`).toBeLessThanOrEqual(0.01);
+      expect(r.worstSub, `${item}/${name} zweiter Körper (geführt)`).toBeLessThanOrEqual(0.01);
+      expect(r.pendulumPx[0], `${item}/${name} Pendel 30 Hz`).toBeLessThanOrEqual(2.5);
+      for (let i = 1; i < 4; i++) expect(r.pendulumPx[i], `${item}/${name} Pendel`).toBeLessThanOrEqual(1.3);
+      expect(runTrick(item, name, 60, -1, 3.5).flourishes, item).toBe(2);
+    }
+  });
+
+  it('nach dem Surf keine neue Einlage; endet der Surf mitten in einer, springt nichts (Dose/Karte/Münze drehen zu Ende)', () => {
+    /** Surf `frames` lang, dann Luft; größte Frame-Schritte (Position, Lage, Eigendrehung modulo 2π). */
+    const steps = (item: HeldItemId, frames: number): { p: PropControl; dp: number; dr: number; ds: number } => {
+      const p = makeProp(item);
+      p.update(1 / 60, AIR(900));
+      p.onEvent({ type: 'surfStart' });
+      const shots: Shot[] = [];
+      let ds = 0;
+      for (let f = 0; f < 60 * 4; f++) {
+        const inp = f < frames ? SURF(900) : AIR(900);
+        const s0 = p.out.spin;
+        p.update(1 / 60, inp);
+        p.afterPose(RUN_JOINTS, inp, 1 / 60);
+        p.out.kickY = 0;
+        p.out.kickSq = 0;
+        if (f > 0) ds = Math.max(ds, diff(p.out.spin, s0, Math.PI * 2));
+        shots.push(shot(p));
+      }
+      const [dp, dr] = maxSteps(shots);
+      return { p, dp, dr, ds };
+    };
+    for (const item of STATE_ITEMS) {
+      // Surf bis 1.3 s Trick-Zeit (mitten in der ersten Einlage) gegen Surf bis 0.83 s (vor der ersten).
+      const mid = steps(item, 78);
+      const before = steps(item, 50);
+      expect(mid.p.flourishes, item).toBe(1);
+      expect(before.p.flourishes, item).toBe(0);
+      expect(mid.p.trick, `${item} Zustand vorbei`).toBe('none');
+      // Kein Sprung: höchstens etwas schneller als der gewöhnliche Ausklang (ein Sprung wären Einheiten bzw. ~π).
+      expect(mid.dp, `${item} größter Positions-Schritt`).toBeLessThanOrEqual(before.dp + 0.4);
+      expect(mid.dr, `${item} größter Dreh-Schritt`).toBeLessThanOrEqual(before.dr + 0.3);
+      // Eigendrehung: Spinner (ω) und Münze (Kante) drehen ohnehin schnell — nur die übrigen prüfen.
+      if (item !== 'spinner' && item !== 'coin') expect(mid.ds, `${item} Sprung der Eigendrehung`).toBeLessThan(0.6);
+    }
+  });
+});
+
+describe('Katzenpfote: Shader-Masken an jedem Teil (Review Phase 2, latentes WebGL-Risiko)', () => {
+  it('jede Katzen-Geometrie hat aClaw und aTabby — kein Draw liest den generischen Attribut-Wert', () => {
+    const vm = new ViewModel();
+    vm.setResolution(480, 270);
+    const h = new ViewHand();
+    h.setGlove('cat');
+    h.update(1 / 60, makeHandInput());
+    vm.apply(h.output(true));
+    let parts = 0;
+    vm.scene.traverse((o) => {
+      if (!(o instanceof Mesh) || !(o.material instanceof ShaderMaterial) || !o.visible) return;
+      const src = o.material.vertexShader;
+      if (!src.includes('aClaw')) return;
+      parts++;
+      expect(o.geometry.hasAttribute('aClaw'), o.name).toBe(true);
+      expect(o.geometry.hasAttribute('aTabby'), o.name).toBe(true);
+    });
+    // Handfläche, 4 × 3 Finger, 3 Daumen, Bein, Halsband — je Mesh + Hülle.
+    expect(parts).toBeGreaterThanOrEqual(36);
+  });
+
+  it('Fell-Saum (Review Phase 3): Büschel-Reihen ohne gekippte Dreiecke, Zickzack im Shader genau auf den Zacken', () => {
+    const vm = new ViewModel();
+    vm.setResolution(480, 270);
+    const h = new ViewHand();
+    h.setGlove('cat');
+    h.update(1 / 60, makeHandInput());
+    vm.apply(h.output(true));
+    let legs = 0;
+    vm.scene.traverse((o) => {
+      if (!(o instanceof Mesh) || !(o.material instanceof ShaderMaterial) || !o.visible) return;
+      const tab = o.geometry.getAttribute('aTabby');
+      if (!tab || tab.getX(0) !== 2) return;
+      legs++;
+      // Bein = Röhre mit 22 Segmenten (23 Vertices je Ring): je Spalte muss y von Ring zu Ring streng fallen —
+      // sonst kippen Dreiecke (die nächste Reihe beginnt unterhalb der tiefsten Spitze).
+      const pos = o.geometry.getAttribute('position');
+      const row = 23;
+      const rings = Math.floor((pos.count - 1) / row);
+      for (let k = 0; k < row; k++) {
+        for (let r = 1; r < rings; r++) expect(pos.getY(r * row + k), `Spalte ${k}, Ring ${r}`).toBeLessThan(pos.getY((r - 1) * row + k));
+      }
+      // Shader-Kanten (uRuff: y, Versatz, Phase) liegen auf Ringen der Geometrie: Täler bei y, Spitzen bei y + Versatz.
+      const m = o.material;
+      expect(m.defines.RUFF).toBeDefined();
+      const ys = new Set<number>();
+      for (let i = 0; i < pos.count; i++) ys.add(Math.round(pos.getY(i) * 1000));
+      const rows = m.uniforms.uRuff.value as { x: number; y: number; z: number }[];
+      expect(rows.length).toBe(2);
+      for (const r of rows) {
+        expect(ys.has(Math.round(r.x * 1000)), `Tal-Ring ${r.x}`).toBe(true);
+        expect(ys.has(Math.round((r.x + r.y) * 1000)), `Spitzen ${r.x + r.y}`).toBe(true);
+        expect(r.y).toBeLessThan(0);
+      }
+    });
+    expect(legs).toBe(1);
   });
 });
 
@@ -1809,6 +2457,36 @@ describe('Münze (KI5): Kopf oder Zahl zeigt den Split', () => {
     b.onEvent(CP(-0.1));
     b.onEvent(JUMP(700));
     expect(b.trick).toBe('call');
+  });
+
+  it('Ziel: der call kommt sofort — in der Luft, mitten im Trick und im Surf-Zustand (edgeSpin)', () => {
+    const c = new CoinTricks();
+    c.update(1 / 60, AIR(700));
+    c.onEvent(FINISH(true));
+    expect(c.trick).toBe('call');
+    for (let f = 0; f < 120 && c.trick !== 'none'; f++) c.update(1 / 60, AIR(700));
+    expect(c.side).toBe(HEADS);
+    // Mitten in einem Trick (in der Luft, ohne Landung): der call bricht ihn ab.
+    const d = new CoinTricks();
+    d.update(1 / 60, AIR(700));
+    d.debugPlayName('highFlip', -1);
+    for (let f = 0; f < 20; f++) d.update(1 / 60, AIR(700));
+    d.onEvent(FINISH(false));
+    d.update(1 / 60, AIR(700));
+    expect(d.trick).toBe('call');
+    for (let f = 0; f < 120 && d.trick !== 'none'; f++) d.update(1 / 60, AIR(700));
+    expect(d.side).toBe(TAILS);
+    // Ins Ziel gesurft (Review: onFree startete vorher wieder edgeSpin, der call kam nie).
+    const e = new CoinTricks();
+    e.update(1 / 60, AIR(900));
+    e.onEvent({ type: 'surfStart' });
+    for (let f = 0; f < 40; f++) e.update(1 / 60, SURF(900));
+    expect(e.trick).toBe('edgeSpin');
+    e.onEvent(FINISH(true));
+    e.update(1 / 60, SURF(900));
+    expect(e.trick).toBe('call');
+    for (let f = 0; f < 120 && e.trick === 'call'; f++) e.update(1 / 60, SURF(900));
+    expect(e.side).toBe(HEADS);
   });
 });
 

@@ -10,8 +10,24 @@ import { compileLevel } from '../src/world/level/compileLevel';
 import type { LevelFile } from '../src/world/level/LevelFormat';
 import { formatLevel } from '../tools/levels/build';
 import { helixBoard } from '../tools/levels/designProbes';
-import { BOARD_H, CROUCH_H, PREP_LESSONS, R_E2_IN, R_E2_OUT, R_LINE, R_OUT, buildLevel4, level4Layout } from '../tools/levels/level4';
-import { CROUCH_LOST_MAX, bandeEscape, crouchEdges, dropIn, type BandeEscapeSpec } from '../tools/levels/probes/level4';
+import { BOARD_H, CROUCH_H, PREP_LESSONS, R_E2_IN, R_E2_OUT, R_LINE, R_OUT, TAKEOFF_FAR, TAKEOFF_NEAR, TRENCH_DEPTH, buildLevel4, level4Layout } from '../tools/levels/level4';
+import {
+  CROUCH_LOST_MAX,
+  LANE_SLOW_GAIN,
+  LANE_TRAP,
+  MARK_SPEEDS,
+  MARK_SPEEDS_FAR,
+  bandeEscape,
+  crouchEdges,
+  dropIn,
+  duckMarkJumps,
+  innerLane,
+  laneChoice,
+  lanePath,
+  novice,
+  surfMedal,
+  type BandeEscapeSpec,
+} from '../tools/levels/probes/level4';
 import { RESUME_BELOW, nodeInTrigger, resumeIndex, timedRun } from '../tools/levels/physics';
 import { CROUCH_RESERVE, crouchSpeeds, noDuckReach } from '../tools/validate-levels';
 
@@ -75,15 +91,22 @@ describe('Level 4 "04 TURM" — Datei und Regeln', () => {
   }, 30_000);
 
   it('gestapelt: jeder Checkpoint setzt auf seiner Etage wieder an (kein Schatten-Knoten der Umdrehung darunter)', () => {
-    // Etagen liegen ≥ 384 u auseinander: der Wiedereinstieg liegt hinter dem vorigen und (Podeste, Krone) nahe der
-    // Spawn-Höhe. CP5 ist ein Surf-Checkpoint: dort geht es mit dem Surf-Knoten 320 u tief auf der Flanke weiter.
+    // Etagen liegen ≥ 384 u auseinander: der Wiedereinstieg liegt hinter dem vorigen und (Podeste) nahe der Spawn-Höhe.
+    // CP4 (Krone) und CP5 gehen mit einem Surf-Knoten auf der Flanke weiter — auf dem Brett liegt kein Knoten mehr (dort
+    // bremste der Bot per S, Review 29.09.).
     let last = 0;
     for (const cp of CPS) {
       const i = resumeIndex(ROUTE, cp);
       expect(i, `CP${cp.order}`).toBeGreaterThan(last);
-      if (cp.order <= 4) expect(Math.abs(ROUTE[i].pos[1] - cp.spawnPos.y), `CP${cp.order}`).toBeLessThan(100);
+      if (cp.order <= 3) expect(Math.abs(ROUTE[i].pos[1] - cp.spawnPos.y), `CP${cp.order}`).toBeLessThan(100);
+      else {
+        expect(ROUTE[i].surf, `CP${cp.order}`).toBe(true);
+        expect(cp.spawnPos.y - ROUTE[i].pos[1], `CP${cp.order}`).toBeGreaterThan(0);
+        expect(cp.spawnPos.y - ROUTE[i].pos[1], `CP${cp.order}`).toBeLessThan(500);
+      }
       last = i;
     }
+    expect(ROUTE.some((n) => n.note === 'Absprung')).toBe(false);
     // Der erste Knoten im Trigger ist einer dieser Etage (nodeInTrigger: y ab RESUME_BELOW unter der Unterkante).
     for (const cp of CPS.slice(0, 3)) {
       const first = ROUTE.findIndex((n) => nodeInTrigger(n.pos, cp));
@@ -93,7 +116,7 @@ describe('Level 4 "04 TURM" — Datei und Regeln', () => {
     for (const cp of CPS.slice(0, 3)) expect(cp.bounds.max.y - cp.bounds.min.y).toBeLessThanOrEqual(160);
   });
 
-  it('E2 im kompilierten Level: Außenroute (r 1000) lückenlos, Innenlinie (r 752) mit den Gräben an ihren θ — und ≥ 20 % kürzer', () => {
+  it('E2 im kompilierten Level: Außenroute (r 1000) lückenlos, Innenlinie (r 752) mit den Gräben an ihren θ — gefahren ≥ 20 % kürzer', () => {
     const mins = new Vector3(-2, 0, -2);
     const maxs = new Vector3(2, 2, 2);
     const floorAt = (theta: number, r: number): number => {
@@ -111,36 +134,62 @@ describe('Level 4 "04 TURM" — Datei und Regeln', () => {
       if (!trench) {
         if (!LAY.trenches.some(([a, b]) => t > a - 1.5 && t < b + 1.5)) expect(Math.abs(floorAt(t, R_E2_IN) - lane), `innen θ ${t}`).toBeLessThan(3);
       } else if (t < (trench[0] + trench[1]) / 2) {
-        // Vordere Grabenhälfte: Sohle deutlich unter der Bahn (hinten steigt sie bündig zur Landekante).
-        expect(floorAt(t, R_E2_IN), `Graben θ ${t}`).toBeLessThan(lane - 20);
+        // Vordere Grabenhälfte: Sohle mehr als die halbe Grabentiefe unter der Bahn (hinten steigt sie bündig zur Landekante).
+        expect(floorAt(t, R_E2_IN), `Graben θ ${t}`).toBeLessThan(lane - 0.45 * TRENCH_DEPTH);
         trenchHits++;
       }
     }
     expect(trenchHits).toBeGreaterThanOrEqual(3 * 5);
-    const span = e2b - e2a;
-    expect(1 - LAY.helix.arc(span, R_E2_IN) / LAY.helix.arc(span, R_E2_OUT)).toBeGreaterThanOrEqual(0.2);
+    // Gefahren (W + Leertaste, 450 u/s) statt 1 − 752/1000: der Weg kommt aus dem kompilierten Level (Review 29.09.).
+    const inner = lanePath(LEVEL, LAY, CFG, R_E2_IN);
+    const outer = lanePath(LEVEL, LAY, CFG, R_E2_OUT);
+    expect(Number.isFinite(inner) && Number.isFinite(outer)).toBe(true);
+    expect(1 - inner / outer).toBeGreaterThanOrEqual(0.2);
+  }, 30_000);
+
+  it('Innenbahn: Warnstreifen (Bernstein) vor jedem Graben — die Linie liest sich nicht als freie Abkürzung', () => {
+    const warn = LEVEL.brushes.filter((b) => b.mat === 'marking' && DEF.brushes[b.index]?.tag === 'trenchWarn');
+    const c = new Vector3();
+    for (const [ta] of LAY.trenches) {
+      const here = warn.filter((b) => {
+        b.bounds.getCenter(c);
+        const th = LAY.helix.thetaOf(c.x, c.z, ta);
+        return th > ta - 6 && th < ta && Math.hypot(c.x, c.z) < 864;
+      });
+      expect(here.length, `Graben θ ${ta}`).toBeGreaterThanOrEqual(3);
+      for (const b of here) expect(b.tint).toBe('#ffb347');
+    }
   });
 
-  it('↑C-Absprungmarke auf beiden Terrassen: flach auf der Terrasse, 40–270 u vor der Wand', () => {
-    const marks = LEVEL.brushes.filter((b) => b.mat === 'marking' && DEF.brushes[b.index]?.tag === 'duckMark');
-    const c = new Vector3();
+  it('Absprungband auf beiden Terrassen: flach, parallel zur Wand, durchgehend bei TAKEOFF_NEAR, drei Streifen bei TAKEOFF_FAR', () => {
+    const hw = CFG.hull.halfWidth;
     for (const wall of LAY.crouchWalls) {
       const terrace = LAY.helix.yAt(wall - 0.5);
-      const here = marks.filter((m) => {
-        m.bounds.getCenter(c);
-        const th = LAY.helix.thetaOf(c.x, c.z, wall);
-        return th > wall - 30 && th < wall && Math.abs(c.y - terrace) < 10;
-      });
-      expect(here.length, `Kante θ ${wall}`).toBeGreaterThanOrEqual(10);
-      for (const m of here) {
-        expect(m.bounds.max.y).toBeCloseTo(terrace, 3);
-        for (const x of [m.bounds.min.x, m.bounds.max.x]) {
-          for (const z of [m.bounds.min.z, m.bounds.max.z]) {
-            const arc = LAY.helix.arc(wall - LAY.helix.thetaOf(x, z, wall), R_LINE);
-            expect(arc).toBeGreaterThan(40);
-            expect(arc).toBeLessThan(270);
+      const [wx, wz] = LAY.helix.xz(wall, R_LINE);
+      const ty = (LAY.helix.yawAt(wall) * Math.PI) / 180;
+      const [tx, tz] = [-Math.sin(ty), -Math.cos(ty)];
+      const before = (x: number, z: number): number => -((x - wx) * tx + (z - wz) * tz);
+      for (const [tag, band, count] of [
+        ['duckMark', TAKEOFF_NEAR, 1],
+        ['duckMarkFar', TAKEOFF_FAR, 3],
+      ] as const) {
+        let lo = Infinity;
+        let hi = -Infinity;
+        let n = 0;
+        for (const b of DEF.brushes) {
+          if (b.tag !== tag || b.type !== 'hull') continue;
+          if (!b.points.every(([x, y, z]) => Math.abs(y - terrace) < 8 && before(x, z) > 0 && before(x, z) < 400)) continue;
+          n++;
+          for (const [x, y, z] of b.points) {
+            if (y < terrace - 1) continue; // Unterseite
+            expect(y).toBeCloseTo(terrace, 3);
+            lo = Math.min(lo, before(x, z) - hw);
+            hi = Math.max(hi, before(x, z) - hw);
           }
         }
+        expect(n, `${tag} θ ${wall}`).toBe(count);
+        expect(lo, `${tag} θ ${wall}`).toBeCloseTo(band[0], 3);
+        expect(hi, `${tag} θ ${wall}`).toBeCloseTo(band[1], 3);
       }
     }
   });
@@ -202,6 +251,56 @@ describe('Level 4 "04 TURM" — Physik-Wächter', () => {
     for (const x of duck.filter((r) => r.speed >= 550)) expect(x.lost, `θ ${x.wall} @ ${x.speed}`).toBeLessThanOrEqual(CROUCH_LOST_MAX * x.runs);
   }, 60_000);
 
+  it('Innenbahn: eine Wahl nach Tempo, keine Falle — Neuling innen schneller, Strafer verlieren dort höchstens LANE_TRAP; kein Tod, Rettung ≤ 2 s', () => {
+    // Review 29.09.: mit 72-u-Gräben war die Innenlinie ab 450 u/s eine Falle (W + Leertaste bis +1.33 s gegen außen).
+    const speeds = [320, 650, 800];
+    const res = laneChoice(LEVEL, LAY, CFG, speeds, 8);
+    expect(res[0].diff, 'innen bei 320 u/s').toBeLessThanOrEqual(-LANE_SLOW_GAIN);
+    for (const c of res) expect(c.diff, `innen minus außen bei ${c.speed} u/s`).toBeLessThanOrEqual(LANE_TRAP);
+    // Die Gräben liegen in der Linie (sonst misst der Vergleich nur die Steigung): der Neuling trifft sie.
+    expect(res[0].trench).toBeGreaterThan(0);
+    const lane = innerLane(LEVEL, LAY, CFG);
+    expect(lane.deaths).toBe(0);
+    expect(lane.rescueMax, lane.rescueWorst).toBeLessThanOrEqual(2);
+    // Gegenprobe: die alten 72-u-Gräben muss der Wächter als Falle erkennen.
+    const deep = { measure: false, trenchDepth: 72 } as const;
+    const old = laneChoice(compileLevel(buildLevel4(deep)), level4Layout(deep), CFG, speeds, 8);
+    expect(Math.max(...old.map((c) => c.diff))).toBeGreaterThan(LANE_TRAP);
+  }, 60_000);
+
+  it('Anfänger W + Leertaste + in der Luft ducken: ohne Tod bis zur Krone (CP4) in ≤ 45 s', () => {
+    const res = novice(LEVEL, CFG, 'W+Space+Duck', 50);
+    expect(res.checkpoints[3], res.stuck ?? '').toBeLessThanOrEqual(45);
+    expect(res.deathsAt.slice(0, 4).reduce((a, b) => a + b, 0)).toBe(0);
+  }, 30_000);
+
+  it('Absprungband: wer darin springt, kommt ohne Tempoverlust hoch — durchgehend 250–950 u/s, Streifen ab 450 u/s', () => {
+    // Review 29.09.: die alte Marke galt erst ab 450 u/s, die Probe begann dort — Langsame prallten im wandfernen Teil ab.
+    expect(MARK_SPEEDS[0]).toBeLessThanOrEqual(250);
+    const res = duckMarkJumps(LEVEL, LAY, CFG);
+    expect(res.map((m) => `${m.wall}:${m.band}`)).toEqual(LAY.crouchWalls.flatMap((w) => [`${w}:near`, `${w}:far`]));
+    for (const m of res) {
+      expect(m.fails, `θ ${m.wall} ${m.band}`).toEqual([]);
+      expect(m.runs).toBe(5 * 3 * (m.band === 'near' ? MARK_SPEEDS : MARK_SPEEDS_FAR).length);
+      const band = m.band === 'near' ? TAKEOFF_NEAR : TAKEOFF_FAR;
+      expect(m.from).toBeCloseTo(band[0], 3);
+      expect(m.to).toBeCloseTo(band[1], 3);
+    }
+    // Gegenprobe: das durchgehende Band 120 u weiter von der Wand (≈ wandferne Hälfte der alten ↑C-Marke) muss bei
+    // 250/320 u/s abprallende Sprünge finden.
+    const moved = DEF.brushes.map((b) => {
+      if (b.tag !== 'duckMark' || b.type !== 'hull') return b;
+      const wall = LAY.crouchWalls.reduce((best, w) => {
+        const d = (t: number): number => Math.hypot(LAY.helix.xz(t, R_LINE)[0] - b.points[0][0], LAY.helix.xz(t, R_LINE)[1] - b.points[0][2]);
+        return d(w) < d(best) ? w : best;
+      }, LAY.crouchWalls[0]);
+      const ty = (LAY.helix.yawAt(wall) * Math.PI) / 180;
+      return { ...b, points: b.points.map(([x, y, z]) => [x + Math.sin(ty) * 120, y, z + Math.cos(ty) * 120] as const) };
+    });
+    const far = duckMarkJumps(compileLevel({ ...DEF, brushes: moved }), LAY, CFG).filter((m) => m.band === 'near');
+    expect(far.reduce((a, m) => a + m.fails.length, 0)).toBeGreaterThan(10);
+  }, 60_000);
+
   it('Wendel-Bande (Stichprobe): Geradeaus-Hüpfer fallen nicht, sterben nicht, hängen nicht — auch schräg nach außen', () => {
     const res = helixBoard(LEVEL, LAY.helix, { thetas: [10, 530, 40], radii: [700, 1100], speeds: [600, 900], aims: [0, 25, 65] }, CFG);
     expect(res.runs).toBe(156);
@@ -211,7 +310,7 @@ describe('Level 4 "04 TURM" — Physik-Wächter', () => {
   // Wer nach außen hüpft, auch geduckt und bergab (Review: die 80-u-Bande ließ Crouch-Hops und Hüpfer bergab hinaus).
   const ESCAPE_SAMPLE: BandeEscapeSpec = {
     thetas: [60, 200, 460, 500],
-    radii: [1020],
+    radii: [1020, 1110],
     stegU: [450],
     alphas: [0, 30, 60],
     dirs: [1, -1],
@@ -222,7 +321,7 @@ describe('Level 4 "04 TURM" — Physik-Wächter', () => {
 
   it('Bande/Clip (Stichprobe): niemand kommt hinaus oder steht auf der Bande — ohne Clip schon (Gegenprobe)', () => {
     const res = bandeEscape(LEVEL, LAY, CFG, ESCAPE_SAMPLE);
-    expect(res.runs).toBe(120);
+    expect(res.runs).toBe(200);
     expect([...res.out, ...res.onTop]).toEqual([]);
     // Gegenprobe: nur die sichtbare 80-u-Bande, ohne Kill-Ring — die Stichprobe muss das finden.
     const bare = compileLevel(buildLevel4({ measure: false, clipH: BOARD_H, killRing: false }));
@@ -230,11 +329,30 @@ describe('Level 4 "04 TURM" — Physik-Wächter', () => {
     expect(open.out.length + open.onTop.length).toBeGreaterThan(10);
   }, 60_000);
 
-  it('Drop-In vom Sprungbrett: Grundtechnik-Surfer kommen an CP5 (≥ 95 %)', () => {
-    const res = dropIn(LEVEL, CFG);
-    expect(res.deaths).toBe(0);
-    expect(res.ok).toBeGreaterThanOrEqual(0.95 * res.runs);
+  it('Drop-In vom Sprungbrett: Grundtechnik-Surfer kommen an CP5 — ruhig vom Spawn und mit Anlauf vom Steg (Kursfehler ±8°), je ≥ 95 %', () => {
+    const { spawn, approach } = dropIn(LEVEL, LAY, CFG);
+    expect(spawn.runs).toBe(80);
+    expect(spawn.deaths).toBe(0);
+    expect(spawn.ok).toBeGreaterThanOrEqual(0.95 * spawn.runs);
+    expect(approach.runs).toBe(150);
+    expect(approach.ok).toBeGreaterThanOrEqual(0.95 * approach.runs);
+    // Gegenprobe: ein Brett weit im Norden (96–336 u) muss der Anlauf mit Kursfehler finden (gemessen 132/150).
+    const north = { board: [96, 336] as const, measure: false } as const;
+    const bad = dropIn(compileLevel(buildLevel4(north)), level4Layout(north), CFG).approach;
+    expect(bad.ok).toBeLessThan(0.95 * bad.runs);
   }, 60_000);
+
+  it('Medaillen-Wächter: perfekt strafen + einfach surfen ab CP4 unterbietet die Autor-Zeit um höchstens 10 % der Abfahrt', () => {
+    // Review 29.09. (kritisch): build.ts misst Gold/VELOCITY/Autor mit dem RouteFollower, der die Abfahrt ~3 s langsamer
+    // surft als der Grundtechnik-Surfer — Hand 3° + einfaches Surfen unterbot VELOCITY und Autor. Rot, bis der
+    // RouteFollower so surft (src/player/bots) oder build.ts die Medaillen aus dem schnelleren von Bot und Hybrid misst.
+    const author = DEF.medals?.author;
+    expect(author).toBeDefined();
+    const s = surfMedal(LEVEL, LAY, CFG, [24]);
+    expect(s.hybrid).not.toBeNull();
+    expect(Number.isFinite(s.riderSection)).toBe(true);
+    expect(author ?? Infinity).toBeLessThanOrEqual((s.hybrid ?? 0) + 0.1 * s.riderSection);
+  }, 30_000);
 
   it('Coach: W + Leertaste prallt an Kante 1 → Crouch-Hinweis; geduckt oben → gelernt (höhenbewusst in der Wendel)', () => {
     const run = (duck: boolean): { hints: HintId[]; learned: boolean; top: boolean } => {

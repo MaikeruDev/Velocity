@@ -6,8 +6,12 @@ import { CS2_CLASSIC, VELOCITY_DEFAULT, type MovementConfig } from '../src/playe
 import { NaiveBot, StrafeBot, type Bot } from '../src/player/bots';
 import type { PlayerInput } from '../src/player/types';
 import { compileLevel } from '../src/world/level/compileLevel';
-import { AirDisplay, CENTER_BAND_TOP, LESSON_PIP, SpeedTrend, hudScale, lessonCardLayout, makeLessonCardLayout, turnBarLength, type Trend } from '../src/ui/hudLogic';
+import { AirDisplay, CENTER_BAND_TOP, LESSON_PIP, SpeedTrend, hudScale, lessonCardLayout, makeLessonCardLayout, stageJudges, stageLabel, stageSteps, turnBarLength, type Trend } from '../src/ui/hudLogic';
+import { readFileSync } from 'node:fs';
+import { TrainingSession, lessonMovementConfig } from '../src/engine/Training';
+import type { LevelFile, TrainingIndexEntry } from '../src/world/level/LevelFormat';
 import { flatLevel } from '../tools/sim/levels';
+import { parseIndex } from '../src/engine/Game';
 
 /**
  * HUD-Logik im echten Takt: FixedLoop + PlayerMovement + Bot, HUD-Update pro
@@ -156,5 +160,54 @@ describe('Lektions-HUD (Plan 007 TU2) — Karte und Drehbalken', () => {
     expect(turnBarLength(5000, half)).toBe(turnBarLength(360, half));
     // Zielband 40–300 °/s liegt sichtbar getrennt (lo < hi).
     expect(turnBarLength(40, half)).toBeLessThan(turnBarLength(300, half));
+  });
+
+  it('Stufenzähler je Rang: Pflicht "k/n", Bonus und Meister für sich (Karte, Pause)', () => {
+    const t1 = ['required', 'required', 'required', 'required', 'bonus', 'master'] as const;
+    expect(stageSteps(t1)).toEqual(['1/4', '2/4', '3/4', '4/4', '1/1', '1/1']);
+    expect(stageLabel(t1, 3)).toBe('Stufe 4/4');
+    expect(stageLabel(t1, 4)).toBe('Bonus 1/1');
+    expect(stageLabel(t1, 5)).toBe('Meister 1/1');
+    expect(stageSteps(['required', 'required', 'bonus', 'bonus', 'master'])).toEqual(['1/2', '2/2', '1/2', '2/2', '1/1']);
+    expect(stageLabel([], 0)).toBe('Stufe');
+  });
+});
+
+describe('Lektions-HUD (Plan 007 TU2) — Urteile nur, wo Strafen gelehrt wird', () => {
+  // Die echten Lektionen, wie das Spiel sie lädt (public/levels/training), mit der Lehr-Config.
+  const index = JSON.parse(readFileSync('public/levels/training/index.json', 'utf8')) as TrainingIndexEntry[];
+  const lessons = index.map((e) => compileLevel(JSON.parse(readFileSync(`public/levels/training/${e.file}`, 'utf8')) as LevelFile));
+
+  it('Stufen mit Urteil (Gain-Popup, Urteils-Tipps, SYNC) = Strafe-Aufgabe in einer Lektion mit Zielband', () => {
+    const judged: string[] = [];
+    for (const level of lessons) {
+      const t = level.def.training;
+      expect(t).toBeDefined();
+      if (!t) continue;
+      const s = new TrainingSession(level, lessonMovementConfig());
+      for (let i = 0; i < t.stages.length; i++) {
+        s.jumpTo(i);
+        const k = t.stages[i].task.kind;
+        const expected = t.hud?.turnBand === true && (k === 'goodHops' || k === 'speed' || k === 'course');
+        expect(stageJudges(s), `${t.short} ${t.stages[i].id}`).toBe(expected);
+        if (expected) judged.push(`${t.short}/${t.stages[i].id}`);
+      }
+    }
+    // Neulings-Anweisungen "W + LEERTASTE HALTEN" / "W HALTEN, MAUS LENKT" / Lücken springen: kein Urteil.
+    for (const id of ['T1/laufen', 'T1/springen', 'T2/halten', 'T2/graeben', 'T2/lenken', 'T6/kanten']) expect(judged).not.toContain(id);
+    // Strafe-Lektionen urteilen.
+    for (const id of ['T3/links', 'T3/wechsel', 'T4/v400', 'T5/bogen']) expect(judged).toContain(id);
+  });
+});
+
+describe('Levelliste (Plan 007 I3) — "Empfohlen: T7/T8" kommt aus dem Index', () => {
+  it('parseIndex behält prepLessons (sonst zeigte das Menü den Hinweis nie), unbrauchbare Einträge fallen raus', () => {
+    const raw = JSON.parse(readFileSync('public/levels/index.json', 'utf8')) as { id: string; prepLessons?: string[] }[];
+    const idx = parseIndex(raw);
+    for (const e of raw) expect(idx.find((l) => l.id === e.id)?.prepLessons, e.id).toEqual(e.prepLessons);
+    expect(raw.some((e) => (e.prepLessons ?? []).length > 0)).toBe(true);
+    const odd = parseIndex([{ id: 'x', name: 'X', file: 'x.json', prepLessons: ['t7', 3, null] }, { id: 'y', name: 'Y', file: 'y.json', prepLessons: 't7' }]);
+    expect(odd[0].prepLessons).toEqual(['t7']);
+    expect(odd[1].prepLessons).toBeUndefined();
   });
 });

@@ -7,7 +7,7 @@
 /** Gedämpfte Feder (ζ < 1), pro Schritt in geschlossener Form gelöst. */
 export class Spring {
   // Double-Startwerte: die Felder bleiben Double und werden in place beschrieben (ScalarUniform-Lehre,
-  // inbox/cosmetics.md) — mit Smi-Start (0) boxte Chrome jeden Schritt.
+  // fallen.md #107) — mit Smi-Start (0) boxte Chrome jeden Schritt.
   x = 0.5;
   v = 0.5;
   private readonly omega: number;
@@ -82,8 +82,12 @@ export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
+/**
+ * Endlich oder 0. `v − v === 0` statt Number.isFinite: gleiches Ergebnis für Zahlen, aber ohne Builtin-
+ * Aufruf — der boxte die Kommazahl im Spiel in Chromes Zwischenstufe (Maglev) bei jedem Aufruf (fallen.md #107).
+ */
 export function fin(v: number): number {
-  return Number.isFinite(v) ? v : 0;
+  return v - v === 0 ? v : 0;
 }
 
 /** Smoothstep 0..1. */
@@ -118,6 +122,6 @@ export function lerp(a: number, b: number, t: number): number {
 export const TIER_SPEED = [300, 500, 800] as const;
 
 export function speedTier(speed: number): number {
-  const s = Number.isFinite(speed) ? speed : 0;
+  const s = speed - speed === 0 ? speed : 0;
   return s >= TIER_SPEED[2] ? 3 : s >= TIER_SPEED[1] ? 2 : s >= TIER_SPEED[0] ? 1 : 0;
 }

@@ -134,6 +134,11 @@ export interface EnvironmentDef {
   /** Richtung ZUR Sonne (wird normalisiert). */
   readonly sunDir: Vec3Tuple;
   readonly sunColor: string;
+  /**
+   * Scheibe am Himmel als Mond (Plan 007 Phase 3, L3 "Mondflut"): in sunColor, ohne Outrun-Streifen.
+   * Fehlt/false = warme Sonnenscheibe wie bisher (sky.ts färbt sie aus sunColor + Horizont).
+   */
+  readonly moon?: boolean;
   readonly ambientSky: string;
   readonly ambientGround: string;
   /** Farbe der Neon-Trims und des Void-Grids; pulsiert mit der Kick. */
@@ -257,14 +262,23 @@ export type TaskDef =
   | { readonly kind: 'event'; readonly event: GameEventType; readonly count: number };
 
 /**
- * Vorführung (Taste H): hand = Strafe-Hand in Ich-Perspektive (rateDeg °/s, Muster, Startseite),
- * route = Bot fährt LevelFile.route von Knoten `from` bis `to`. seconds = Höchstdauer.
+ * Vorführung einer Stufe (Taste H). hand = Strafe-Hand in Ich-Perspektive (rateDeg °/s, Muster, Startseite), route = Bot
+ * fährt LevelFile.route von Knoten `from` bis `to`; seconds = Höchstdauer. `route.style` (Plan 007 Phase 3): 'walk' = nur
+ * W laufen, 'hold' = W + Leertaste gehalten (Auto-Hop), beide mit Blick auf den nächsten Route-Knoten und OHNE Strafen.
+ * Fehlt style, entscheidet Training.createDemo: an Surf-Knoten SurfHand, in Lektionen mit `hud.turnBand` (Strafe-Lehre)
+ * der RouteFollower, sonst 'jump' (W + Sprint, Sprung an `jump`-, C in der Luft an `crouch`-Knoten, Ducken vor Decken) —
+ * die Showkeys zeigen so nie A/D, wo die Stufe kein Strafen lehrt.
  */
 export type DemoDef =
   | { readonly kind: 'hand'; readonly rateDeg: number; readonly pattern: 'circle' | 'zigzag'; readonly side?: 'left' | 'right'; readonly seconds: number }
-  | { readonly kind: 'route'; readonly from: number; readonly to: number; readonly aimNoiseDeg?: number; readonly seconds: number };
+  | { readonly kind: 'route'; readonly from: number; readonly to: number; readonly aimNoiseDeg?: number; readonly style?: 'walk' | 'hold'; readonly seconds: number };
 
-/** Tipp im Moment: Auslöser, optional Zone/Urteil und Verzögerung (s). Text ≤ 2 × 40 Zeichen. */
+/**
+ * Tipp einer Stufe (Text ≤ 2 × 40 Zeichen), einmal je Stufe (Training.ts, Sperrzeiten dort). Zustände 'air', 'surf', 'zone': seit
+ * ≥ `after` s ununterbrochen; 'land': seit einer Landung ≥ after s am Boden (ein Absprung setzt zurück — sonst
+ * kam "nicht stehen bleiben" mitten im Bhop); 'stuck': ≥ after s ohne Fortschritt (Default STUCK_AFTER);
+ * 'verdict': after s nach diesem Urteil.
+ */
 export interface StageTipDef {
   readonly on: 'air' | 'land' | 'surf' | 'stuck' | 'zone' | 'verdict';
   readonly zone?: string;

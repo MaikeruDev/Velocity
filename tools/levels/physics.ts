@@ -953,10 +953,36 @@ export function timedMedian(level: CompiledLevel, model: StrafeModel, seeds: rea
 }
 
 /** Median über ALLE Läufe: ein gescheiterter zählt als langsamster; null ohne Mehrheit im Ziel. */
-function medianOf(runs: readonly TimedRun[]): number | null {
+export function medianOf(runs: readonly TimedRun[]): number | null {
   const times = runs.flatMap((r) => (r.time === null ? [] : [r.time])).sort((a, b) => a - b);
   if (times.length * 2 <= runs.length) return null;
   return times[Math.floor((runs.length - 1) / 2)];
+}
+
+/**
+ * Zweites Medaillen-Modell eines Levels (Plan 007 Phase 3, Lead-Entscheid): die Grundtechnik der Lektionen T7/T8
+ * dort, wo der RouteFollower nachweislich schlechter surft als sie (er drückt auf fallenden Rampen entlang −n_h, also
+ * etwas gegen die Fahrt, und strafet an Drops in der Luft zum nächsten Knoten). build.ts nimmt je Medaille den
+ * schnelleren Median aus RouteFollower und Referenz; die Freischalt-Leiter rechnet ihre Spielertypen genauso.
+ * L3: Grundtechnik-Surfer mit bestem Blickversatz (nur Gold/VELOCITY/Autor), L4: RouteFollower bis zur Krone, dann
+ * Surfer (alle Medaillen). Beides Proxies — der Mensch-Playtest S6 eicht.
+ */
+export interface MedalReference {
+  /** Kurzname für Build-Log und Leiter. */
+  readonly name: string;
+  /**
+   * Läufe (Spiel-Uhr wie timedRun, Tode inklusive bzw. ohne Ziel = null) des Referenz-Modells zu diesem Medaillen-Modell
+   * auf dieser Linie; `jitter` = über START_JITTERS statt über `seeds`. null = keine Referenz (nur RouteFollower).
+   */
+  runs(level: CompiledLevel, model: StrafeModel, line: RouteChoice, jitter: boolean, seeds: readonly number[], cfg?: MovementConfig): ReferenceRuns | null;
+}
+
+export interface ReferenceRuns {
+  readonly runs: readonly TimedRun[];
+  /** Was gefahren wurde (Log), z. B. "Koralle x −160, Blick −2°". */
+  readonly detail: string;
+  /** Läufe über START_JITTERS (dann prüft build.ts Zweige wie beim perfekten Bot); sonst Seeds. */
+  readonly overJitter: boolean;
 }
 
 // ---------------------------------------------------------------------------

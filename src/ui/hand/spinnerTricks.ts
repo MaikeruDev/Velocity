@@ -16,10 +16,10 @@ import type { V3 } from './view';
  *
  * Tricks je Tempo (Takt gemessen mit tools/cosmetics/event-probe.ts):
  * - Stand: flick (Daumen schnippt), jedes 3. Mal swap (auf die Zeigefinger-Spitze und zurück),
- * - Lauf: flick, Flow: toss (flach drehend hoch, Fang im Pinch) / swap,
- * - Overdrive / perfekter Hop / Ziel: ufo (hoch wie ein UFO, Fang auf der Fingerspitze),
+ * - Lauf: flick, Flow: toss (flach drehend hoch, Fang im Pinch) / swap im Wechsel,
+ * - Overdrive / Ziel: ufo (hoch wie ein UFO, Fang auf der Fingerspitze), guter Hop im Wechsel ufo / toss,
  * - Surf ≥ 500 u/s: Zustand balance — auf der Fingerspitze, die Achse präzediert (Kreis ∝ 1/ω) und
- *   neigt sich mit der Rampe; endet mit dem Surf ("nie abbrechen" bleibt wahr),
+ *   neigt sich mit der Rampe, hüpft als Einlage kurz hoch; endet mit dem Surf ("nie abbrechen" bleibt wahr),
  * - Checkpoint: großer flick, die Nabe blinkt grün (vor der Bestzeit) oder rot (dahinter).
  *
  * Gegen Wagenrad-Aliasing (3-fache Symmetrie) zeigt der Renderer höchstens 0.9 rad Drehung pro
@@ -67,6 +67,8 @@ const UFO_TOTAL = UFO_WINDUP + UFO_AIR + UFO_BACK;
 const BAL_IN = 0.25;
 const BAL_OUT = 0.3;
 const BAL_MIN = 0.5;
+/** Einlage im Surf-Zustand: Scheitel des Hüpfers von der Fingerspitze (Einheiten). */
+const BEAT_HOP = 3.2;
 const HUB_TIME = 0.9;
 
 /** Mitte im Pinch (Handgelenk-Raum): an der Karten-Griffstelle, zu den Fingerkuppen gerückt. */
@@ -96,6 +98,8 @@ export class SpinnerTricks extends PropTricks<SpinnerTrick> {
   shownAngle = 0;
   blur = 0;
   private pick = 0;
+  private goodCount = 0;
+  private milestoneCount = 0;
   private idleCount = 0;
   private bigFlick = false;
   private hubSign = 0;
@@ -190,16 +194,20 @@ export class SpinnerTricks extends PropTricks<SpinnerTrick> {
     this.omega = Math.min(SPINNER_OMEGA_MAX, this.omega + d);
   }
 
+  /**
+   * Abwechslung (Review Phase 2: toss machte 45–62 % der Starts — jeder gute Hop im Flow war ein toss): Flow
+   * immer im Wechsel toss/swap, Overdrive guter Hop im Wechsel ufo/toss, sonst die Liste reihum.
+   */
   protected onJump(tier: number, good: boolean): void {
     if (tier === 0) return;
-    if (tier === 1) this.start('flick');
-    else if (tier === 2) this.start(good || this.pick++ % 2 === 0 ? 'toss' : 'swap');
-    else this.start(good || this.pick++ % 2 === 0 ? 'ufo' : 'toss');
+    const list = SPINNER_TIER_TRICKS[tier];
+    if (tier === 3 && good) this.start(this.goodCount++ % 2 === 0 ? 'ufo' : 'toss');
+    else this.start(list[this.pick++ % list.length]);
   }
 
   protected onMilestone(tier: number): void {
     if (tier >= 3) this.start('ufo');
-    else if (tier === 2) this.start('toss');
+    else if (tier === 2) this.start(this.milestoneCount++ % 2 === 0 ? 'toss' : 'swap');
   }
 
   protected onIdle(): number {
@@ -225,7 +233,7 @@ export class SpinnerTricks extends PropTricks<SpinnerTrick> {
   }
 
   override update(dtRaw: number, inp: PropFrameInput): void {
-    const dt = Number.isFinite(dtRaw) ? clamp(dtRaw, 0, 0.1) : 0;
+    const dt = dtRaw - dtRaw === 0 ? clamp(dtRaw, 0, 0.1) : 0;
     const m = clamp(fin(this.motionFx), 0, 1);
     // Drehzahl VOR der Zeitleiste aufs Frame-Ende bringen: die Balance liest sie (Präzession), und
     // Schnipps der Marken kommen danach — am Frame-Ende wie alle Impulse (#77). Umgekehrt lief die
@@ -360,6 +368,13 @@ export class SpinnerTricks extends PropTricks<SpinnerTrick> {
     const amp = clamp(9 / w, 0.06, 0.35) * e;
     this.rotateView(o, 1, 0, 0, amp * Math.sin(this.precess));
     this.rotateView(o, 0, 0, 1, amp * Math.cos(this.precess) - 0.35 * this.surfLean * e);
+    // Einlage (PropTricks.beatU): hüpft von der Fingerspitze wie ein kleines UFO und landet wieder.
+    const u = this.beatU;
+    if (u < 1) {
+      this.offsetView(o, 0.3 * arc(u) * e, BEAT_HOP * arc(u) * e, 0.6 * arc(u) * e);
+      this.rotateView(o, 1, 0, 0, -0.5 * bell(u) * e);
+    }
+    if (this.beatEnd()) this.kick(o, 0.1, -0.25);
     if (this.mark(0, BAL_IN, t)) this.kick(o, 0.1, -0.2);
     return this.balOut >= 0 && t >= this.balOut + BAL_OUT;
   }

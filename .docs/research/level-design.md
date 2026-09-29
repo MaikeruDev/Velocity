@@ -1,4 +1,7 @@
-# Level-Design: 01 GRUNDKURS und 02 SCHLEIFE
+# Level-Design: 01 GRUNDKURS und 02 SCHLEIFE (L3/L4 eigene Seiten)
+
+**Level 3 "03 BRANDUNG — Halt die Linie."**: [levels/level3.md](levels/level3.md) ·
+**Level 4 "04 TURM — Tempo ist Höhe."**: [levels/level4.md](levels/level4.md)
 
 Level sind Movement-Spielplätze, keine Content-Masse. Jeder Abschnitt fragt
 genau eine Fähigkeit ab und verlangt eine bestimmte Geschwindigkeit. Die
@@ -13,6 +16,41 @@ Boden), Pflicht-Tempi aus dem Menschenmodell `SpeedCurve.hand(3°)`, das
 untere Tempo-Band der Surf-Kette aus `physics.measureSurfSpeeds` (Surfer, 3°-Hand
 und Surf-Raster aus dem Stand). Nach jedem Movement-Tuning: `npm run
 levels:build && npm run levels:check` — die Level ziehen mit.
+
+## Stand nach Plan 007 (Phase 3, 29.09.)
+
+Voller Build (`npm run levels:build`, Physik A1–A8) — `levels:check`: 13 Level (4 + Sandbox + 8 Lektionen),
+0 Fehler, 3 begründete Warnungen (L2-Kerbe, zwei T3-Judge-Quoten):
+
+| Level | Par | Bronze | Silber | Gold | VELOCITY | Autor | prepLessons |
+|---|---|---|---|---|---|---|---|
+| 01 GRUNDKURS | 38 | 37.2 | 33.4 | 22.3 | 21.3 | 20.27 | — |
+| 02 SCHLEIFE | 22 | 21.2 | 19.2 | 17.3 | 16.5 | 15.72 | — |
+| 03 BRANDUNG | 28 | 27.3 | 25.1 | 19.1 | 18.3 | 17.36 | T7, T8 |
+| 04 TURM | 34 | 33.7 | 30.6 | 29.6 | 28.2 | 26.83 | T6, T7, T8 |
+
+- **Medaillen (Regel 10 neu):** Bronze/Silber = Median über **48 Seeds** (`build.ts MEDAL_SEEDS`, auf safeRoute,
+  falls vorhanden); Gold/VELOCITY/Autor = Median über 49 Start-Jitter. Mit 8 Seeds schaffte die Bronze-Hand
+  L3-Bronze nur in 21/48 Läufen (zwei Zeit-Moden auf Türkis, fallen.md #124). Alle vier Level fahren EINEN Zweig.
+- **Echtzeit** (`npm run playtest`, sync 1.0): L1 20.27 s, L2 15.73 s, L3 17.09 s, L4 26.35 s, je 0 Respawns,
+  60 fps. Freischalt-Leiter über die Bot-Spielertypen (24 Seeds): 3 → 6 → 7 → 8 → 9 → 11 → 14, monoton.
+- **L1 (Strang l1l2):** Reihe und Kehre liegen im **Takt des perfekten Strafers** (Plateau-Absprung, H7-Landung
+  und CP3-Tempo misst der Bau selbst) — Regel 1 unten gilt für L1 nicht mehr. Dafür weniger Stationen (4
+  Reihen-Plattformen, 6 Kehren-Pads), Slalom mit wachsendem Takt ab dem gemessenen CP3-Tempo, Nasen 32°,
+  Crouch-Kante 66 u mit ↑C-Zone, Könner-Balken (4, gleich lange Hops), Rutschenbande 192 u, `reportDrift`
+  warnt, wenn der Bau die Planung > 16 u gegen die eingecheckte JSON verschiebt. Die Tabellen weiter unten
+  zeigen teils noch den Stand vor Plan 007.
+- **L2 (Strang l1l2 + Phase 3):** S2 1024 breit (Ausfahrt-Todesstreifen), Finne auf dem S0-Grat (128 u, Keil-
+  Stirn), Oststreifen der Grube 320, unsichtbarer Clip über der Ostbande, Fuß-Bande 128, erster Ring-Knoten aus
+  der Ballistik; **Phase 3:** unsichtbarer Clip über der Ringbande bis 256 u mit geneigtem Dach (Flucht-Probe
+  `ringBoardEscape`: vorher 10/2898 über die Bande, jetzt 0).
+- **Neue Regeln aus Plan 007** (Details movement.md §5 und fallen.md #117–#133): Crouch-Kanten ≥ 66 u;
+  Banden, die Tod verhindern, ≥ 128 u bzw. sichtbar niedrig + Clip; Treppen mit 32–40-u-Setzstufen nur mit
+  Auftritt ≥ Hop-Weite; Surf-Gehrungen ≤ 4° je Fuge; Proben dicht fahren (Fehlerzahl monoton auf 0), nicht an
+  Glückspunkten parken; Gabeln mit safeRoute und Aussetzer-Risiko-Probe.
+- **Offen für den Lead / Playtest S6:** L1-Tempo für Langsame (Hand 3° 35.6 statt 32.5 s vor Plan 007; Silber →
+  Gold 11.1 s), L3-Gabel (innen für jeden, der die Kurve hält, schneller UND todesfrei), L4-K2-Anprall in den
+  Medaillen (~1.8 s), L2-Kerbe Surf-Flanke/Wand (Physik, 3/720 Hänger).
 
 ## Retuning auf Cap 24 + Kanten-Bevels (26.09.)
 
@@ -191,6 +229,9 @@ Strafe-Kurven ab Sprint (320 u/s), Tempo nach Hop 1/2/4/6/10/15/20:
    **Präzisionsziele** (Flag `precision`) sind vom Band ausgenommen — derzeit gibt
    es keine mehr: die Crouch-Kante hat jetzt für jedes Tempo eine Absprungzone,
    der Absprungblock fängt das ganze Band.
+   **Plan 007:** gilt für L2 und die Lektionen; L1-Reihe und -Kehre liegen im Takt des perfekten Strafers
+   (beim Bau gemessen) — der Weg kostet so nur die Langsamen, deshalb WENIGER Stationen statt engerer
+   (fallen.md #121).
 2. **Jede Ketten-Lücke ist per Stop-and-Go machbar** (≤ 252 u, Sprint von der
    Kante); wird der Rhythmus schneller, wachsen die **Plattformen**, nicht die
    Lücken (`ROW_GAP` = 236 u). Die erste Lücke nach einem Checkpoint ist klein.
@@ -280,8 +321,8 @@ Strafe-Kurven ab Sprint (320 u/s), Tempo nach Hop 1/2/4/6/10/15/20:
    levels:check (Warnung, mit dem Abschnitt des größten Verlusts) den Zerfall. **Zu reparieren ist das
    Level**, nicht die Kennzahl. Mit 49 Starts (Phase-0-Physik) gegen den Einzellauf: L1 Gold/VELOCITY/Autor
    24.5/23.4/22.25 → **25.4/24.2/23.03 s** (zweigeteilt, Warnung), L2 17.5/16.7/15.86 → **17.9/17.1/16.2 s**;
-   Bronze, Silber, Par gleich. Die committeten JSONs tragen noch die alten Werte — Phase 3 baut alle
-   Medaillen neu.
+   Bronze, Silber, Par gleich. **Phase 3 (29.09.):** alle Medaillen neu gebaut (Tabelle oben); Bronze/Silber
+   jetzt Median über **48 Seeds** (`MEDAL_SEEDS`) statt der 8 Validator-Seeds (fallen.md #124).
 11. **Gabeln haben eine sichere Linie** (`LevelFile.safeRoute`, Plan 007): gleicher Start und gleiches
    Ziel wie `route`. Der Validator prüft beide Linien (Berichtszeilen `[route]`/`[safeRoute]`): Surf-Raster,
    Surf-Übergang bei 320 u/s und Respawn-Surfer sind auf safeRoute Fehler, auf route Warnung (die schnelle
@@ -308,8 +349,10 @@ Strafe-Kurven ab Sprint (320 u/s), Tempo nach Hop 1/2/4/6/10/15/20:
 ## 01 GRUNDKURS — "Lauf. Spring. Strafe."
 
 Dämmerung, Magenta/Orange, Trims Cyan. Hinweg nach Norden in die tiefe
-Sonne, 180°-Kehre, Rückweg nach Süden, Surf-Rutsche ins Ziel. **Par 37 s,
-Medaillen 36.2 / 30.4 / 24.5 / VELOCITY 23.4 / Autor 22.25 s** (Stand 28.09.; vorher Par 39 s,
+Sonne, 180°-Kehre, Rückweg nach Süden, Surf-Rutsche ins Ziel. **Stand 29.09. (Plan 007): Par 38 s,
+Medaillen 37.2 / 33.4 / 22.3 / VELOCITY 21.3 / Autor 20.27 s** — Karte und Tabelle unten zeigen noch das
+Layout vor dem l1l2-Umbau (6 Reihen-Plattformen, 7 Kehren-Pads, 64-u-Kante), siehe "Stand nach Plan 007".
+Vorher: **Par 37 s, Medaillen 36.2 / 30.4 / 24.5 / VELOCITY 23.4 / Autor 22.25 s** (Stand 28.09.; vorher Par 39 s,
 38.5 / 32.2 / 24.5 / 22.25) (Spiel-Uhr; RouteFollower ab Spawn, Median
 Seeds 1–8: sync 1.0 25.1 s, sync 0.8 29.0 s, Hand 2° 33.6 s, Hand 3° 40.1 s).
 
@@ -362,7 +405,9 @@ Nacht, Acid-Grün/Cyan/Violett, kalter Mond im Norden. Eine kurze Hop-Linie auf
 einen überhöhten Bhop-Ring (Velodrom); die Ausfahrt ist schon im ersten
 Durchgang offen und eine Linie mit Tempo-Stufen; danach eine Surf-Kette **ohne
 einen einzigen Bodenkontakt** bis zum Launch ins Ziel — die erste Rampe (S0) hat
-eine Auffanggrube mit Rückweg. **Par 22 s, Medaillen 21.4 / 18.7 / 17.5 / VELOCITY 16.7 / Autor 15.86 s**
+eine Auffanggrube mit Rückweg. **Stand 29.09. (Plan 007): Par 22 s, Medaillen 21.2 / 19.2 / 17.3 / VELOCITY
+16.5 / Autor 15.72 s**, S2 1024 breit, Finne auf dem S0-Grat, Clips über Ost- und Ringbande (siehe oben).
+Vorher: **Par 22 s, Medaillen 21.4 / 18.7 / 17.5 / VELOCITY 16.7 / Autor 15.86 s**
 (Spiel-Uhr; RouteFollower ab Spawn, Median Seeds 1–8: sync 1.0 17.2 s, sync 0.8 18.9 s,
 Hand 2° 19.1 s, Hand 3° 21.7 s). Himmel, Fog und Licht heller (Spawn-Bild: Anteil unter
 Luma 0.1 von 72.9 % über 45.5 % auf 32.7 %).

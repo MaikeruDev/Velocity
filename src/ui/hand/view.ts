@@ -1,4 +1,4 @@
-import { VIEW_ALIGNED, VIEW_AXES, axisAngle, fromEulerXYZ, mat3, mul, toEulerXYZ } from './rot';
+import { VIEW_ALIGNED, VIEW_AXES, axisAngle, fromEulerXYZ, fromEulerXYZV, mat3, mul, toEulerXYZ } from './rot';
 import type { Mat3 } from './rot';
 
 /**
@@ -55,7 +55,7 @@ const SM: Mat3 = mat3();
 /** Lage eines Gegenstands (PropOut) — nur die Felder, die socketOf liest. */
 export interface SocketPose {
   readonly pos: ArrayLike<number>;
-  readonly rot: ArrayLike<number>;
+  readonly rot: Float32Array;
   readonly spin: number;
   readonly scale: number;
 }
@@ -63,6 +63,8 @@ export interface SocketPose {
 /**
  * Wie socketPoint, Lage aus `o` und lokaler Punkt aus einem Puffer: im Frame-Pfad keine Kommazahlen als
  * Argumente (V8 legt für jede an einen nicht geinlineten Aufruf übergebene Kommazahl eine HeapNumber an).
+ * Drehung per fromEulerXYZV aus dem Puffer — mit drei Winkeln als Argumente boxte socketOf im Spiel nach 60 s
+ * noch 2.6 KiB/s (Review Phase 2, Kendama).
  */
 export function socketOf(o: SocketPose, local: ArrayLike<number>, out: Float32Array | Float64Array): void {
   const c = Math.cos(o.spin);
@@ -71,8 +73,7 @@ export function socketOf(o: SocketPose, local: ArrayLike<number>, out: Float32Ar
   const x = (local[0] * c + local[2] * s) * k;
   const y = local[1] * k;
   const z = (-local[0] * s + local[2] * c) * k;
-  const r = o.rot;
-  const m = fromEulerXYZ(SM, r[0], r[1], r[2]);
+  const m = fromEulerXYZV(SM, o.rot);
   const p = o.pos;
   out[0] = p[0] + m[0] * x + m[1] * y + m[2] * z;
   out[1] = p[1] + m[3] * x + m[4] * y + m[5] * z;
@@ -84,14 +85,14 @@ export function socketOf(o: SocketPose, local: ArrayLike<number>, out: Float32Ar
  * pos + R_xyz(rot) · (scale · Ry(spin) · p). Pro Frame, keine Allokation. Für Fangpunkte
  * (Kendama-Becher) und Anker am Gegenstand.
  */
-export function socketPoint(pos: ArrayLike<number>, rot: ArrayLike<number>, spin: number, scale: number, lx: number, ly: number, lz: number, out: Float32Array | Float64Array): void {
+export function socketPoint(pos: ArrayLike<number>, rot: Float32Array, spin: number, scale: number, lx: number, ly: number, lz: number, out: Float32Array | Float64Array): void {
   const c = Math.cos(spin);
   const s = Math.sin(spin);
   // Ry(spin): x' = x c + z s, z' = −x s + z c (three-Konvention).
   const x = (lx * c + lz * s) * scale;
   const y = ly * scale;
   const z = (-lx * s + lz * c) * scale;
-  const m = fromEulerXYZ(SM, rot[0], rot[1], rot[2]);
+  const m = fromEulerXYZV(SM, rot);
   out[0] = pos[0] + m[0] * x + m[1] * y + m[2] * z;
   out[1] = pos[1] + m[3] * x + m[4] * y + m[5] * z;
   out[2] = pos[2] + m[6] * x + m[7] * y + m[8] * z;

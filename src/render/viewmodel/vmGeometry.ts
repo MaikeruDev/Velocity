@@ -28,6 +28,15 @@ export interface Ring {
   readonly cz?: number;
   /** Superellipsen-Exponent: 2 (Standard) = Ellipse, 4–8 = abgerundetes Rechteck. */
   readonly n?: number;
+  /**
+   * Zacken nur dieses Rings (wie TubeOptions.fur, überschreibt es): jeder zweite Vertex weiter außen — ein
+   * gezackter Saum in der Silhouette statt einzelner Büschel (Katze, Review Phase 2). seg gerade.
+   */
+  readonly fur?: number;
+  /** Welche Vertices außen liegen: 1 = ungerade (Standard), 0 = gerade — versetzte Zacken-Reihen (Katze). */
+  readonly furPhase?: 0 | 1;
+  /** Zacken-Vertices zusätzlich um so viel entlang y versetzt (−: Richtung Unterarm) — Büschel statt Sägeblatt. */
+  readonly furDrop?: number;
 }
 
 export interface TubeOptions {
@@ -60,9 +69,11 @@ export function tubeGeometry(rings: readonly Ring[], seg: number, opts: TubeOpti
   const lobes = opts.lobes;
   const fur = opts.fur ?? 0;
   // Naht-Vertex k = seg ist die Kopie von k = 0: bei ungeradem seg stünde er außen, k = 0 innen → Riss.
-  if (fur > 0 && seg % 2 !== 0) throw new Error(`tubeGeometry: fur braucht gerades seg (${seg})`);
+  if ((fur > 0 || rings.some((q) => (q.fur ?? 0) > 0)) && seg % 2 !== 0) throw new Error(`tubeGeometry: fur braucht gerades seg (${seg})`);
   for (let r = 0; r < n; r++) {
     const R = rings[r];
+    const rf = R.fur ?? fur;
+    const phase = R.furPhase ?? 1;
     // Exponent 2/n; bei der Ellipse exakt sin/cos (bitgleicher Pfad wie vor Plan 007).
     const e = R.n !== undefined && R.n !== 2 ? 2 / R.n : 0;
     for (let k = 0; k <= seg; k++) {
@@ -73,9 +84,9 @@ export function tubeGeometry(rings: readonly Ring[], seg: number, opts: TubeOpti
       const ca = e > 0 ? sgnPow(Math.cos(a), e) : Math.cos(a);
       let s = 1;
       if (lobes) s = 1 - lobes.depth + lobes.depth * Math.pow(Math.max(0, Math.cos(lobes.k * a)), 0.6);
-      if (fur > 0 && k % 2 === 1) s *= 1 + fur;
+      if (rf > 0 && k % 2 === phase) s *= 1 + rf;
       pos[i * 3] = (R.cx ?? 0) + sa * R.rx * s;
-      pos[i * 3 + 1] = R.y;
+      pos[i * 3 + 1] = rf > 0 && k % 2 === phase ? R.y + (R.furDrop ?? 0) : R.y;
       pos[i * 3 + 2] = (R.cz ?? 0) + ca * R.rz * s;
       uv[i * 2] = k / seg;
       uv[i * 2 + 1] = opts.uvByY ? (R.y - y0) / span : r / Math.max(1, n - 1);
@@ -245,8 +256,9 @@ export function boneGeometry(len: number, knob: number, shaft: number, seg: numb
 
 /**
  * Mehrere Teile (position, normal, color, uv, Index) zu EINER Geometrie — je Gelenk-Slot ein
- * Mesh plus eine Hülle. Teile ohne color-Attribut werden `fallback` (Standard Weiß). Hat ein Teil das
- * Krallen-Attribut `aClaw` (Katze), bekommt die Geometrie es für alle (fehlend = 0); sonst wie vorher.
+ * Mesh plus eine Hülle. Teile ohne color-Attribut werden `fallback` (Standard Weiß). Hat ein Teil ein
+ * Skalar-Attribut aus SCALAR_ATTRS (Katze: Krallen `aClaw`, Tigerstreifen `aTabby`), bekommt die
+ * Geometrie es für alle (fehlend = 0); sonst wie vorher.
  */
 export function mergeGeometries(parts: readonly BufferGeometry[], fallback: Rgb = WHITE): BufferGeometry {
   let vc = 0;
@@ -261,8 +273,7 @@ export function mergeGeometries(parts: readonly BufferGeometry[], fallback: Rgb 
   const col = new Float32Array(vc * 3);
   const uv = new Float32Array(vc * 2);
   const idx = new Uint32Array(ic);
-  const hasClaw = parts.some((p) => p.getAttribute('aClaw') !== undefined);
-  const claw = hasClaw ? new Float32Array(vc) : null;
+  const extra = SCALAR_ATTRS.filter((a) => parts.some((p) => p.getAttribute(a) !== undefined)).map((name) => ({ name, data: new Float32Array(vc) }));
   let vo = 0;
   let io = 0;
   for (const p of parts) {
@@ -270,8 +281,10 @@ export function mergeGeometries(parts: readonly BufferGeometry[], fallback: Rgb 
     const N = p.getAttribute('normal');
     const C = p.getAttribute('color');
     const U = p.getAttribute('uv');
-    const K = p.getAttribute('aClaw');
-    if (claw && K) for (let i = 0; i < P.count; i++) claw[vo + i] = K.getX(i);
+    for (const x of extra) {
+      const K = p.getAttribute(x.name);
+      if (K) for (let i = 0; i < P.count; i++) x.data[vo + i] = K.getX(i);
+    }
     for (let i = 0; i < P.count; i++) {
       const k = (vo + i) * 3;
       pos[k] = P.getX(i);
@@ -297,15 +310,28 @@ export function mergeGeometries(parts: readonly BufferGeometry[], fallback: Rgb 
   g.setAttribute('normal', new BufferAttribute(nrm, 3));
   g.setAttribute('color', new BufferAttribute(col, 3));
   g.setAttribute('uv', new BufferAttribute(uv, 2));
-  if (claw) g.setAttribute('aClaw', new BufferAttribute(claw, 1));
+  for (const x of extra) g.setAttribute(x.name, new BufferAttribute(x.data, 1));
   g.setIndex(new BufferAttribute(idx, 1));
   g.computeBoundingSphere();
   return g;
 }
 
+/** Skalar-Attribute je Vertex, die mergeGeometries mitnimmt (Shader-Masken der Katze). */
+const SCALAR_ATTRS = ['aClaw', 'aTabby'] as const;
+
 /** Krallen-Gewicht für alle Vertices setzen (1 = fährt mit uClaw aus/ein). Ladezeit. */
 export function markClaw(g: BufferGeometry, w = 1): BufferGeometry {
   g.setAttribute('aClaw', new BufferAttribute(new Float32Array(g.getAttribute('position').count).fill(w), 1));
+  return g;
+}
+
+/**
+ * Tigerstreifen-Muster eines Teils (Katze, Shader TABBY): 1 = Pfote/Finger (Querstreifen auf Rücken
+ * und Seiten), 2 = Bein (breite, gewellte Ringe), 0 = keine. Je Teil konstant — so bleibt der Wert
+ * nach der Interpolation exakt und die Streifen enden an den Teilgrenzen scharf. Ladezeit.
+ */
+export function markTabby(g: BufferGeometry, mode: 0 | 1 | 2): BufferGeometry {
+  g.setAttribute('aTabby', new BufferAttribute(new Float32Array(g.getAttribute('position').count).fill(mode), 1));
   return g;
 }
 

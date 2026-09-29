@@ -73,6 +73,11 @@ export class CardTricks extends PropTricks<CardTrick> {
     this.surfOut = -1;
   }
 
+  /** Ziel bricht ab: eine halbe Wende verwerfen (sonst bliebe die Karte schräg stehen); die Lage blendet PropTricks weich. */
+  protected override onInterrupt(): void {
+    this.turnExtra = 0;
+  }
+
   protected override onSurfStart(speed: number): void {
     if (speed >= SURF_FROM) this.start('surfFan');
   }
@@ -147,6 +152,12 @@ export class CardTricks extends PropTricks<CardTrick> {
 
   protected override onFinish(): void {
     this.startTrick('vanish', 3);
+  }
+
+  /** Training (KI9): Stufe = Spin (Jubel, zwei Umdrehungen), Lektion fertig = wie das Ziel. */
+  protected override onLesson(done: boolean): void {
+    if (done) this.onFinish();
+    else this.startTrick('spin', 2);
   }
 
   private startTrick(id: CardTrick, tier: number): void {
@@ -224,8 +235,16 @@ export class CardTricks extends PropTricks<CardTrick> {
     this.rotateView(o, 0, 0, 1, (0.2 - 0.35 * this.surfLean) * e);
     this.rotateView(o, 0, 1, 0, FAN_AMP * Math.sin(Math.PI * 2 * FAN_HZ * t) * e);
     o.hroll = -0.06 * e;
+    // Einlage (PropTricks.beatU): die Karte hebt ab und wirbelt einmal um die Hochachse (Rückseite blitzt).
+    const u = this.beatU;
+    if (u < 1) {
+      this.offsetView(o, 0, 1.6 * arc(u) * e, 0.4 * arc(u) * e);
+      this.rotateView(o, 0, 1, 0, Math.PI * 2 * smooth(u));
+    }
+    if (this.beatEnd()) this.kick(o, 0.1, -0.25);
     if (this.mark(0, FAN_IN, t)) this.kick(o, 0.08, -0.2);
-    return this.surfOut >= 0 && t >= this.surfOut + FAN_OUT;
+    // Endet erst nach einer laufenden Einlage (sonst spränge die Drehung zurück).
+    return this.surfOut >= 0 && t >= this.surfOut + FAN_OUT && u >= 1;
   }
 
   private vanish(t: number, o: PropOut): boolean {

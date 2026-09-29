@@ -187,7 +187,7 @@ export function hang(fps: number, o: HangOptions = {}): HangRun {
  * Alte Methode (Prototyp, nur zum Vergleich): Anker-Beschleunigung als zweite Differenz je Frame —
  * x/y in Bildhöhen (y unten) → ax/ay in Hand-Einheiten/s² (x rechts, y oben). Die ersten zwei
  * Frames liefern 0. Nicht im Spiel: ein Sprung-Kick wird so zu einer Ein-Frame-Spitze, die der
- * Deckel je Framerate anders abschneidet (deshalb RopeDrive, inbox/cosmetics.md).
+ * Deckel je Framerate anders abschneidet (deshalb RopeDrive, fallen.md #110).
  */
 class HandAccel {
   ax = 0;

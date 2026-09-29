@@ -19,7 +19,7 @@ import type { PropFrameInput, PropOut } from './propTricks';
  * - Deckel zu löscht sie.
  * Tricks: Stand flickOpen → strike, später twirl / snapClose; Lauf lidFlick (auf/zu); Flow twirl /
  * lidFlick; Overdrive/guter Hop tossOpen (Deckel öffnet in der Luft, Flamme beim Fang, sofern nicht
- * zu schnell); Surf ≥ 500 = Zustand surfFlame (Deckel auf, Flamme weht seitlich); Checkpoint strike
+ * zu schnell); Surf ≥ 500 = Zustand surfFlame (Deckel auf, Flamme weht seitlich); Checkpoint strike / twirl
  * mit Aufflackern; Ziel finale (auf, Aufflackern, zu).
  */
 
@@ -27,8 +27,11 @@ export const LIGHTER_TRICKS = ['none', 'flickOpen', 'strike', 'snapClose', 'lidF
 export type LighterTrick = Exclude<(typeof LIGHTER_TRICKS)[number], 'none'>;
 const LIGHTER_NAMES: readonly string[] = LIGHTER_TRICKS.filter((t) => t !== 'none');
 
-/** Tricks je Tempo-Stufe bei Sprüngen (Tests prüfen genau diese Zuordnung). */
-export const LIGHTER_TIER_TRICKS: readonly (readonly LighterTrick[])[] = [[], ['lidFlick'], ['twirl', 'lidFlick'], ['tossOpen', 'twirl']];
+/**
+ * Tricks je Tempo-Stufe bei Sprüngen (Tests prüfen genau diese Zuordnung). Lauf lidFlick / strike (Rad, Funken,
+ * Aufflackern): mit lidFlick allein machte er bei der 1.5°-Hand 56 % der Starts (Review Phase 2).
+ */
+export const LIGHTER_TIER_TRICKS: readonly (readonly LighterTrick[])[] = [[], ['lidFlick', 'strike'], ['twirl', 'lidFlick'], ['tossOpen', 'twirl']];
 
 /** Griff: wie die Dose, 5.2 Einheiten entlang der Dosenachse zum Daumen; 1.3× groß. */
 export const LIGHTER_HOLD_POS: readonly [number, number, number] = [CAN_HOLD_POS[0] - 5.2, CAN_HOLD_POS[1] + 0.3, CAN_HOLD_POS[2] + 0.6];
@@ -54,7 +57,11 @@ const SPARK_TIME = 0.35;
 const SURF_FROM = 500;
 const SURF_MIN = 0.5;
 
-const COOLDOWN: { readonly [K in LighterTrick]: number } = { flickOpen: 0.3, strike: 0.5, snapClose: 0.5, lidFlick: 1.1, twirl: 1.1, tossOpen: 1.3, finale: 0.5, surfFlame: 0.5 };
+/**
+ * Abklingzeiten (event-probe). tossOpen 1.3 → 1.6: seit das Ziel-Finale immer kommt (Review Phase 2, vorher fiel
+ * es mitten im Trick weg), lag L1 sync 1.0 bei 33.4 Tricks/min (Band 20–32); danach 27.8.
+ */
+const COOLDOWN: { readonly [K in LighterTrick]: number } = { flickOpen: 0.3, strike: 0.5, snapClose: 0.5, lidFlick: 1.1, twirl: 1.1, tossOpen: 1.6, finale: 0.5, surfFlame: 0.5 };
 const FLICK_T = 0.35;
 const CLOSE_T = 0.3;
 const LIDFLICK_T = 0.5;
@@ -62,7 +69,8 @@ const TWIRL_T = 0.7;
 const TOSS_WIND = 0.1;
 const TOSS_AIR = 0.6;
 const TOSS_T = 0.9;
-const STRIKE_T = 0.32;
+/** Rad-Dreh im strike (s): 0.32 → 0.44, seit er auch im Lauf kommt — kurz gerieben lag L2 sync 1.0 bei 24 % (Band ≥ 25). */
+const STRIKE_T = 0.44;
 const STRIKE_OPEN = 0.12;
 const FINALE_T = 2.0;
 const TAU = Math.PI * 2;
@@ -75,6 +83,7 @@ export class LighterTricks extends PropTricks<LighterTrick> {
   lit = false;
   private pick = 0;
   private idleCount = 0;
+  private cpCount = 0;
   /** Zeit ≥ BLOW_SPEED mit Flamme, Ruhe am Boden (s). */
   private windT = 0;
   private calmT = 0;
@@ -177,8 +186,12 @@ export class LighterTricks extends PropTricks<LighterTrick> {
     this.start('finale');
   }
 
+  /**
+   * Checkpoint: Aufflackern kommt ohnehin (onEvent); dazu strike und twirl im Wechsel — nur strike machte auf L2
+   * seit dem Lauf-strike die Hälfte aller Starts. Ist sie aus, zündet der strike sie wieder.
+   */
   protected override onCheckpoint(_split: number | null): void {
-    this.start('strike');
+    this.start(this.lit && this.cpCount++ % 2 === 1 ? 'twirl' : 'strike');
   }
 
   protected override onSurfStart(speed: number): void {
@@ -202,7 +215,7 @@ export class LighterTricks extends PropTricks<LighterTrick> {
   }
 
   override update(dtRaw: number, inp: PropFrameInput): void {
-    const dt = Number.isFinite(dtRaw) ? clamp(dtRaw, 0, 0.1) : 0;
+    const dt = dtRaw - dtRaw === 0 ? clamp(dtRaw, 0, 0.1) : 0;
     const speed = Math.max(0, fin(inp.speed));
     // Ruhe vor den Tricks zählen (onFree liest sie): ruhig = am Boden, kein Surf, < 300 u/s.
     if (dt > 0) this.calmT = inp.onGround && !inp.surfing && speed < CALM_SPEED ? this.calmT + dt : 0;
@@ -238,9 +251,12 @@ export class LighterTricks extends PropTricks<LighterTrick> {
     const wind = clamp(speed / WIND_FULL, 0, 1) * (1 + 0.3 * this.surfSide);
     o.param[P.wind] = m ? clamp(wind, -1, 1) : 0;
     let flame = 0;
-    if (this.lit && o.param[P.lid] > 0.55) {
+    const lid = o.param[P.lid];
+    if (this.lit && lid > 0.45) {
       const flare = this.flareAge < FLARE_TIME ? 1 + FLARE * (1 - this.flareAge / FLARE_TIME) : 1;
-      flame = smooth(this.flameAge / GROW) * (1 - 0.45 * clamp(speed / BLOW_SPEED, 0, 1)) * flare;
+      // Der Deckel verdeckt die Flamme stetig (0.45 … 0.65 offen), statt sie an einer Schwelle abzuschalten: der
+      // Deckel-Klack der Surf-Einlage schließt und öffnet ihn, eine harte Schwelle hinge an der Framerate.
+      flame = smooth(this.flameAge / GROW) * (1 - 0.45 * clamp(speed / BLOW_SPEED, 0, 1)) * flare * smooth((lid - 0.45) / 0.2);
     } else if (!this.lit && this.smokeAge < SMOKE_TIME) flame = -1;
     o.param[P.flame] = flame;
     o.param[P.wheel] = this.wheel;
@@ -431,7 +447,11 @@ export class LighterTricks extends PropTricks<LighterTrick> {
     return t >= FINALE_T;
   }
 
-  /** Surf: Deckel auf (falls zu), hochhalten, zünden (wenn aus), Flamme weht seitlich; endet mit dem Surf. */
+  /**
+   * Surf: Deckel auf (falls zu), hochhalten, zünden (wenn aus), Flamme weht seitlich; endet mit dem Surf. Einlage
+   * (PropTricks.beatU): Deckel schnappt zu und wieder auf (Daumen), die Hand wippt; brennt sie, flackert sie beim
+   * Aufschnappen auf — auch ausgeblasen (≥ 950 u/s, L3) sieht man den Klack.
+   */
   private surfFlame(t: number, inp: PropFrameInput, o: PropOut): boolean {
     if (this.surfOut < 0 && !inp.surfing && t >= SURF_MIN) this.surfOut = t;
     const inE = smooth(t / 0.25);
@@ -443,6 +463,22 @@ export class LighterTricks extends PropTricks<LighterTrick> {
     this.offsetView(o, 0.6 * e, 1.4 * e, 1.6 * e);
     this.rotateView(o, 0, 0, 1, -0.25 * this.surfLean * e);
     o.hroll += 0.1 * this.surfLean * e;
+    const u = this.beatU;
+    if (u < 1 && !this.stateStrike) {
+      // Mit dem Zustand ausgeblendet (e): endet der Surf mitten im Klack, geht der Deckel stetig wieder auf.
+      o.param[P.lid] = 1 - 0.95 * bell(u) * e;
+      o.hroll -= 0.2 * bell(u) * e;
+      o.pose = u > 0.15 && u < 0.85 ? POSE.crack : POSE.grip;
+      o.poseTau = 0.04;
+    }
+    // Wieder auf: Klack, und die Flamme flackert ab genau dort (Alter exakt, framerate-unabhängig).
+    if (this.beatEnd()) {
+      this.kick(o, 0.1, -0.3);
+      if (this.lit) {
+        this.flareAge = this.lateness;
+        this.stamped |= 2;
+      }
+    }
     this.lidOpen = true;
     return this.surfOut >= 0 && t >= this.surfOut + 0.3;
   }

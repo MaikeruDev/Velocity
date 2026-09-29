@@ -1,68 +1,80 @@
 {
+  "seeds": 24,
   "ladder": [
-    2,
-    4,
-    4,
+    3,
+    6,
+    7,
+    8,
     9,
-    9,
-    9,
+    11,
     14
   ],
   "monotone": true,
+  "noNext": [],
   "rows": {
     "Einsteiger (3°-Hand, nur Grundlagen-Training)": {
       "medals": [
-        "level1 33.36 s → bronze",
-        "level2 19.58 s → bronze"
+        "level1 33.30 s → bronze",
+        "level2 19.91 s → bronze",
+        "level3 22.53 s (route 22.53 / safe 26.22) → silver",
+        "level4 27.35 s [Referenz 27.35 gegen RouteFollower 31.73] → bronze"
       ],
-      "L3/L4 angenommen": "bronze",
-      "count": 2,
+      "count": 3,
       "hands": 0,
       "unlocked": [
         "Fidget-Spinner",
-        "Münze"
+        "Münze",
+        "Kendama"
       ],
       "nextGoal": "Roboter-Hand"
     },
     "Solide (2.5°-Hand, Training komplett)": {
       "medals": [
-        "level1 30.88 s → bronze",
-        "level2 18.05 s → silver"
+        "level1 31.88 s → bronze",
+        "level2 19.18 s → silver",
+        "level3 21.49 s (route 21.49 / safe 24.75) → silver",
+        "level4 26.37 s [Referenz 26.37 gegen RouteFollower 30.38] → silver"
       ],
-      "L3/L4 angenommen": "bronze",
-      "count": 4,
+      "count": 6,
       "hands": 1,
       "unlocked": [
         "Fidget-Spinner",
         "Roboter-Hand",
         "Münze",
-        "Sturmfeuerzeug"
+        "Sturmfeuerzeug",
+        "Kendama",
+        "Handy"
       ],
       "nextGoal": "Jo-Jo"
     },
     "Ordentlich (2°-Hand)": {
       "medals": [
-        "level1 31.57 s → bronze",
-        "level2 17.73 s → silver"
+        "level1 29.56 s → silver",
+        "level2 18.26 s → silver",
+        "level3 21.23 s (route 21.23 / safe 23.88) → silver",
+        "level4 25.91 s [Referenz 25.91 gegen RouteFollower 28.42] → gold"
       ],
-      "L3/L4 angenommen": "bronze",
-      "count": 4,
+      "count": 7,
       "hands": 1,
       "unlocked": [
         "Fidget-Spinner",
         "Roboter-Hand",
         "Münze",
-        "Sturmfeuerzeug"
+        "Jo-Jo",
+        "Sturmfeuerzeug",
+        "Kendama",
+        "Handy"
       ],
-      "nextGoal": "Jo-Jo"
+      "nextGoal": "Neon-Handschuh"
     },
     "Gut (1.5°-Hand)": {
       "medals": [
-        "level1 28.53 s → silver",
-        "level2 16.06 s → velocity"
+        "level1 29.02 s → silver",
+        "level2 17.23 s → gold",
+        "level3 20.21 s (route 20.21 / safe 22.87) → silver",
+        "level4 26.20 s [Referenz 26.20 gegen RouteFollower 28.53] → gold"
       ],
-      "L3/L4 angenommen": "silver",
-      "count": 9,
+      "count": 8,
       "hands": 2,
       "unlocked": [
         "Fidget-Spinner",
@@ -72,17 +84,17 @@
         "Sturmfeuerzeug",
         "Kendama",
         "Handy",
-        "Skelett-Hand",
-        "Dose"
+        "Skelett-Hand"
       ],
       "nextGoal": "Neon-Handschuh"
     },
     "Sehr gut (1°-Hand)": {
       "medals": [
-        "level1 26.44 s → silver",
-        "level2 16.03 s → velocity"
+        "level1 25.93 s → silver",
+        "level2 16.05 s → velocity",
+        "level3 18.70 s (route 18.70 / safe 21.31) → silver",
+        "level4 24.23 s [Referenz 24.23 gegen RouteFollower 27.47] → velocity"
       ],
-      "L3/L4 angenommen": "silver",
       "count": 9,
       "hands": 2,
       "unlocked": [
@@ -100,12 +112,13 @@
     },
     "Elite (sync 0.95)": {
       "medals": [
-        "level1 28.55 s → silver",
-        "level2 15.73 s → velocity"
+        "level1 20.71 s → gold",
+        "level2 16.23 s → velocity",
+        "level3 11.59 s (route 18.87 / safe 21.37) [Referenz 11.59 gegen RouteFollower 18.87] → velocity",
+        "level4 25.55 s [Referenz 25.55 gegen RouteFollower 27.76] → gold"
       ],
-      "L3/L4 angenommen": "silver",
-      "count": 9,
-      "hands": 2,
+      "count": 11,
+      "hands": 4,
       "unlocked": [
         "Fidget-Spinner",
         "Roboter-Hand",
@@ -114,17 +127,20 @@
         "Sturmfeuerzeug",
         "Kendama",
         "Handy",
+        "Neon-Handschuh",
         "Skelett-Hand",
-        "Dose"
+        "Dose",
+        "Gold-Handschuh"
       ],
-      "nextGoal": "Neon-Handschuh"
+      "nextGoal": "Sammelkarte"
     },
     "Top (sync 1.0)": {
       "medals": [
-        "level1 22.73 s → velocity",
-        "level2 15.31 s → velocity"
+        "level1 19.48 s → velocity",
+        "level2 15.73 s → velocity",
+        "level3 11.59 s (route 17.52 / safe 19.25) [Referenz 11.59 gegen RouteFollower 17.52] → velocity",
+        "level4 23.76 s [Referenz 23.76 gegen RouteFollower 25.22] → velocity"
       ],
-      "L3/L4 angenommen": "velocity",
       "count": 14,
       "hands": 5,
       "unlocked": [

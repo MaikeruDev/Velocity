@@ -1,6 +1,6 @@
 import type { GameEvent } from '../../engine/events';
 import { VM_PARAM, VM_RIG } from '../../render/types';
-import { arc, backOut, bell, clamp, fin, smooth } from './anim';
+import { arc, backOut, bell, clamp, smooth } from './anim';
 import { fingerPoint, thumbPoint } from './fk';
 import { POSE, POSE_JOINTS } from './poses';
 import { PropTricks } from './propTricks';
@@ -18,8 +18,10 @@ import type { V3 } from './view';
  * - Lauf: flip (Daumen-Flip, Scheitel 5), Flow: flip / roll (schneller Knöchel-Lauf),
  * - Overdrive: highFlip (Scheitel 9, Fang als Klatsch auf dem Handrücken) / vanish (Poof wie die Karte),
  * - Surf ≥ 500: Zustand edgeSpin — tanzt auf der Kante über der Faust, Ende = Klatsch,
- * - Checkpoint: call — Flip, die Landung zeigt KOPF, wenn split < 0 oder ohne Referenz, sonst ZAHL;
- *   Ziel: Kopf bei neuer Bestzeit, sonst Zahl. Läuft gerade ein Trick, kommt der call danach (≤ 1.5 s).
+ * - Checkpoint: call — Flip, die Landung zeigt KOPF, wenn split < 0 oder ohne Referenz, sonst ZAHL; läuft
+ *   gerade ein Trick oder ist man in der Luft/im Surf, kommt der call danach (≤ 1.5 s, s. call()).
+ * - Ziel: call sofort (bricht laufende Tricks und den Surf-Zustand ab, PropTricks), Kopf bei neuer
+ *   Bestzeit, sonst Zahl.
  * Würfe drehen immer um eine gerade Zahl halber Drehungen: vorn liegt am Ende wieder die Vorderseite,
  * das Motiv vorn wählt der Kanal side — umgeschaltet, während die Münze hochkant steht (unsichtbar).
  */
@@ -130,8 +132,6 @@ export class CoinTricks extends PropTricks<CoinTrick> {
   private flips = 0;
   private halfTurns = 4;
   private surfOut = -1;
-  /** Letzter Frame: schnell gesurft (der call wartet dann aufs Surf-Ende, der Surf-Zustand hat Vorrang). */
-  private surfFast = false;
   /** Letzter Frame: am Boden, nicht surfend (dort darf der call sofort starten). */
   private grounded = true;
 
@@ -208,11 +208,22 @@ export class CoinTricks extends PropTricks<CoinTrick> {
     return 2.8 + 1.8 * this.rand();
   }
 
-  /** Kopf/Zahl merken — auch wenn gerade ein Trick läuft (dann kommt der call direkt danach). */
+  /** Checkpoint: Kopf/Zahl merken — auch wenn gerade ein Trick läuft (dann kommt der call direkt danach). */
   override onEvent(e: GameEvent): void {
     if (e.type === 'checkpoint') this.call(e.split === null || e.split < 0 ? HEADS : TAILS);
-    else if (e.type === 'finish') this.call(e.best ? HEADS : TAILS);
     else super.onEvent(e);
+  }
+
+  /** Ziel: sofort (PropTricks bricht Laufendes ab) — auf Landung oder Surf-Ende zu warten hieß oft, dass nie einer kam. */
+  protected override onFinish(best: boolean): void {
+    this.pendingSide = -1;
+    this.target = best ? HEADS : TAILS;
+    this.start('call');
+  }
+
+  /** Training (KI9): Stufe und Lektion = call mit KOPF, sofort (wie das Ziel mit Bestzeit, auch in der Luft). */
+  protected override onLesson(): void {
+    this.onFinish(true);
   }
 
   private call(side: number): void {
@@ -255,7 +266,6 @@ export class CoinTricks extends PropTricks<CoinTrick> {
   }
 
   override update(dt: number, inp: PropFrameInput): void {
-    this.surfFast = inp.surfing && fin(inp.speed) >= SURF_FROM;
     this.grounded = inp.onGround && !inp.surfing;
     super.update(dt, inp);
     // Ein call, der auf Surf-Ende oder Landung wartet, verfällt nicht, solange das dauert.
@@ -447,9 +457,18 @@ export class CoinTricks extends PropTricks<CoinTrick> {
     // Dreht auf der Kante (Eigenachse = Bild-oben), taumelt leicht, neigt sich mit der Rampe.
     o.spin = SPIN_RATE * t * e;
     this.rotateView(o, 0, 0, 1, (0.12 * Math.sin(t * 7) - 0.3 * this.surfLean) * e);
+    // Einlage (PropTricks.beatU): springt von der Kante, überschlägt sich einmal (ganze Drehung: das Motiv vorn
+    // bleibt) und landet wieder auf der Kante.
+    const u = this.beatU;
+    if (u < 1) {
+      this.offsetView(o, 0, 2.4 * arc(u) * e, 0.5 * arc(u) * e);
+      this.rotateView(o, 1, 0, 0, Math.PI * 2 * smooth(u));
+    }
+    if (this.beatEnd()) this.kick(o, 0.1, -0.25);
     if (this.mark(0, 0.25, t)) this.kick(o, 0.05, -0.1);
     if (this.surfOut >= 0 && this.mark(1, this.surfOut + 0.3, t)) this.kick(o, 0.2, -0.5);
-    return this.surfOut >= 0 && t >= this.surfOut + 0.3;
+    // Endet erst nach einer laufenden Einlage (sonst spränge der Überschlag zurück).
+    return this.surfOut >= 0 && t >= this.surfOut + 0.3 && u >= 1;
   }
 
   private lerpPos(o: PropOut, a: M, b: M, s: number, lift: number): void {

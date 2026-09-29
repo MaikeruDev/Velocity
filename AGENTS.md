@@ -18,16 +18,30 @@ Grafik, Content, Story sind zweitrangig. Wenn eine Entscheidung zwischen
 "sieht besser aus" und "fühlt sich besser an" wählen lässt: immer fühlen.
 
 Bewusst **nicht** in dieser Version: Walljump, Wallrun, Double-Jump, Waffen,
-Stamina-/Landestrafe (würde Bhop töten), Multiplayer.
+Stamina-/Landestrafe (würde Bhop töten), Multiplayer; seit Plan 007 außerdem Trail, Musik-Packs,
+Jump-Pads/Boosts/Ringe und Replays/Vorflieger-Ghost (kommen erst mit einer Datenbank).
+
+**v2 (Plan 007, umgesetzt 29.09.):** Das Movement soll **Spaß machen, arcadig, smooth und befriedigend** sein,
+nicht 1:1 CS. Arcade-Pass: Lande-Gnade (8 Ticks), deterministische Hang-Landung (mit gestundetem Bergauf-
+Verlust), Anfänger-Cap 40, Kanten-Assist (Lip-Step 5 u + Tempo-Gedächtnis), **Rutschen** (Sprint + C) und
+**Luftlenkung mit W** (Default an) — im CS2-Preset alles aus, bitgleich zum Source-Port (movement.md §1). Vier
+Level: 01 GRUNDKURS, 02 SCHLEIFE, **03 BRANDUNG — Halt die Linie.** (reine Surf-Map mit Gabel Koralle/Türkis),
+**04 TURM — Tempo ist Höhe.** (Wendel mit Crouch-Kanten, Surf-Abfahrt). **Trainingsmodus** aus acht Lektions-
+Maps T1–T8 (Grundlagen: Erste Schritte, Auto-Hop, Air-Strafe, Speed; Fortgeschritten: Kurven, Crouch-Jump,
+Surf halten, Surf-Speed): Stufen mit Aufgaben, StrafeJudge-Urteil je Hop, Tore, Vorführung per **H**, Sterne
+(★ Pflicht, ★★ Bonus, ★★★ Meister — Meister gibt nur Sterne), kein Tod, kein Timer, keine Bestzeit.
 
 **Viewmodel: ja — eine Cartoon-Hand** (Nutzerwunsch 2026-09-28, vorher "kein Viewmodel";
 seit Plan 006 ein echtes Low-Poly-3D-Viewmodel im Stil der Referenzen unter `hand screens/`):
 weißer Handschuh mit weicher Grau-Schattierung, dicke dunkle Kontur, pummelige Finger, Stulpe
 mit schwarzem Band, unten rechts im 16:9-Safe-Frame. Sie spiegelt das Movement (Sprung, Landung,
 Sway, Surf, Tempo), nie umgekehrt; abschaltbar ("Hand anzeigen"), Bewegung hängt an `motionFx`.
-Kosmetik (Plan 005/006): Neon-Handschuh (L1-Gold), Sammelkarte (L1-VELOCITY), Energy-Drink-Dose
-(L2-VELOCITY), Butterfly-Messer (beide VELOCITY) — mit Gegenstand macht die Hand Tricks, je
-schneller, desto wilder.
+Kosmetik (Plan 005/006/007, 14 Freischaltungen): Handschuhe Neon (L1-Gold), Skelett (L2-Gold), Gold (Gold in
+L1–L4), Roboter (Training T1–T8 bestanden), **Katzenpfote** (VELOCITY in L1–L4, Cartoon-Stil); Gegenstände
+Fidget-Spinner (Training T1–T4), Münze (Bronze in L1–L4), Jo-Jo (L1-Silber), Sturmfeuerzeug (L2-Silber),
+Kendama (L3-Silber), **Handy mit Selfie im Ziel** (L4-Silber, Polaroid im Ergebnis), Sammelkarte
+(L1-VELOCITY), Energy-Drink-Dose (L2-VELOCITY), Butterfly-Messer (beide VELOCITY). Mit Gegenstand macht die
+Hand Tricks, je schneller, desto wilder; beim Surfen hat jeder Gegenstand einen Surf-Zustand.
 
 Sprache: Doku und Kommentare Deutsch, Bezeichner Englisch. Spielbegriffe
 bleiben englisch (Bhop, Strafe, Surf, Speed, Checkpoint).
@@ -49,15 +63,29 @@ npm install
 npm run dev            # http://localhost:5173
 npm run typecheck
 npm test               # Vitest: Kollision + Movement + Bots
-npm run sim            # Movement-Sim: Bots vergleichen, Tuning-Report
-npm run levels:build   # tools/levels/*.ts → public/levels/*.json (Par gemessen: 3°-Hand × 1.05)
-npm run levels:check   # Level validieren (Kompilierung, Spawn, Sprung-Reichweiten, Bot-Durchläufe über 8 Seeds, Auto-Hop-Raster)
+npm run sim            # Movement-Sim: Bots vergleichen, Tuning-Report (-- --section arcade | -- --preset cs2)
+npm run levels:build   # tools/levels/*.ts → public/levels/*.json + index.json, Lektionen → public/levels/training/
+                       #   (-- <id>|training|<Lektions-id>: nur diese Dateien, NIE index.json → danach ohne Filter bauen!)
+                       #   Medaillen: Bronze/Silber Median über 48 Seeds (safeRoute), Gold/VELOCITY/Autor über 49 Start-Jitter;
+                       #   L3/L4 zusätzlich Surf-Referenz (LevelEntry.reference): je Medaille zählt der schnellere Median
+npm run levels:check   # Level + Lektionen validieren (statisch, Bot-Durchläufe, Raster, Design-Proben, Selbsttest; ~3 min)
+                       #   (-- <id>|<datei>|training: auch Level außerhalb des Index; jedes Argument muss treffen)
 npm run shot           # Hero-Shots aus dem echten Spiel + Ablauf-Checks (eigener Server, Port 5190, SHOT_PORT=…)
-npm run playtest       # Bot spielt jedes Level in Echtzeit im Browser → shots/playtest/report.json (Port 5191, PLAYTEST_PORT=…)
+npm run playtest       # Bot spielt L1–L4 + Sandbox in Echtzeit im Browser → shots/playtest/report.json (Port 5191, PLAYTEST_PORT=…)
+node tools/training-shots.mjs [tN …]    # Trainingsmodus im Spiel: Lektionen, Vorführung, Tore, HUD (erzwungenes Layout 216/270/360 Zeilen,
+                       #   Stufenwechsel, Neuling ohne Anlauf), Admin-Sterne → shots/training/ (Port 5348, TRAIN_PORT=…; TRAIN_LESSONS=<dir>)
+npx tsx tools/levels/training/check.ts [tN]   # Bot-Matrix der Lektionen direkt aus den Buildern (turnwindow.ts: Judge-Schwellen neu erzeugen)
+node tools/cosmetics/vm-hash.mjs check  # Viewmodel pixelgleich: 252 Kachel-Hashes gegen die Baseline (VMHASH_PORT=…; write|cmp)
+npx tsx tools/cosmetics/envelope.ts [item]    # Bild-Hülle der Tricks (Exit 1 bei Verstoß, auch gegen ITEM_HULL)
+npx tsx tools/cosmetics/event-probe.ts [--levels l1,… --seeds N]  # Trick-Takt je Gegenstand auf L1–L4 → shots/v2/kosmetik/
+                       #   (Exit 1 bei Verstoß gegen Plan-007-Grenzen; ohne Filter laufen lassen, sonst schreibt sie nur die gewählten Items)
+npx tsx tools/cosmetics/rope-hang.ts    # Schnur framerate-unabhängig (Pendel-Abweichung je Framerate, px)
+npx tsx tools/cosmetics/unlock-ladder.ts [--seeds N]  # Freischalt-Leiter über Bot-Spielertypen mit den gebauten Medaillen (Default 24 Seeds)
 node tools/alloc-probe.mjs [level] [s]  # Heap-Sampling im echten Spiel (Port 5199, ALLOC_PORT=…; --warmup 60 = Dauerbetrieb, fallen.md #65)
 node tools/ghost-check.mjs [level]      # Ghost der Bestzeit: Bot gegen eigenen Ghost (Port 5232, GHOST_PORT=…)
 npm run audio:check    # Musik offline rendern + spektral prüfen
-node tools/viewmodel-shots.mjs [filter] # 3D-View-Hand im Spiel: Szenen, Ultrawide, HUD, Trick-Phasen je Gegenstand, Live-Läufe, Referenzvergleich, Menü, Ergebnis → shots/viewmodel/ (Port 5282, VM_PORT=…)
+node tools/viewmodel-shots.mjs [filter] # 3D-View-Hand im Spiel → shots/viewmodel/ (Port 5282, VM_PORT=…); filter: scenes|uw|hud|props|live|compare|menu|finish|skins|items|budget|snapshot|ingame|selfie
+                       #   finish: Ergebnis ohne Handy (kein Foto) und mit Handy (HUD-Stempel FOTO, Polaroid finish-phone.png)
 node tools/admin-shots.mjs              # Admin-Menü: Screenshots + Ablauf-Checks (Sperren überleben Neuladen, Medaille setzen, Ghost weg) → shots/admin/ (Port 5290, ADMIN_PORT=…)
 node tools/viewmodel-sheet.mjs <spec.json> <out.png>  # Viewmodel-Kacheln ohne Spiel über dev/viewmodel.html (Posen, Griffe, festgehaltene Tricks; Port 5282, VMSHEET_PORT=…)
 npx tsx tools/levels/medalProbe.ts      # Spiel-Uhr-Median mehrerer Bot-Modelle je Level (Grundlage der Medaillen)
@@ -313,9 +341,9 @@ Gegenstände zeichnen als classic/none. Abschluss (Leiter, Doku) in Phase 3.
   Reihenfolge), `UnlockRequirement` = `MedalRequirement {kind:'medal', levelId, medal}` |
   `TrainingRequirement {kind:'training', group:'basics'|'all', minStars:1|3}` (ohne Lektionen nie
   erfüllt), `requirementMet`, `deriveUnlocks(levels, best, training?)`, `sync(levels, best, training?)`,
-  `grantEarnedFor` nur für Medaillen dieses Levels. **`PENDING_UNLOCKS`**: die 10 neuen werden bis Phase 3
-  NICHT abgeleitet (sonst bekäme L1-Silber ein unsichtbares Jo-Jo angelegt); Admin/`unlockAll` setzen
-  alle 14. Phase 3 leert die Menge. Speicherformat v3 unverändert.
+  `grantEarnedFor` nur für Medaillen dieses Levels. **`PENDING_UNLOCKS`**: die 10 neuen wurden bis Phase 3
+  NICHT abgeleitet (sonst bekäme L1-Silber ein unsichtbares Jo-Jo angelegt) — **in Phase 3 entfernt**, die
+  Ableitung vergibt alle 14. Speicherformat v3 unverändert.
 - **Renderer** (`render/types`): `ViewModelGlove`/`ViewModelItem` wie GloveId/HeldItemId (unbekannte
   zeichnen als classic/none), `VM_RIG` (Finger-/Daumenmaße, aus ViewModel.ts verschoben; Konvention im
   Kommentar), `VM_STRING_POINTS` = 9, `VM_PARAM` (Kanäle je Gegenstand), `VM_PHONE_MODE`.
@@ -327,6 +355,98 @@ Gegenstände zeichnen als classic/none. Abschluss (Leiter, Doku) in Phase 3.
   skipStage, `FinishResult.photo?`.
 - **Audio**: `MusicDrive.sliding?`.
 - **Tests**: `tests/contracts.test.ts` (neu), Plan-007-Blöcke in settings/cosmetics.
+
+Plan 007 Abschluss (Phase 1–3, 29.09.) — alle Nutzer nachgezogen, tsc 0, Vitest grün:
+- **Physik** (movement.md §1/§4/§5): Arcade-Pass A1–A8 aktiv, `airSpeedCapLow` 40. Abweichungen vom Plantext:
+  Hang-Landung mit **gestundetem Bergauf-Verlust** (`slopeDebt`, gegen die Hügel-Pumpe), kein Lip-Step, solange
+  der Rest-Aufstieg die Kante um ≥ 2 u überragt (`LEDGE_RISE_CLEAR`), **Weiterrutschen** über Mulden
+  (`slideCarry`), Wand-Tasche (Luft-Move zwischen fast parallelen Wänden → senkrecht weiterfallen).
+  `PlayerSnapshot.sliding`/'slideStart' werden erst NACH der Lande-Gnade gemeldet (Physik rutscht ab dem ersten
+  Bodentick); ein Sprung aus der Rutsche sendet [jump, slideEnd]; Weiterrutschen ein zweites slideStart{boost:false}.
+- **Kamera** (kein Vertrag): `rig.onTick()` je Physik-Tick vor den Events, `CameraView.sliding`/`.tickAlpha`,
+  `cameraViewFromSnapshot(…, tickAlpha)`, `fxState.slideRumble`/`.ledgeOffset`. `jitWarmup` wärmt Rutschen und
+  Luftlenkung mit vor (jeder dritte Block).
+- **LevelFormat**: `EnvironmentDef.moon?` (Phase 3: Himmelsscheibe als Mond in sunColor, ohne Outrun-Streifen;
+  L3), Doku `StageTipDef` ('land' mit `after` ist ein Zustand). `LevelIndexEntry.prepLessons` steht im Index
+  (L3 T7/T8, L4 T6/T7/T8) und erscheint in der Levelliste als "Empfohlen: T7/T8", solange eine davon keinen Stern hat.
+- **Freischaltungen**: `PENDING_UNLOCKS` entfernt; die Freischaltung liest die Medaillen aus index.json (Test:
+  Index = Level-Datei). `TrainingProgress.setStars(id, stages, 0..3)` (Admin, auch senken; 0 = zurücksetzen),
+  `MenuTraining.setStars(id, stars)`. Admin-Menü: Sterne je Lektion (keine/★/★★/★★★), "Alle ★★★", "Alle
+  zurücksetzen"; Zurücksetzen nimmt keine Freischaltung weg.
+- **Ziel-Foto (I3)**: Game löst im Ziel mit Handy aus (`ViewHand.takeShutter()` jeden Frame des Ausrollens, 0.76 s
+  nach dem Ziel; `takeShutterNow()` wenn das Ergebnis früher kommt; ein alter Auslöser wird im Ziel verworfen),
+  `RendererApi.selfie(96, 54, hand.selfieFrame())` NACH dem render() des Frames → `FinishResult.photo`.
+  `Hud.showPhoto()` (Stempel "FOTO", `HUD_RECTS` + 'photo'). Menü: Polaroid im Ergebnis (`.vel-polaroid`, Foto ×3,
+  Zeit + Medaille). Ohne Handy kein Foto.
+- **Training (engine, kein Vertrag außer trainingTypes)**: `Training.ts` — `TrainingSession(level, cfg, {world})`
+  (+ `tip`, `setConfig`, `demoPassed`, `stage`, `jumpTo`), `createDemo(demo, level, cfg, world, spawn)` (hand →
+  BeginnerHand, Surf-Route → `SurfHand`, sonst RouteFollower mit Duck-Vorausschau), `demoStyle`,
+  `lessonMovementConfig()` (Lektionen laufen mit VELOCITY + allen Hilfen, nicht mit der Spieler-Config), `hullIn`,
+  Konstanten (`STUCK_AFTER`, `CHAIN_MIN_SPEED`, `MISS_TEXT`, …). `strafeJudge.ts` — `StrafeJudge`
+  (`HopReport.wall/.loss`: Wand-Kontakt ab dem Absprung-Tick, Gewinn bis zum letzten Luft-Tick), `goodGainAt`,
+  `tooFastRate`, `turnBandAt` (Prestrafe-Band 150–300), `VERDICT_TEXT`. `TrainingProgress.ts` — localStorage
+  `velocity.training.v1` {v:1, lessons:{id:{stages, stars, at}}}, `starsFor`, `parseTrainingProgress`.
+  `player/bots/BeginnerHand.ts` — `BeginnerHand`, `HAND_MODELS`, `SurfHand`. `world/collision/GatedWorld.ts` —
+  `GatedWorld(base, gates)` (setOpen/isOpen/closeAll/indexOf; ohne geschlossenes Tor bitgleich zur BrushWorld).
+- **Training (UI)**: `Game` baut eine lokale `LessonSession` (TrainingSessionApi + tip/setConfig/demoPassed),
+  Stufe aus `LessonHud.stageIndex`; übersprungene Stufen gehen NICHT als 'lessonStage' auf den Bus (Zähler);
+  Vorführung endet am Ziel ("SO GEHT'S!", 1 s) oder nach 0.5 s Stillstand; Urteile nur in Stufen mit Strafe-
+  Aufgabe (`hudLogic.stageJudges`). `Hud`: `judge`, `demoGoal`, `setLessonStages(ranks)`, `verdictSerial`/
+  `verdictDrawn`, `HudSprite`, `rect(name)`. `hudLogic`: `CENTER_BAND_*`, `lessonCardLayout`, `turnBarLength`,
+  `stageSteps`, `hudScale`. `Coach(cfg)` (Config Pflicht), `JUDGE_MAX_SPEED`. `InputManager.anyKeyDown()`,
+  `GameDeps.training?`, Menü `MenuTraining`, `LessonPauseInfo`, `setTraining/showTraining/showLessonDone/
+  setDemoKey`, `Sfx.lessonNote`, `render/gateVisuals` (Vorhang, Screen-Door-Auflösen).
+- **Kosmetik** (kein Vertrag): Registries `ITEM_REGISTRY`, `SKIN_REGISTRY`, `PROP_FACTORIES`; `ScalarUniform`;
+  `LitOptions.tabby` (+ `markTabby`, Attribut `aTabby`); Pose `cradle` (Index 15 in HAND_POSES); `rot.axisAngleQ`,
+  `fromEulerXYZV`, `mulT`, `toAxisAngleQ`; `Rope` (`setTaut`, `length`/`segLen` als Getter, `advance(0)` setzt die
+  Anker), `RopeDrive`; `PropTricks` (Ziel bricht ab, `XFADE` 0.25 s, `onFinish(best)`, `onInterrupt()`);
+  `ViewHand.takeShutter/takeShutterNow/selfieFrame`, `PhoneTricks.shootNow`; `RenderStats.viewModelTriangles`;
+  Schnur-Schlagschatten (+1 Draw Call). `createViewModelFrame` legt Kommazahl-Felder mit Double-Startwert an.
+- **Level-Werkzeug** (kein Vertrag): `physics.withRoute`, `resumeIndex` mit Höhe, `jitterMedian`/`jitterBranches`
+  (49 Starts), `build.MEDAL_SEEDS` (48); Proben `probes/level3.ts` (Gabel, Aussetzer-Risiko, Medaillen-Stichprobe),
+  `probes/level4.ts` (`bandeEscape`, `duckMarkJumps`, …), `designProbes.ringBoardEscape` (L2, mit
+  `level2.level2RingBoard()`).
+- **Debug-Handle**: `training()`, `trainingSkip()`, `trainingReset()`, `demo({on, play})`, `lessons()`,
+  `benchHud(n)`, `benchLesson(n)`, `frameCost()` (+ `lessonTickMs`), `snapshot(w?, h?)`, `renderStats()`;
+  `hudLayout()` + `verdictSerial`/`verdictDrawn`/`judge`, `rects.photo`; `state().lesson`, `state().photo`
+  ({w, h, mean} des Ziel-Fotos), `state().finish` ohne Canvas; `hand()` + skin, skinFx, sub, stringCount, param,
+  sliding, tricks.
+
+Plan 007 Review-Fixrunden + Integration (Phase 2/3, 29.09.) — alle Nutzer nachgezogen, tsc 0, Vitest 610/610:
+- **LevelFormat**: `DemoDef` route + `style?: 'walk' | 'hold'` (W laufen bzw. W + Leertaste gehalten, Blick auf den
+  nächsten Knoten, ohne Strafen). Ohne style entscheidet `Training.createDemo`: Surf-Knoten → SurfHand, Lektion mit
+  `hud.turnBand` → RouteFollower, sonst **'jump'** (W + Sprint, Sprung an `jump`-, C in der Luft an `crouch`-Knoten,
+  Ducken vor Decken) — Showkeys zeigen nie A/D, wo die Stufe kein Strafen lehrt. `demoStyle()` liefert auch 'jump'.
+- **Medaillen** (Werkzeug, kein Vertrag): `build.LevelEntry.reference?: () => physics.MedalReference` (+ `ReferenceRuns`,
+  `medianOf` exportiert, `build.MEDAL_SEEDS` 48): je Medaille zählt der schnellere Median aus RouteFollower und Referenz.
+  L3 `probes/level3.level3Reference` (Grundtechnik vom Brett Koralle, bester Blickversatz −3…+1°, 16 `REFERENCE_SEEDS`;
+  nur Gold/VELOCITY/Autor), L4 `probes/level4.level4Reference` (Hybrid: Hand klettert als RouteFollower, surft ab dem
+  ersten Boden-/Flankenkontakt nach CP4 mit der Grundtechnik; alle Medaillen). validate-levels (Par gegen 3°-Hand)
+  und unlock-ladder rechnen genauso (fallen.md #163). Wächter: L3 `medalsVsHuman` (Warnung, wenn die Grundtechnik den
+  Autor um > 3 % unterbietet oder Türkis VELOCITY schafft), L4 `surfMedal` (Test "Medaillen-Wächter").
+- **Training (engine)**: `StrafeJudge` urteilt die Technik vor dem Gewinn (ohne A/D bzw. Maus gegen die Taste nie
+  'good'), misst Surf-Abschnitte nicht, `BAND_LO` 60 °/s. `TrainingSession`: Urteils-/Erklär-Tipps nur, wenn
+  `turnBand() ≠ null`; in Strafe-Lektionen zählen speed (ohne ground) und course nur mit A/D (≥ 25 % des Luftabschnitts,
+  Tipp `MISS_TEXT[5]`); nach einer Vorführung werden `count`, `lastSide` UND `best` wiederhergestellt; `enter()` setzt die
+  Tipp-Sperre zurück. `BeginnerHand.HAND_MODELS` + `nurWSchnell`/`gegenSchnell`, `SurfHandOptions.biasDeg`
+  (+ = in die Rampe, nur an der Flanke). `jitWarmup` wärmt `StrafeJudge` vor.
+- **Training (UI)**: Lektionen erzwingen Auto-Sprint (`input.configure(binds, autoSprint || session)`). `Coach`: `HintId`
+  + 'noStrafe' (`HINT_IDS`, `NO_STRAFE_HOPS` 6, `NO_STRAFE_MAX_SPEED` 400; einmal je Sitzung, bewusste Abweichung vom
+  Entwurf, fallen.md #176), `state().hints.noStrafe`. `Hud.setMovement(m: HudMovement)` (TrendMovement + `strafeAssist`;
+  W blinkt rot nur ohne Assist), `dropCoachNotice()` (auch bei 'lessonStage'), `cardState()`/`HudCardState`,
+  `hudLayout().card`; Geschafft-Blitz mit voller Pip-Reihe der erledigten Stufe; nach den Pflichtstufen "[H] ZEIGEN"
+  links, "[ENTER] ERGEBNIS" rechts; in Stufen mit Urteil "ANLAUF MIT W" am Gain-Popup für Absprünge unter
+  `strafeJudge.MIN_TAKEOFF`; Drehbalken in Lektionen 3 px mit "MAUS". menu.css `@media (max-height: 800px)`.
+- **Kosmetik** (kein Vertrag): `PropTricks.onLesson(done)` — Stufe/Lektion brechen wie das Ziel am Frame-Ende ab
+  (Priorität Ziel > Lektion > Stufe; ViewHand schickt dafür kein Checkpoint-Event mehr); `PropControl.flourishes`;
+  Einlagen im Surf-Zustand `beatU` (0..1, 1 = keine), `beatBegin()`/`beatEnd()`, `lateness`, `BEAT_FIRST` 1.05 s,
+  `BEAT_EVERY` 2.4 s, `BEAT_T` 0.62 s (Auslöser Kehre = surfSide wechselt, Tempo-Meilenstein); `rotateCam`/`camTurn`;
+  `vmGeometry` `Ring.fur`/`TubeOptions.fur`; jedes Katzen-Teil trägt `aClaw`/`aTabby`. `event-probe` Exit 1.
+- **Level-Werkzeug**: `designProbes.slalomIslands()` (Inselzahl `level1.SL_N`), dichte Slalom-/Ausfahrt-Raster
+  (`EXIT_EDGE_STEP` 2.5 u/s), `expertIslands` mit Zielzeit des perfekten Bots über START_JITTERS; L3-Proben `rampAxis`,
+  `HumanSurfer`/`humanCtx`/`humanRun` (Mensch-Band, 584 Läufe), `bankGlide`; L4-Proben `dropIn` → {spawn, approach},
+  `descentAxis`, `duckMarkJumps` (zweistufiges Absprungband), `lanePath`, `surfMedal`. Lektions-Werkzeug:
+  `check.runDemo` → `sideTicks`/`maxSpeed`, `demoTeachesStage`/`DEMO_PLAIN_MAX`, `probes.DIAGNOSES[].strict`.
 
 ### 3.5 Musik folgt dem Movement
 Der Techno-Track (132 BPM) ist aus Oszillatoren und Rauschen gebaut. Er bekommt
@@ -349,7 +469,8 @@ nutzen ausschließlich dieses Handle.
 - Physik-Code ist DOM-frei und three-Render-frei (nur `Vector3`/`Box3` aus three) —
   er muss in Node (Vitest, Sim) laufen.
 - Scratch-Vektoren statt Allokation im Tick-Pfad.
-- Neue Erkenntnis, die Zeit gekostet hat → `.docs/learnings/`.
+- Neue Erkenntnis, die Zeit gekostet hat → `.docs/learnings/fallen.md`. Parallele Stränge schreiben nach
+  `.docs/learnings/inbox/<strang>.md`; die Integration führt sie in fallen.md zusammen und leert die Inbox.
 - Größere Vorhaben → Plan in `.docs/plans/NNN-name.md` (Problem, Entscheidungen, Status).
 - Subagenten (`.claude/agents/`): **planner** plant, **implementer** baut,
   **reviewer** prüft adversarial, **debugger** jagt Ursachen. Siehe dort.

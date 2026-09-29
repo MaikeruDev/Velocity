@@ -61,6 +61,9 @@ const EXIT_SEGMENTS: ReadonlySet<number> = new Set([2, 3, 4, 5]);
 /** Bande am Außenrand: Höhe über der Außenkante (höher als ein Sprung, 57 u) und Dicke. */
 const BOARD_H = 80;
 const BOARD_T = 32;
+/** Unsichtbarer Clip über der Bande bis so hoch über der Außenkante (u), Dach innen so viel tiefer (32 breit → n.y ≈ 0.62). */
+const BOARD_CLIP = 256;
+const BOARD_CLIP_ROOF = 40;
 /**
  * Offene Sektoren der Bande (φ in Grad): der Anflug von der Anlaufbahn und die
  * Ausfahrt — von 11,25° (wer außen auf der Linie zu T0 fährt, verlässt den Ring
@@ -86,8 +89,19 @@ const START_GLOW = '#46ff9e';
 const TIER1 = Math.round(0.9 * SpeedCurve.hand(3).top);
 
 /** Surf-Rampen: 60°-Flanken, breit genug für jede Linie zwischen Grat und Fuß. */
-const SURF_W = Number(process.env.L2_SURF_W ?? 768);
+const SURF_W = 768;
 const SURF_SLOPE = 10;
+/**
+ * S2 breiter als die Kette davor (Plan 007, l1l2): Ausfahrt-Flüge mit Versatz ≥ 60 u streiften das
+ * Ende von S1 tief an der Flanke, wurden nach Osten abgelenkt und verfehlten die 128 u tiefere S2
+ * neben ihrem Fuß — seit der Hang-Landung (E1 gibt Tempo) liegen diese Flüge genau dort
+ * (dichtes Ausfahrt-Raster 5 u/s × 12 u: 768 → 19–20 Tode von 9480, 896 → 6, 1024 und 1152 → 0).
+ * Am Rand bis an die Vorfeldkante (Versatz 146–160, 1.25 u/s, zweites Review) reichte 1024 nicht: Flüge mit
+ * 875–886 u/s streiften das S1-Ende, flogen mit ~320 u/s nach Osten und setzten 25 u vor dem S2-Fuß auf —
+ * 1024 → 9 Tode, 1056 → 3, 1088 → 0, 1152 → 0. 1152 = zwei Stufen Reserve.
+ * S3 bleibt 768: hinter CP3 fliegt niemand mehr frei ein.
+ */
+const S2_W = 1152;
 /** Übergang: Folgerampe beginnt so weit vor dem Ende und so viel tiefer. */
 const DROP_OVERLAP = 96;
 const DROP = 128;
@@ -102,9 +116,9 @@ const LINE_DEPTH = 320;
  * Ausfahrt-Raster 11° schräg über die Flanke), und jede Stufe zwischen S0- und
  * S1-Flanke ist eine Kante, an der schnelle Einstiege abprallen.
  */
-const S0_AFTER_E1 = Number(process.env.L2_S0_LEN ?? 672);
+const S0_AFTER_E1 = 672;
 /** Achsgefälle von S0 hinter E1 (unter E1 liegt sie mit dessen 10°): flacher, Zeit zum Ausprobieren; jedes Grad weniger hebt die Kette dahinter um ~12 u. */
-const S0_SLOPE = Number(process.env.L2_S0_SLOPE ?? 4);
+const S0_SLOPE = 4;
 /**
  * Auffangfläche: so weit unter dem Fuß, so weit seitlich über die Füße hinaus; Bande
  * darauf. Unter dem Fuß wie an der L1-Rutsche, nicht höher an der Flanke: eine
@@ -115,14 +129,23 @@ const S0_FLOOR_BELOW = 32;
 /**
  * Streifenbreiten neben den Füßen: Ost breiter — wer von E1 schräg nach Nordost
  * springt, landete bei 96 u oben auf der Bande und hüpfte auf ihr aus der Grube.
+ * Seit der Hang-Landung (Plan 007) tragen die Sprünge von E1 weiter: bei 192 landeten
+ * W-Halter ab 25° + Leertaste wieder oben auf der Bande und sprangen von dort hinaus
+ * (dichtes S0-Raster, 1°-Schritte ±45°); 256 und 320 fangen alle, 320 mit Reserve.
  */
 const S0_SIDE_W = 96;
-const S0_SIDE_E = 192;
+const S0_SIDE_E = 320;
 /** Quergang vor der S0-Südkappe (verbindet die Streifen; der Rückweg liegt im Osten). */
 const S0_CORRIDOR = 128;
 /** So weit reicht die Grube hinter dem S0-Ende unter den Anfang von S1. */
 const S0_PIT_EXTRA = 256;
 const S0_RAIL_H = 128;
+/**
+ * Oberkante des unsichtbaren Clips über der S0-Ostbande: E1 (−40) + 160. Ein Flug von E1 über die
+ * 400 u bis zur Bande kommt dort bei 700 u/s mit den Füßen ~40 u über E1 an (Hull 72 u); darüber
+ * springt niemand, und von E1 aus ist die Oberkante unerreichbar.
+ */
+const S0_CLIP_TOP = 120;
 /** Rückweg von der Auffangfläche aufs Vorfeld: Breite und Durchgang in der Ostbande (am Nordende der Grube). */
 const S0_BACK_W = 128;
 /** Oberes Ende des Rückwegs (u): neben dem Vorfeld, weit genug südlich für ≤ 40° Steigung. */
@@ -140,6 +163,23 @@ const INNER_GAPS: ReadonlyArray<readonly [number, number]> = [
   [52, 54],
   [58, 60],
 ];
+
+/** Ringbande für Proben (designProbes.ringBoardEscape): Außenbahn-Geometrie, Bande, offene Sektoren. */
+export interface Level2RingBoard {
+  readonly outer: Ring;
+  readonly center: V2;
+  readonly boardH: number;
+  readonly boardT: number;
+  readonly clipH: number;
+  readonly open: ReadonlyArray<readonly [number, number]>;
+}
+
+export function level2RingBoard(): Level2RingBoard {
+  const lane = RING.width / 2;
+  const innerProbe = new Ring({ center: RING.center, radius: RING.radius - lane / 2, width: lane, top: RING.top, bankDeg: RING.bankDeg, thick: RING.thick, segments: RING.segments });
+  const outer = new Ring({ center: RING.center, radius: RING.radius + lane / 2, width: lane, segments: RING.segments, top: innerProbe.hOut, bankDeg: RING.bankDeg, thick: innerProbe.hOut - (RING.top - RING.thick) });
+  return { outer, center: RING.center, boardH: BOARD_H, boardT: BOARD_T, clipH: BOARD_CLIP, open: BOARD_OPEN };
+}
 
 export function buildLevel2(): LevelFile {
   const XL = 1344; // Ausfahrt-Linie (x)
@@ -225,6 +265,17 @@ export function buildLevel2(): LevelFile {
         }
       }
       L.add({ type: 'hull', points: pts, mat: 'metal', underTrim: true, tag: `ringBoard#${k}` });
+      // Unsichtbarer Clip über der Bande (Plan 007 Phase 3, wie L4): seit dem Kanten-Assist reicht ein
+      // Crouch-Hop über 80 u (Flucht-Probe: 10/3864 Läufe hinaus, 1 auf der Bande stehend). Dach nach innen
+      // geneigt (n.y < 0.7): weder Stehen noch Lip-Step darauf.
+      const clip: V3[] = [];
+      for (const phi of [pa, pb]) {
+        for (const r of [outer.rOut, outer.rOut + BOARD_T]) {
+          const [x, z] = outer.point(phi, r);
+          clip.push([x, outer.hOut + BOARD_H - 16, z], [x, outer.hOut + BOARD_CLIP - (r === outer.rOut ? BOARD_CLIP_ROOF : 0), z]);
+        }
+      }
+      L.add({ type: 'hull', points: clip, mat: 'wall', visible: false, tag: `ringClip#${k}` });
     }
   }
   // Innenbahn: Bögen zwischen den Lücken (Segmentgrenzen wie die Außenbahn → koplanare Facetten).
@@ -316,13 +367,23 @@ export function buildLevel2(): LevelFile {
   const land = ring.phiOf(-Math.sqrt(1480 ** 2 - SF_Z ** 2), SF_Z);
   // Nach dem Sprint-Absprung auf den Ring: ein Hop des unteren Bands.
   const RING_V0 = SpeedCurve.of(0.85).after(PHYS.sprintSpeed, 1);
-  L.node(ring.at(land, 1480), { jump: true, minSpeed: RING_V0, note: 'Ring' });
+  const landNode = ring.at(land, 1480);
+  L.node(landNode, { jump: true, minSpeed: RING_V0, note: 'Ring' });
   const RING_FROM = 255;
   const RING_TO = 360;
+  // Erster Ring-Knoten (r 1280) nicht vor der Landung eines Hops mit RING_V0 (Plan 007, l1l2): seit
+  // Cap 40 ist das untere Band hier 466 statt 424 u/s, die Bahn flog bei φ 255 ~60 u über den Knoten
+  // hinaus auf die tiefere Innenbahn (Validator: "landet in Höhe 38 statt 49").
+  let firstPhi = RING_FROM;
+  for (; firstPhi < RING_FROM + 10; firstPhi += 0.5) {
+    const b = ring.at(firstPhi, 1280);
+    if (Math.hypot(b[0] - landNode[0], b[2] - landNode[2]) >= reach(RING_V0, landNode[1] - b[1])) break;
+  }
+  if (firstPhi >= RING_FROM + 10) throw new Error(`level2: erster Ring-Knoten findet bis φ ${RING_FROM + 10} keine Landung für ${RING_V0.toFixed(0)} u/s`);
   for (let phi = RING_FROM; phi <= RING_TO; phi += 15) {
     const t = (phi - RING_FROM) / (RING_TO - RING_FROM);
     const r = Math.min(1400, 1280 + (phi - RING_FROM) * 4);
-    L.node(ring.at(phi % 360, r), { jump: true, minSpeed: RING_V0 + (TIER1 - RING_V0) * t, note: phi === 285 ? 'Außenbahn' : undefined });
+    L.node(ring.at((phi === RING_FROM ? firstPhi : phi) % 360, r), { jump: true, minSpeed: RING_V0 + (TIER1 - RING_V0) * t, note: phi === 285 ? 'Außenbahn' : undefined });
   }
 
   // ── AUSFAHRT: T0 am Ring, Vorfeld, E1, dann Surf ─────────────────────────
@@ -362,7 +423,8 @@ export function buildLevel2(): LevelFile {
   const e1Lip = reach(TIER1, T0[1] - E1_TOP) / RESERVE;
   const e1u0 = Math.round(-T0z + e1Lip + 16);
   const e1u1 = e1u0 + E1_LEN;
-  L.ramp(N, [e1u0, e1u1], [-E1_W / 2, E1_W / 2], E1_TOP, E1_TOP - E1_FALL, { tag: 'exit1', mat: 'checkpoint' });
+  const E1_WEST = Number(process.env.E1_WEST ?? 0); // TEMP Sweep: E1 nach Westen bis an den S0-Grat
+  L.ramp(N, [e1u0, e1u1], [-E1_W / 2 - E1_WEST, E1_W / 2], E1_TOP, E1_TOP - E1_FALL, { tag: 'exit1', mat: 'checkpoint' });
   // Vorfeld: schließt die Lücke Ring → E1. Mit Auto-Hop springt man auf der
   // Ausfahrt je nach Hop-Phase bis zu einer Sprungweite früher ab — über einer
   // Lücke fiel dann immer irgendeine Phase vor die 131 u hohe Stirn von E1
@@ -387,7 +449,7 @@ export function buildLevel2(): LevelFile {
   // S0 (Einstiegsrampe) beginnt schon unter der E1-Vorderkante (First 24 u unter
   // E1, gleiches Gefälle): ihre Südkappe liegt unter E1/Vorfeld statt als Wand
   // neben E1 — wer westlich an E1 vorbeifällt, landet auf einer Flanke.
-  const ridgeX = XL - E1_W / 2 - 48 + Number(process.env.L2_RIDGE ?? 0);
+  const ridgeX = XL - E1_W / 2 - 48;
   // S1 hinter S0: zusammen 1024 u ab der E1-Kante wie vorher S1 allein — S2 … Ziel bleiben an ihrer Stelle.
   const S1_AFTER_S0 = 1024 - S0_AFTER_E1;
   // 32 u hinter der E1-Stirn, sonst läge die Südkappe koplanar auf ihr (Z-Fighting).
@@ -428,8 +490,9 @@ export function buildLevel2(): LevelFile {
     tint: TIER.s1,
   });
   const s0Catch = buildS0Catch(L, N, s0, s1, ridgeX - XL, e1u0);
-  const s2 = L.surfDrop(s1, { overlap: DROP_OVERLAP, drop: DROP, length: 1280, slopeDeg: SURF_SLOPE, tag: 'surf2', tint: TIER.s2 });
-  const s3 = L.surfDrop(s2, { overlap: DROP_OVERLAP, drop: DROP, length: 1280, slopeDeg: SURF_SLOPE, tag: 'surf3' });
+  buildS0Fin(L, N, [...s0, s1], ridgeX - XL, e1u1);
+  const s2 = L.surfDrop(s1, { overlap: DROP_OVERLAP, drop: DROP, length: 1280, slopeDeg: SURF_SLOPE, tag: 'surf2', tint: TIER.s2, width: S2_W });
+  const s3 = L.surfDrop(s2, { overlap: DROP_OVERLAP, drop: DROP, length: 1280, slopeDeg: SURF_SLOPE, tag: 'surf3', width: SURF_W });
 
   // S4 + FINALE: Surf-Kicker. Fällt steil (Speed aus Höhe), flacht in Knicken
   // ab und steigt am Ende an: Abflug schräg nach oben, ohne Bodenkontakt —
@@ -525,7 +588,9 @@ export function buildLevel2(): LevelFile {
   const W = 2600; // seitliche Ausdehnung um die Linie
   // 32 u neben dem Rampenfuß: die Hull (±16) ist dann ganz draußen — keine Rettung mehr.
   const surfWest = ridgeX - SURF_W / 2 - 32;
-  const surfEast = ridgeX + SURF_W / 2 + 32;
+  // Seitenzonen je Rampe nach ihrer Breite (S2 ist breiter).
+  const sideWest = (r: SurfRamp): number => ridgeX - r.o.width / 2 - 32;
+  const sideEast = (r: SurfRamp): number => ridgeX + r.o.width / 2 + 32;
   // Ring (Fahrflächen ≥ 0) + Vorfeld (−40) bis zur E1-Vorderkante.
   // Nordgrenze vor der S0-Grube (deren Quergang reicht unter das Vorfeld).
   L.killZone([-4200, -720, -(s0Catch.start - 8)], [XL + W, -320, 2900], 'kill-ring');
@@ -550,16 +615,18 @@ export function buildLevel2(): LevelFile {
   const SIDE_SEG = 512;
   for (const r of [s1, s2, s3, ...s4]) {
     // Neben S1 erst hinter der S0-Auffangfläche (die liegt dort 32 u unter dem Fuß).
-    const s0 = r === s1 ? s0Catch.end + 32 - -s1.frame.z : 0;
-    const n = Math.ceil((r.o.length - s0) / SIDE_SEG);
+    // S1 und S3 nur, soweit die breitere S2 nicht im Drop-Überlappungsstück neben ihrem Fuß liegt.
+    const s0 = r === s1 ? s0Catch.end + 32 - -s1.frame.z : r === s3 ? DROP_OVERLAP : 0;
+    const sEnd = r === s1 ? r.o.length - DROP_OVERLAP : r.o.length;
+    const n = Math.ceil((sEnd - s0) / SIDE_SEG);
     for (let k = 0; k < n; k++) {
-      const sa = s0 + ((r.o.length - s0) * k) / n;
-      const sb = s0 + ((r.o.length - s0) * (k + 1)) / n;
+      const sa = s0 + ((sEnd - s0) * k) / n;
+      const sb = s0 + ((sEnd - s0) * (k + 1)) / n;
       const top = Math.min(r.apexAt(sa), r.apexAt(sb)) - r.height - 64;
       const zs: readonly [number, number] = [zAt(r, sb), zAt(r, sa)];
       const tag = `${r.o.tag ?? ''}${n > 1 ? `.${k + 1}` : ''}`;
-      L.killZone([XL - W, killY, zs[0]], [surfWest, top, zs[1]], `kill-side-w-${tag}`);
-      L.killZone([surfEast, killY, zs[0]], [XL + W, top, zs[1]], `kill-side-e-${tag}`);
+      L.killZone([XL - W, killY, zs[0]], [sideWest(r), top, zs[1]], `kill-side-w-${tag}`);
+      L.killZone([sideEast(r), killY, zs[0]], [XL + W, top, zs[1]], `kill-side-e-${tag}`);
     }
   }
   {
@@ -683,7 +750,8 @@ function surfCheckpoint(L: LevelBuilder, order: number, a: SurfRamp, b: SurfRamp
   const sEnd = a.o.length;
   const uN = sEnd + 360;
   const footN = b.apexAt(uN - (sEnd - DROP_OVERLAP)) - b.height;
-  const [lo, hi] = aabbOf(fa, [sEnd - 420, uN], [-SURF_W / 2, SURF_W / 2], [footN + 40, padTop + CP_TALL / 2]);
+  const halfW = Math.max(a.o.width, b.o.width) / 2;
+  const [lo, hi] = aabbOf(fa, [sEnd - 420, uN], [-halfW, halfW], [footN + 40, padTop + CP_TALL / 2]);
   L.checkpoint(order, lo, hi, sp, 0);
 }
 
@@ -766,6 +834,13 @@ function buildS0Catch(L: LevelBuilder, N: Frame, s0: readonly SurfRamp[], s1: Su
   rail([fu0 + 16, fu0 + 48], [wv[0] - 32, ev[1] + 32], 16);
   rail([fu0 + 48, fu1 - 48], [wv[0] - 32, wv[0]], 32);
   rail([fu0 + 48, backFoot], [ev[1], ev[1] + 32], 32);
+  // Spieler-Clip über der Ostbande bis S0_CLIP_TOP (Review l1l2): wer von E1 nach Osten geht
+  // (Blick 53–90° neben der Route), fiel mit 320–460 u/s genau auf die Oberkante der Bande
+  // (370–400 u neben E1) und lief außen in kill-s1 (89/2184 W-Halter). Eine Bandenoberkante lässt
+  // sich nicht unbegehbar schrägen — Box-Hulls stehen auf jeder konvexen Kante (fallen.md #41) —,
+  // also darf keine Flugbahn von E1 sie erreichen: unsichtbar, damit die Grube offen wirkt.
+  // Ab dem Vorfeld-Ende (E1-Vorderkante): davor liegt auf der Bande der Rückweg-Absatz (s0BackTop).
+  L.add(orientedBox(N, [Math.max(fu0 + 48, apronEnd), backFoot], [ev[1], ev[1] + 32], [r3(top(backFoot) + S0_RAIL_H - 8), S0_CLIP_TOP], { visible: false, tag: 's0Clip' }));
   // Nord-Querbanden knapp über den Streifen (sink −6, flache Unterkante über schräger
   // Fläche: kein koplanarer Rest) und bündig am Rampenfuß: mit 16 u Spalt
   // rutschte man am Fuß entlang an ihnen vorbei.
@@ -804,8 +879,10 @@ function buildS0Catch(L: LevelBuilder, N: Frame, s0: readonly SurfRamp[], s1: Su
     const [x, z] = N.xz((backFoot + fu1 - 48) / 2, (bv[0] + bv[1]) / 2);
     L.chevron([x, 0, z], N.yaw + 180, { tint: TIER.apron, arm: 64, thick: 20, surface: (px, pz) => top(-pz), tag: 's0BackMark' });
   }
-  // Fuß-Plattform: außen 64 u Bande (nach Norden schließt die Ost-Querbande).
-  L.ramp(N, [backFoot, fu1 - 48], [bv[1], bv[1] + 32], r3(top(backFoot)) + 64, r3(top(fu1 - 48)) + 64, { mat: 'accent', tint: COL.magenta, thick: 128, tag: 's0BackRail' });
+  // Fuß-Plattform: außen Bande in Grubenhöhe (nach Norden schließt die Ost-Querbande). Mit 64 u
+  // sprang ein W-Halter, den die Hang-Landung auf der Grube auf 660 u/s brachte, von der höheren
+  // Grubensohle durch den Durchgang auf ihre Oberkante und von dort ins Leere (Plan 007, l1l2).
+  L.ramp(N, [backFoot, fu1 - 48], [bv[1], bv[1] + 32], r3(top(backFoot)) + S0_RAIL_H, r3(top(fu1 - 48)) + S0_RAIL_H, { mat: 'accent', tint: COL.magenta, thick: S0_RAIL_H + 64, tag: 's0BackRail' });
   // Oben ein Absatz bündig an der Ostkante des Vorfelds (v 160), dazwischen bis an die
   // Grube aufgefüllt; Süd- und Ostkante mit niedriger Bande (mit gehaltener Leertaste
   // hüpfte man sonst über den Absatz hinaus in kill-ring).
@@ -814,6 +891,62 @@ function buildS0Catch(L: LevelBuilder, N: Frame, s0: readonly SurfRamp[], s1: Su
   L.platform(N, [S0_BACK_TOP - 160, S0_BACK_TOP - 128], [160, bv[1] + 32], backTop + 64, { mat: 'accent', tint: COL.magenta, thick: 96, tag: 's0BackRail' });
   L.platform(N, [S0_BACK_TOP - 128, S0_BACK_TOP], [bv[1], bv[1] + 32], backTop + 64, { mat: 'accent', tint: COL.magenta, thick: 96, tag: 's0BackRail' });
   return { top, v: [wv[0], ev[1]], start: fu0, end: fu1 };
+}
+
+/** Höhe der Finne über dem S0/S1-Grat (u): über jedem Sprung von E1 (64 reichte nicht, 80–128 hielten). */
+const S0_FIN_H = 128;
+/** Breite der Finne (u), ganz westlich des Grats: die Ostflanke (Linie der Ausfahrt) bleibt frei. */
+const S0_FIN_W = 16;
+/**
+ * Länge der keilförmigen Stirn (u): Ostseite von der Westkante bis an den Grat, ~7° zur Fahrt. Gemessen
+ * (Ausfahrt-Raster Versatz −160…−120, 1785 Läufe): 48 u (~18°) lenkte Grat-Reiter mit 760–860 u/s so
+ * stark nach Osten ab, dass sie neben S2 fielen (10 Tode); 96/128/160/256 u: 0 Tode, 0 Finnen-Hänger.
+ */
+const S0_FIN_TAPER = 128;
+/** Unterkante unter dem First (u): 16 u westlich liegt die 60°-Flanke 28 u tiefer — die Finne steckt darin. */
+const S0_FIN_SINK = 72;
+
+/**
+ * Finne auf dem Grat von S0 und S1, ab der E1-Nordkante (Plan 007, l1l2). Auf jeder konvexen Kante
+ * kann die Hull stehen — auch auf dem First: ein W-Halter, der von E1 schräg nach Nordwest hüpfte
+ * (−14…−18° + Leertaste), landete AUF dem Grat, sprang von dort weit über die Westflanke, kam erst
+ * auf S1 auf und rutschte hinter der Grube in den Tod (Hang-Landung gibt ihm das Tempo dafür). An
+ * der Finne prallt er ab und fällt auf eine Flanke über der Grube. Surfer fahren LINE_DEPTH unter
+ * dem First und berühren sie nie. Stücke 16 u hinter den Stößen der Kette und 16 u vor ihrem Ende:
+ * sonst lägen die Stirnflächen koplanar auf denen der Rampenstücke (Z-Fighting).
+ * Ganz westlich des Grats und vorn keilförmig (Review l1l2): mittig auf dem Grat (±8) war die Stirn
+ * eine 16 u breite senkrechte Wand in der Bahn der Grat-Reiter — wer von Süden an der Ostflanke dicht
+ * am First hochfuhr, prallte ab (360 → 0 u/s) und hüpfte auf der Stelle (62 Hänger im Ausfahrt-Raster
+ * bei Versatz −160…−120, vorher 0). Jetzt liegt die Ostseite auf der Gratlinie, die Stirn weicht
+ * flach (~7°) aus: man gleitet seitlich vorbei statt abzuprallen.
+ */
+function buildS0Fin(L: LevelBuilder, N: Frame, chain: readonly SurfRamp[], ridgeV: number, fromU: number): void {
+  const starts: number[] = [];
+  let acc = -chain[0].frame.z;
+  for (const r of chain) {
+    starts.push(acc);
+    acc += r.o.length;
+  }
+  const apex = (u: number): number => {
+    let k = 0;
+    while (k < chain.length - 1 && u > starts[k + 1]) k++;
+    return chain[k].apexAt(u - starts[k]);
+  };
+  const cuts = [fromU + 16, ...starts.slice(1).map((u) => u + 16).filter((u) => u > fromU + 32 && u < acc - 32), acc - 16];
+  if (cuts[1] - cuts[0] < S0_FIN_TAPER + 32) throw new Error('level2: erstes Finnen-Stück zu kurz für die Keil-Stirn');
+  const vW = ridgeV - S0_FIN_W;
+  const style = { mat: 'accent', tint: COL.magenta, tag: 's0Fin' } as const;
+  // Keil: an der Spitze nur die Westkante, nach S0_FIN_TAPER volle Breite bis an den Grat.
+  const tip = cuts[0];
+  const full = tip + S0_FIN_TAPER;
+  const pts: V3[] = [];
+  for (const [u, vs] of [[tip, [vW]], [full, [vW, ridgeV]]] as const) for (const v of vs) pts.push(N.p(u, v, r3(apex(u) + S0_FIN_H)), N.p(u, v, r3(apex(u) - S0_FIN_SINK)));
+  L.add({ type: 'hull', points: pts, ...style });
+  const pieces = [full, ...cuts.slice(1)];
+  for (let k = 1; k < pieces.length; k++) {
+    const [a, b] = [pieces[k - 1], pieces[k]];
+    L.ramp(N, [a, b], [vW, ridgeV], r3(apex(a) + S0_FIN_H), r3(apex(b) + S0_FIN_H), { ...style, thick: S0_FIN_H + S0_FIN_SINK });
+  }
 }
 
 interface DesignNumbers {

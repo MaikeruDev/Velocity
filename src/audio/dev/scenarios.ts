@@ -62,6 +62,8 @@ export function drive(p: Partial<MusicDrive>): MusicDrive {
     active: p.active ?? true,
     nearL: p.nearL,
     nearR: p.nearR,
+    // Plan 007: ohne das Feld war das Rutsch-Kratzen in Offline-Renders stumm.
+    sliding: p.sliding,
   };
 }
 

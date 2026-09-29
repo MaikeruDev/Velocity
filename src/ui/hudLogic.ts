@@ -1,4 +1,5 @@
 import { VELOCITY_DEFAULT, airSpeedCapAt } from '../player/MovementConfig';
+import type { TrainingSessionApi } from '../engine/trainingTypes';
 import type { StageRank } from '../world/level/LevelFormat';
 
 /**
@@ -231,6 +232,18 @@ export function stageSteps(ranks: readonly StageRank[]): string[] {
     }
     return `${k}/${n}`;
   });
+}
+
+/** Tempo, mit dem stageJudges nach dem Zielband fragt — ob es eins gibt, hängt nur an der Stufe (u/s). */
+const JUDGE_PROBE_SPEED = 300;
+
+/**
+ * Bewertet die aktive Stufe Strafen — Urteile am Gain-Popup, Urteils-Tipps, SYNC-Zeile? Kriterium der Session:
+ * ein Zielband gibt es nur für Strafe-Aufgaben (goodHops, speed, course) in Lektionen mit hud.turnBand (T3–T5).
+ * In T1/T2/T6–T8 nicht: dort hieß W + Leertaste nach Anweisung "+0 W LOS" und "SYNC 0 %". Einmal je Stufe.
+ */
+export function stageJudges(session: Pick<TrainingSessionApi, 'turnBand'>): boolean {
+  return session.turnBand(JUDGE_PROBE_SPEED) !== null;
 }
 
 /** Stufe `index` für die Pause: "Stufe 2/4", "Bonus 1/1", "Meister 1/1"; ohne Ränge nur "Stufe". */

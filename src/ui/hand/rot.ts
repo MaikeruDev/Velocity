@@ -32,6 +32,30 @@ export function axisAngle(m: Mat3, ax: number, ay: number, az: number, angle: nu
   return m;
 }
 
+/**
+ * Wie axisAngle, Achse (normiert) und Winkel aus q[0..3] — für den Frame-Pfad: Kommazahlen als Argumente
+ * eines nicht geinlineten Aufrufs boxt V8 (je Aufruf eine HeapNumber), Plätze eines Float64Array nicht.
+ * Gleiche Rechnung in gleicher Reihenfolge wie axisAngle (bitgleich).
+ */
+export function axisAngleQ(m: Mat3, q: Float64Array): Mat3 {
+  const ax = q[0];
+  const ay = q[1];
+  const az = q[2];
+  const c = Math.cos(q[3]);
+  const s = Math.sin(q[3]);
+  const t = 1 - c;
+  m[0] = t * ax * ax + c;
+  m[1] = t * ax * ay - s * az;
+  m[2] = t * ax * az + s * ay;
+  m[3] = t * ax * ay + s * az;
+  m[4] = t * ay * ay + c;
+  m[5] = t * ay * az - s * ax;
+  m[6] = t * ax * az - s * ay;
+  m[7] = t * ay * az + s * ax;
+  m[8] = t * az * az + c;
+  return m;
+}
+
 /** out = a · b (out darf a oder b sein). */
 export function mul(out: Mat3, a: Mat3, b: Mat3): Mat3 {
   const a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3], a4 = a[4], a5 = a[5], a6 = a[6], a7 = a[7], a8 = a[8];
@@ -48,6 +72,65 @@ export function mul(out: Mat3, a: Mat3, b: Mat3): Mat3 {
   return out;
 }
 
+/** out = a · bᵀ (out darf weder a noch b sein) — bei Drehungen: die Drehung, die b in a überführt. */
+export function mulT(out: Mat3, a: Mat3, b: Mat3): Mat3 {
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) out[i * 3 + j] = a[i * 3] * b[j * 3] + a[i * 3 + 1] * b[j * 3 + 1] + a[i * 3 + 2] * b[j * 3 + 2];
+  }
+  return out;
+}
+
+/**
+ * Drehmatrix → Achse (normiert) und Winkel 0..π in q[0..3] (kürzester Weg; Quaternion nach Shepperd,
+ * stabil auch nahe π). Ohne Drehung: Achse x, Winkel 0.
+ */
+export function toAxisAngleQ(m: Mat3, q: Float64Array): void {
+  const tr = m[0] + m[4] + m[8];
+  let w: number;
+  let x: number;
+  let y: number;
+  let z: number;
+  if (tr > 0) {
+    const s = Math.sqrt(tr + 1) * 2;
+    w = 0.25 * s;
+    x = (m[7] - m[5]) / s;
+    y = (m[2] - m[6]) / s;
+    z = (m[3] - m[1]) / s;
+  } else if (m[0] > m[4] && m[0] > m[8]) {
+    const s = Math.sqrt(1 + m[0] - m[4] - m[8]) * 2;
+    w = (m[7] - m[5]) / s;
+    x = 0.25 * s;
+    y = (m[1] + m[3]) / s;
+    z = (m[2] + m[6]) / s;
+  } else if (m[4] > m[8]) {
+    const s = Math.sqrt(1 + m[4] - m[0] - m[8]) * 2;
+    w = (m[2] - m[6]) / s;
+    x = (m[1] + m[3]) / s;
+    y = 0.25 * s;
+    z = (m[5] + m[7]) / s;
+  } else {
+    const s = Math.sqrt(1 + m[8] - m[0] - m[4]) * 2;
+    w = (m[3] - m[1]) / s;
+    x = (m[2] + m[6]) / s;
+    y = (m[5] + m[7]) / s;
+    z = 0.25 * s;
+  }
+  // q und −q sind dieselbe Drehung: w ≥ 0 wählt den kürzeren Weg (Winkel ≤ π).
+  const sign = w < 0 ? -1 : 1;
+  const l = Math.sqrt(x * x + y * y + z * z);
+  if (!(l > 1e-12)) {
+    q[0] = 1;
+    q[1] = 0;
+    q[2] = 0;
+    q[3] = 0;
+    return;
+  }
+  q[0] = (sign * x) / l;
+  q[1] = (sign * y) / l;
+  q[2] = (sign * z) / l;
+  q[3] = 2 * Math.atan2(l, sign * w);
+}
+
 /** Euler XYZ (Rx·Ry·Rz) → m. */
 export function fromEulerXYZ(m: Mat3, x: number, y: number, z: number): Mat3 {
   const a = Math.cos(x), b = Math.sin(x), c = Math.cos(y), d = Math.sin(y), e = Math.cos(z), f = Math.sin(z);
@@ -59,6 +142,21 @@ export function fromEulerXYZ(m: Mat3, x: number, y: number, z: number): Mat3 {
   m[5] = -b * c;
   m[6] = b * f - a * e * d;
   m[7] = b * e + a * f * d;
+  m[8] = a * c;
+  return m;
+}
+
+/** Wie fromEulerXYZ, Winkel aus e[0..2] (Frame-Pfad, siehe axisAngleQ; bitgleich). */
+export function fromEulerXYZV(m: Mat3, e: Float32Array): Mat3 {
+  const a = Math.cos(e[0]), b = Math.sin(e[0]), c = Math.cos(e[1]), d = Math.sin(e[1]), g = Math.cos(e[2]), f = Math.sin(e[2]);
+  m[0] = c * g;
+  m[1] = -c * f;
+  m[2] = d;
+  m[3] = a * f + b * g * d;
+  m[4] = a * g - b * f * d;
+  m[5] = -b * c;
+  m[6] = b * f - a * g * d;
+  m[7] = b * g + a * f * d;
   m[8] = a * c;
   return m;
 }

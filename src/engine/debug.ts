@@ -7,6 +7,7 @@ import { debugRenderer } from '../render/PS2Renderer';
 import type { RenderStats } from '../render/PS2Renderer';
 import type { FinishResult, HudData, HudKeys, LessonHud, LessonResult } from '../ui/types';
 import { Hud } from '../ui/Hud';
+import type { HudCardState } from '../ui/Hud';
 import type { StageRank, TaskDef } from '../world/level/LevelFormat';
 import type { ViewHandState } from '../ui/hand/ViewHand';
 import type { AnyTrick } from '../ui/hand/ViewHand';
@@ -54,14 +55,17 @@ export interface VelState {
   readonly menu: string | null;
   readonly tuningVisible: boolean;
   readonly topSpeed: number;
-  readonly finish: FinishResult | null;
+  /** Ergebnis des letzten Ziels (ohne das Foto-Canvas — das steht als Größe in `photo`). */
+  readonly finish: Omit<FinishResult, 'photo'> | null;
+  /** Ziel-Foto des Handys (Plan 007 I3): Größe und mittlere Helligkeit (0..255), null = keins. */
+  readonly photo: { readonly w: number; readonly h: number; readonly mean: number } | null;
   readonly bot: BotInfo | null;
   /** Knoten der Level-Route (0 = keine, useBot('route') geht dann nicht). */
   readonly routeNodes: number;
   /** Gerade sichtbarer HUD-Hinweis (Coach/Eingabe), sonst null. */
   readonly notice: string | null;
   /** Wie oft jeder Hinweis im Moment gezeigt wurde (Sitzung). */
-  readonly hints: { readonly crouch: number; readonly surf: number; readonly strafe: number };
+  readonly hints: { readonly crouch: number; readonly surf: number; readonly strafe: number; readonly noStrafe: number };
   /** Dauer des JIT-Vorwärmens beim ersten Level (ms, −1 = noch nicht). */
   readonly jitWarmupMs: number;
   /** Laufende Lektion (Plan 007): id, sonst null. Details: training(). */
@@ -168,19 +172,30 @@ export interface HudLayoutInfo {
   readonly centerBand: readonly [number, number];
   /**
    * Zuletzt gezeichnete Rechtecke [x, y, w, h] in HUD-Pixeln: card (Lektionskarte), verdict (Gain-Popups mit
-   * Urteil), notice (Coach-/Info-Band), demo (Vorführungs-Band), speed (Speedometer-Zahl). w = 0: nicht gezeichnet.
+   * Urteil), notice (Coach-/Info-Band), demo (Vorführungs-Band), speed (Speedometer-Zahl), photo (Stempel "FOTO"
+   * des Ziel-Fotos, Plan 007 I3). w = 0: nicht gezeichnet.
    */
   readonly rects: Readonly<Record<string, readonly [number, number, number, number]>>;
   /** Gerade sichtbares Urteil am Gain-Popup ("GUT", "MAUS!"), sonst null. */
   readonly verdict: string | null;
   /**
-   * Urteils-Zähler des HUD: verdictSerial = Urteile angenommen (je 'lessonHop' mit Urteil +1), verdictDrawn = Nummer
-   * des jüngsten Urteils, das der letzte draw() wirklich gezeichnet hat. Tools prüfen damit den Verzug je Hop.
+   * Urteils-Zähler des HUD: verdictSerial = Urteile angenommen (je 'lessonHop' in einer Stufe mit Urteil +1),
+   * verdictDrawn = höchste Nummer, die draw() schon sichtbar gezeichnet hat. Tools prüfen damit den Verzug je
+   * Hop (Frames bis verdictDrawn ≥ Nummer des neuen Urteils).
    */
   readonly verdictSerial: number;
   readonly verdictDrawn: number;
   /** HUD zeigt Urteile (Lektion, Stufe mit Strafe-Aufgabe). */
   readonly judge: boolean;
+  /**
+   * Lektionskarte, wie zuletzt gezeichnet (null = keine): Titel, Zähler, Fortschritt (beim Geschafft-Blitz die
+   * volle Reihe der erledigten Stufe), Hinweise rechts/links vom Fortschritt.
+   */
+  readonly card: HudCardState | null;
+  /** W-Showkey in diesem Frame rot (Warnung "W in der Luft" — nur ohne Strafe-Assist, in Lektionen nie). */
+  readonly wRed: boolean;
+  /** Legende "MAUS-TEMPO / IM FLUG IM GRÜNEN HALTEN" am Drehbalken gezeichnet (Lektion, bis zum ersten guten Hop). */
+  readonly turnLegend: boolean;
 }
 
 /** Geometrie-Eckdaten des geladenen Levels — Tools leiten Kamerapositionen daraus ab statt sie hart zu kodieren. */
@@ -278,6 +293,11 @@ export interface VelHandle {
    * (+ Demo-Band). Alle 45 Frames eine Landung/ein Urteil. n Frames je Variante, abwechselnd in Blöcken.
    */
   benchHud(n?: number): { readonly normal: number; readonly lesson: number; readonly lessonDemo: number };
+  /**
+   * Mikro-Messung der Lektion (Plan 007 TU2): updateLesson n-mal am Stück (updateMs je Aufruf) und session.tick
+   * n-mal mit synthetischen Hops auf einer Wegwerf-Session derselben Stufe (tickMs je Tick). null = keine Lektion.
+   */
+  benchLesson(n?: number): { readonly updateMs: number; readonly tickMs: number; readonly hops: number } | null;
   /** Lektionsliste mit gespeicherten Sternen; loaded = Lektion schon geladen (Admin-Abhaken möglich). */
   lessons(): { readonly id: string; readonly name: string; readonly short: string; readonly stars: number; readonly loaded: boolean }[];
 }
@@ -343,11 +363,12 @@ export function installDebug(deps: DebugDeps): VelHandle {
       menu: game.menuScreen,
       tuningVisible: game.tuningVisible,
       topSpeed: run ? Math.round(run.topSpeed) : 0,
-      finish: game.lastFinish,
+      finish: finishForTools(game.lastFinish),
+      photo: photoInfo(game.lastFinish?.photo ?? null),
       bot: game.botInfo,
       routeNodes: game.currentLevel?.def.route?.length ?? 0,
       notice: game.hudNotice,
-      hints: { crouch: game.hintsShown.crouch, surf: game.hintsShown.surf, strafe: game.hintsShown.strafe },
+      hints: { crouch: game.hintsShown.crouch, surf: game.hintsShown.surf, strafe: game.hintsShown.strafe, noStrafe: game.hintsShown.noStrafe },
       jitWarmupMs: Math.round(game.jitWarmupMs * 10) / 10,
       lesson: game.lessonSession !== null ? game.currentLevelId : null,
     };
@@ -482,6 +503,7 @@ export function installDebug(deps: DebugDeps): VelHandle {
     lessons: () => game.lessonList(),
     frameCost: () => game.takeFrameCost(),
     benchHud: (n) => benchHud(game, n ?? 3000),
+    benchLesson: (n) => game.benchLesson(n ?? 20000),
   };
   window.__vel = handle;
   return handle;
@@ -501,6 +523,8 @@ function benchHud(game: Game, n: number): { normal: number; lesson: number; less
     hud.setDemoKey('H');
     hud.demoAvailable = true;
     hud.demo = demo;
+    // Teurer Fall: Stufe mit Urteil (Urteil am Gain-Popup) — im normalen Level wirkungslos.
+    hud.judge = true;
     hud.visible = true;
     return hud;
   };
@@ -588,6 +612,24 @@ export function installFpsOverlay(game: Game, el: HTMLElement): void {
 
 function vec(v: Vector3): Vec3Like {
   return { x: round3(v.x), y: round3(v.y), z: round3(v.z) };
+}
+
+/** Ergebnis für Tools ohne Canvas (page.evaluate serialisiert kein DOM-Element). */
+function finishForTools(r: FinishResult | null): Omit<FinishResult, 'photo'> | null {
+  if (!r) return null;
+  const { photo: _photo, ...rest } = r;
+  return rest;
+}
+
+/** Ziel-Foto für Tools: Größe und mittlere Helligkeit (0 = leer/schwarz). Debug-Pfad, darf allozieren. */
+function photoInfo(c: HTMLCanvasElement | null): { readonly w: number; readonly h: number; readonly mean: number } | null {
+  if (!c) return null;
+  const ctx = c.getContext('2d');
+  if (!ctx) return { w: c.width, h: c.height, mean: 0 };
+  const d = ctx.getImageData(0, 0, c.width, c.height).data;
+  let sum = 0;
+  for (let i = 0; i < d.length; i += 4) sum += (d[i] + d[i + 1] + d[i + 2]) / 3;
+  return { w: c.width, h: c.height, mean: Math.round((sum / (d.length / 4)) * 10) / 10 };
 }
 
 function round3(v: number): number {

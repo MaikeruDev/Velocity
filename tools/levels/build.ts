@@ -14,38 +14,50 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { compileLevel, type CompiledLevel } from '../../src/world/level/compileLevel';
 import type { LevelFile, LevelIndexEntry, LevelMedals, TrainingIndexEntry } from '../../src/world/level/LevelFormat';
-import { FULL_RUN_SEEDS } from '../validate-levels';
 import { buildLevel1 } from './level1';
 import { buildLevel2 } from './level2';
 import { buildLevel3 } from './level3';
 import { buildLevel4 } from './level4';
-import { describeBranches, jitterMedian, timedMedian, withRoute, type RouteChoice, type StrafeModel } from './physics';
+import { describeBranches, jitterBranches, jitterMedian, medianOf, timedMedian, withRoute, type MedalReference, type RouteChoice, type StrafeModel } from './physics';
+import { level3Reference } from './probes/level3';
+import { level4Reference } from './probes/level4';
 import { buildTraining } from './training/index';
 
 const OUT = 'public/levels';
 
-/** Ein Level der Registry: id (= Dateiname ohne .json) und Builder (null = noch Stub). */
+/** Ein Level der Registry: id (= Dateiname ohne .json), Builder (null = noch Stub), optional ein zweites Medaillen-Modell. */
 export interface LevelEntry {
   readonly id: string;
   readonly build: () => LevelFile | null;
+  /** Referenz-Modell (physics.MedalReference): je Medaille zählt der schnellere Median aus RouteFollower und Referenz. */
+  readonly reference?: () => MedalReference;
 }
 
-/** Alle Level in Index-Reihenfolge. */
+/** Alle Level in Index-Reihenfolge. L3/L4: Surf-Referenz, weil der RouteFollower langsamer surft als die Grundtechnik. */
 export const LEVELS: readonly LevelEntry[] = [
   { id: 'level1', build: buildLevel1 },
   { id: 'level2', build: buildLevel2 },
-  { id: 'level3', build: buildLevel3 },
-  { id: 'level4', build: buildLevel4 },
+  { id: 'level3', build: buildLevel3, reference: level3Reference },
+  { id: 'level4', build: buildLevel4, reference: level4Reference },
 ];
 
 /**
+ * Seeds der Hände für Bronze/Silber (Plan 007 Phase 3): 48 statt der 8 Validator-Seeds. Auf einer Linie mit
+ * Netz hat die 3°-Hand zwei Zeit-Moden (Fall aufs Band ja/nein, 2–4 s) — L3-Türkis Seeds 1–8 24.55 s, 48 Seeds
+ * 25.99 s: Bronze aus 8 Seeds schaffte die Bronze-Hand nur in 21/48 Läufen (fallen.md, Medaillen-Stichprobe).
+ */
+export const MEDAL_SEEDS: readonly number[] = Array.from({ length: 48 }, (_, i) => i + 1);
+
+/**
  * Medaillen: Bot-Modell, Aufschlag (LevelFormat.LevelMedals), gemessene Linie und Messart.
- * Bronze/Silber auf der sicheren Linie einer Gabel (safeRoute, sonst route): Gelegenheitsspieler
- * schaffen sie ohne Risiko. Gold/VELOCITY/Autor auf der Ideallinie, als Median über 49 Start-Jitter
+ * Bronze/Silber auf der sicheren Linie einer Gabel (safeRoute, sonst route) als Median über MEDAL_SEEDS:
+ * Gelegenheitsspieler schaffen sie ohne Risiko. Gold/VELOCITY/Autor auf der Ideallinie, als Median über 49 Start-Jitter
  * (physics.START_JITTERS): der perfekte Bot ist deterministisch, aber chaotisch — ein Einzellauf hängt
  * an Zehntelgrad. Der Median trägt nur, solange der Bot EINEN Zweig fährt; zerfällt er in Zweige
  * (physics.jitterBranches, L1: Bonk an der Crouch-Kante), warnt der Build laut (BuildResult.warnings,
  * levels:check ebenso) — dann ist das Level zu reparieren, nicht die Kennzahl zu wechseln.
+ * Hat ein Level eine Referenz (LevelEntry.reference, L3/L4: Surf-Grundtechnik), zählt je Modell der schnellere
+ * Median — der RouteFollower surft fallende Rampen langsamer als ein Mensch mit der Technik aus T7/T8.
  */
 const MEDAL_MODELS: Record<keyof LevelMedals, { readonly model: StrafeModel; readonly factor: number; readonly line: RouteChoice; readonly jitter: boolean }> = {
   bronze: { model: { aimNoiseDeg: 3 }, factor: 1.05, line: 'safeRoute', jitter: false },
@@ -66,13 +78,13 @@ function up01(t: number): number {
 
 /**
  * Par und Medaillen, gemessen wie der RunState-Timer (physics.timedRun: ab
- * Verlassen der Startzone, Tode inklusive): Hände als Median über die Seeds des
- * Validators, der perfekte Bot als Median über Start-Jitter (physics.jitterMedian).
+ * Verlassen der Startzone, Tode inklusive): Hände als Median über MEDAL_SEEDS,
+ * der perfekte Bot als Median über Start-Jitter (physics.jitterMedian).
  * Par = Bronze auf ganze Sekunden — die Ansage für Gelegenheitsspieler (3°-Hand,
  * CS2-Parität). Früher Par ab Spawn und nur aus Läufen ohne Tod: ~1.3 s zu lasch,
  * und nach dem ersten Lauf gab es kein Ziel mehr (Level-Flow-Kritik).
  */
-function withTimes(level: LevelFile, log: (line: string) => void, warn: (line: string) => void): LevelFile {
+function withTimes(level: LevelFile, log: (line: string) => void, warn: (line: string) => void, reference: MedalReference | null = null): LevelFile {
   const c = compileLevel(level);
   const lines: Record<RouteChoice, CompiledLevel> = { route: c, safeRoute: withRoute(c, 'safeRoute') };
   const median = new Map<string, number>();
@@ -82,18 +94,31 @@ function withTimes(level: LevelFile, log: (line: string) => void, warn: (line: s
     let m = median.get(id);
     if (m === undefined) {
       const j = jitter ? jitterMedian(lines[line], model) : null;
-      const r = j ?? timedMedian(lines[line], model, FULL_RUN_SEEDS);
+      const r = j ?? timedMedian(lines[line], model, MEDAL_SEEDS);
       if (r.median === null) throw new Error(`${level.id}: Bot ${JSON.stringify(model)} (${line}) kommt in der Mehrheit der Läufe nicht ins Ziel — keine Medaille ${key}`);
       const mm = r.median;
       m = mm;
       median.set(id, mm);
       if (j) log(`  ${level.id}: ${JSON.stringify(model)} über ${j.runs.length} Start-Jitter [${j.runs.map((x) => (x.time === null ? 'x' : x.time.toFixed(2))).join(' ')}] → Median ${mm.toFixed(2)} s`);
+      else log(`  ${level.id}: ${JSON.stringify(model)} (${line}) über ${r.runs.length} Seeds, ${r.runs.filter((x) => x.time === null).length} ohne Ziel → Median ${mm.toFixed(2)} s`);
       if (j?.branches) {
         const side = j.branches.fast.some((x) => x.time === mm) ? 'schnellen' : 'langsamen';
         warn(
           `${level.id}: perfekter Bot zerfällt über den Start-Kasten in zwei Zweige — ${describeBranches(j.branches)}. Der Median ${mm.toFixed(2)} s ` +
             `liegt im ${side} Zweig und hängt davon ab, wie viele Starts dort landen: Gold/VELOCITY/Autor nicht belastbar — Chaos-Stelle im Level entschärfen`,
         );
+      }
+      // Zweites Modell (Surf-Grundtechnik): zählt, wenn es schneller ist — die Medaille steht für die Technik, nicht den Bot.
+      const ref = reference?.runs(lines[line], model, line, jitter, MEDAL_SEEDS) ?? null;
+      const rm = ref ? medianOf(ref.runs) : null;
+      if (ref && reference) {
+        log(`  ${level.id}: Referenz ${reference.name}, ${JSON.stringify(model)}: ${ref.detail} → Median ${rm === null ? '–' : rm.toFixed(2)} s${rm !== null && rm < mm ? ` < RouteFollower ${mm.toFixed(2)} s → zählt` : ''}`);
+        const rb = ref.overJitter ? jitterBranches(ref.runs) : null;
+        if (rb && rm !== null && rm < mm) warn(`${level.id}: Referenz ${reference.name} zerfällt über den Start-Kasten in zwei Zweige — ${describeBranches(rb)}`);
+      }
+      if (rm !== null && rm < mm) {
+        m = rm;
+        median.set(id, rm);
       }
     }
     // Autor-Zeit auf 0.01 s (die Zahl, die man schlagen will), die anderen glatt auf 0.1 s.
@@ -195,7 +220,7 @@ export function runBuild(o: BuildOptions = {}): BuildResult {
       continue;
     }
     if (raw.id !== e.id) throw new Error(`Registry "${e.id}" baut ein Level mit id "${raw.id}"`);
-    built.push(withTimes(raw, log, warn));
+    built.push(withTimes(raw, log, warn, e.reference ? e.reference() : null));
   }
 
   // 3) Schreiben.

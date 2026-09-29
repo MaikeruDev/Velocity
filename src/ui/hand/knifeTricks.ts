@@ -167,6 +167,12 @@ export class KnifeTricks extends PropTricks<KnifeTrick> {
     this.start('doubleAerial');
   }
 
+  /** Training (KI9): Stufe = auf- bzw. zuschnappen (Jubel), Lektion fertig = wie das Ziel. */
+  protected override onLesson(done: boolean): void {
+    if (done) this.onFinish();
+    else this.start(this.isOpen ? 'close' : 'open');
+  }
+
   protected evaluate(id: KnifeTrick, t: number, _dt: number, inp: PropFrameInput, _m: number, o: PropOut): boolean {
     if (id === 'surfHeli') return this.heli(t, inp, o);
     if (id === 'open' || id === 'close') {
@@ -269,6 +275,13 @@ export class KnifeTricks extends PropTricks<KnifeTrick> {
     this.rotateView(o, 0, 1, 0, angle % (Math.PI * 2));
     this.rotateView(o, 1, 0, 0, HELI_TILT * e);
     for (let k = 0; k < 3; k++) o.pos[k] += (HELI_POS[k] - o.pos[k]) * e;
+    // Einlage (PropTricks.beatU): der Rotor springt von der Fingerspitze hoch, kippt kurz und landet wieder.
+    const u = this.beatU;
+    if (u < 1) {
+      this.offsetView(o, 0.3 * arc(u) * e, 2.6 * arc(u) * e, 0.6 * arc(u) * e);
+      this.rotateView(o, 0, 0, 1, 0.35 * bell(u) * e);
+    }
+    if (this.beatEnd()) this.kick(o, 0.12, -0.3);
     // Aufklappen in den ersten HELI_UP s (war es zu), danach offen.
     const beta = this.wasOpen ? 0 : Math.PI * (1 - smooth(t / HELI_UP));
     this.setBlade(o, beta, 0);

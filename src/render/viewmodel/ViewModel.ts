@@ -1,14 +1,14 @@
 import { BufferAttribute, BufferGeometry, GLSL3, Group, Line, Mesh, PerspectiveCamera, Points, Scene, ShaderMaterial, Vector3 } from 'three';
-import type { IUniform, Material, Object3D, Texture, WebGLRenderer } from 'three';
+import type { EulerTuple, IUniform, Material, Object3D, Texture, WebGLRenderer } from 'three';
 import type { EnvironmentDef } from '../../world/level/LevelFormat';
-import { VM_ARM_BASE, VM_JOINT, VM_RIG, VM_STRING_POINTS } from '../types';
+import { VM_ARM_BASE, VM_JOINT, VM_JOINT_COUNT, VM_RIG, VM_STRING_POINTS } from '../types';
 import type { ViewModelFrame, ViewModelGlove, ViewModelItem } from '../types';
 import { hexToRgb } from '../util';
 import { ITEM_REGISTRY } from './items';
 import { SKIN_REGISTRY } from './skins';
 import { GloveSkin } from './skins/glove';
 import type { ItemView, Part, SkinFrameFx, SkinView, VmBuildCtx, VmRig } from './vmBuild';
-import { ScalarUniform, createVmLight, setHexVec } from './vmMaterials';
+import { ScalarUniform, createVmLight, hexVec, setHexVec } from './vmMaterials';
 import type { VmLightUniforms } from './vmMaterials';
 
 /**
@@ -77,6 +77,21 @@ void main() {
   fragColor = vec4(uColor, 1.0);
 }
 `;
+/**
+ * Schlagschatten der Schnur: dieselbe Linie 1 Low-Res-Pixel nach rechts unten (NDC 2/uRes je Pixel, im
+ * Clip-Raum × w), in Konturfarbe. Die helle 1-px-Schnur verschwand vor dem weißen Handschuh (Review: Jo-Jo-
+ * Wiege kaum lesbar); mit dunkler Kante liest sie sich auf Handschuh UND dunklem Grund — wie die Kontur.
+ */
+const LINE_SHADOW_VERT = /* glsl */ `
+uniform vec2 uRes;
+void main() {
+  vec4 clip = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  clip.xy += vec2(2.0, -2.0) / uRes * clip.w;
+  gl_Position = clip;
+}
+`;
+/** Konturfarbe des Standard-Handschuhs (skins/glove classic.outline). */
+const STRING_SHADOW = 0x0d0c14;
 
 export class ViewModel {
   readonly scene = new Scene();
@@ -119,7 +134,27 @@ export class ViewModel {
   /** Zweiter Körper (Plan 007) und Schnur — erst angelegt, wenn ein Gegenstand sie hat. */
   private subSocket: Group | null = null;
   private subSpin: Group | null = null;
-  private string: { line: Line; pos: BufferAttribute; color: Vector3 } | null = null;
+  /** Zuletzt gesetzte Lage des zweiten Körpers (NaN = noch keine). */
+  private readonly subRotSeen = new Float32Array(3).fill(Number.NaN);
+  /**
+   * Zuletzt gesetzte Drehungen (NaN = noch keine): Gegenstand (Euler), Hand-Bewegung (pitch, yaw, roll), Eigendrehung
+   * von Gegenstand und zweitem Körper — three-Setter nur bei Änderung (Review Phase 2: applyItem 2.0–2.1 KiB/s, der
+   * Rest von applyRig 8.5–9.6 KiB/s waren je Frame neun geboxte Setter-Argumente). Plätze statt Felder: Kommazahlen
+   * in einem Float64Array werden nie geboxt.
+   */
+  private readonly propRotSeen = new Float32Array(3).fill(Number.NaN);
+  private readonly motionSeen = new Float64Array(3).fill(Number.NaN);
+  private readonly spinSeen = new Float64Array(2).fill(Number.NaN);
+  /** Zuletzt gesetzte Gelenke: Hand-Gelenke nur bei Änderung (in Ruhe stehen die Posen meist still). */
+  private readonly jointsSeen = new Float32Array(VM_JOINT_COUNT).fill(Number.NaN);
+  /**
+   * Winkel für Euler.fromArray: Drehungen über ein Array statt über set(x, y, z) / .x = — Kommazahlen als
+   * Argumente eines nicht geinlineten three-Setters boxte Maglev je Aufruf (paced Probe Jo-Jo + Katze: applyJoints
+   * 7.5 KiB/s nach 60 s). fromArray setzt dieselben Felder und ruft denselben Callback (bitgleich); Index 3 bleibt
+   * leer, die Reihenfolge (ZXY/YXZ) also erhalten. Mit Kommazahlen angelegt (Double-Elemente, nie geboxt).
+   */
+  private readonly eul: EulerTuple = [0.5, 0.5, 0.5];
+  private string: { line: Line; shadow: Line; pos: BufferAttribute; color: Vector3 } | null = null;
   private readonly poof: Points;
   private readonly poofMat: ShaderMaterial;
   private readonly geometries: BufferGeometry[] = [];
@@ -301,8 +336,15 @@ export class ViewModel {
     const line = new Line(g, mat);
     line.frustumCulled = false;
     line.visible = false;
+    // Schatten zuerst, die helle Schnur darüber (gleiche Tiefe: die spätere gewinnt).
+    line.renderOrder = 1;
+    const shadowMat = this.track(new ShaderMaterial({ glslVersion: GLSL3, vertexShader: LINE_SHADOW_VERT, fragmentShader: LINE_FRAG, uniforms: { uColor: { value: hexVec(STRING_SHADOW) }, uRes: this.light.uRes } }));
+    const shadow = new Line(g, shadowMat);
+    shadow.frustumCulled = false;
+    shadow.visible = false;
+    this.wrist.add(shadow);
     this.wrist.add(line);
-    this.string = { line, pos, color };
+    this.string = { line, shadow, pos, color };
   }
 
   // ---------------------------------------------------------------- API
@@ -376,7 +418,7 @@ export class ViewModel {
   /**
    * Frame übernehmen (keine Allokation). Bewusst in kleine Methoden geteilt: in EINER großen
    * Methode inlinet V8 die three-Setter (Vector3/Euler.set) nicht mehr und boxt jedes Double-
-   * Argument als HeapNumber — gemessen 16 KiB/s Dauer-Müll (inbox/cosmetics.md).
+   * Argument als HeapNumber — gemessen 16 KiB/s Dauer-Müll (fallen.md #107).
    */
   apply(f: ViewModelFrame): void {
     if (f.glove !== this.glove) this.setGlove(f.glove);
@@ -384,38 +426,116 @@ export class ViewModel {
     this.activeSkin.apply(f, this.skinFx);
     const view = this.applyItem(f);
     this.applySub(view, f);
+    this.applyString(view, f);
     this.applyPoof(f, view);
   }
 
   /** Hand: Anker, Bewegung, Handgelenk, Finger, Daumen (wie Plan 006). */
   private applyRig(f: ViewModelFrame): void {
     const hh = this.depth * TAN_HALF_FOV;
-    this.anchor.position.set(f.x * 2 * hh, -f.y * 2 * hh, -this.depth + f.z);
+    // Position/Skalierung direkt in die Felder (Vector3 hat keinen Setter), Drehung nur bei Änderung (siehe motionSeen).
+    const p = this.anchor.position;
+    p.x = f.x * 2 * hh;
+    p.y = -f.y * 2 * hh;
+    p.z = -this.depth + f.z;
     const sq = f.squash > 0.2 ? f.squash : 1;
     const wide = 1 + (1 - sq) * 0.6;
-    this.anchor.scale.set(wide, sq, wide);
-    this.motion.rotation.set(f.pitch, f.yaw, f.roll);
-    const j = f.joints;
-    this.wrist.rotation.set(-j[VM_JOINT.wristFlex], j[VM_JOINT.wristTwist], j[VM_JOINT.wristDev]);
+    const sc = this.anchor.scale;
+    sc.x = wide;
+    sc.y = sq;
+    sc.z = wide;
+    const ms = this.motionSeen;
+    if (f.pitch !== ms[0] || f.yaw !== ms[1] || f.roll !== ms[2]) {
+      ms[0] = f.pitch;
+      ms[1] = f.yaw;
+      ms[2] = f.roll;
+      const e = this.eul;
+      e[0] = f.pitch;
+      e[1] = f.yaw;
+      e[2] = f.roll;
+      this.motion.rotation.fromArray(e);
+    }
+    if (this.jointsChanged(f.joints)) this.applyJoints(f.joints);
+  }
+
+  /** Gelenke seit dem letzten apply verändert? (merkt sie sich) */
+  private jointsChanged(j: Float32Array): boolean {
+    const s = this.jointsSeen;
+    let changed = false;
+    for (let i = 0; i < j.length; i++) {
+      if (j[i] !== s[i]) {
+        s[i] = j[i];
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  /** Handgelenk, Finger, Daumen (wie Plan 006) — nur bei geänderten Gelenken (applyRig), über fromArray (eul). */
+  private applyJoints(j: Float32Array): void {
+    const e = this.eul;
+    e[0] = -j[VM_JOINT.wristFlex];
+    e[1] = j[VM_JOINT.wristTwist];
+    e[2] = j[VM_JOINT.wristDev];
+    this.wrist.rotation.fromArray(e);
     for (let i = 0; i < 4; i++) {
       const b = VM_JOINT.finger + i * 4;
-      this.fingerRoot[i].rotation.set(-j[b + 1], 0, j[b] + FINGERS[i].splay);
-      this.fingerPip[i].rotation.x = -j[b + 2];
-      this.fingerDip[i].rotation.x = -j[b + 3];
+      e[0] = -j[b + 1];
+      e[1] = 0;
+      e[2] = j[b] + FINGERS[i].splay;
+      this.fingerRoot[i].rotation.fromArray(e);
+      // Mittel-/Endglied drehen nur um x (y, z bleiben 0 wie mit rotation.x =).
+      e[0] = -j[b + 2];
+      e[2] = 0;
+      this.fingerPip[i].rotation.fromArray(e);
+      e[0] = -j[b + 3];
+      this.fingerDip[i].rotation.fromArray(e);
     }
-    this.thumbRoot.rotation.set(THUMB.baseX - j[VM_JOINT.thumbOpp], THUMB.baseY, THUMB.baseZ + j[VM_JOINT.thumbAbd]);
-    this.thumbMcp.rotation.x = -j[VM_JOINT.thumbMcp];
-    this.thumbIp.rotation.x = -j[VM_JOINT.thumbIp];
+    e[0] = THUMB.baseX - j[VM_JOINT.thumbOpp];
+    e[1] = THUMB.baseY;
+    e[2] = THUMB.baseZ + j[VM_JOINT.thumbAbd];
+    this.thumbRoot.rotation.fromArray(e);
+    e[0] = -j[VM_JOINT.thumbMcp];
+    e[1] = 0;
+    e[2] = 0;
+    this.thumbMcp.rotation.fromArray(e);
+    e[0] = -j[VM_JOINT.thumbIp];
+    this.thumbIp.rotation.fromArray(e);
   }
 
   /** Gegenstand: Dreh-Sockel, sichtbare View (lazy gebaut) und ihre Kanäle. */
   private applyItem(f: ViewModelFrame): ItemView | null {
     const show = f.propVisible > 0.001;
-    this.socket.position.set(f.propPos[0], f.propPos[1], f.propPos[2]);
-    this.socket.rotation.set(f.propRot[0], f.propRot[1], f.propRot[2]);
+    // Wie applyRig: Position/Skalierung direkt in die Felder, Drehungen nur bei Änderung.
+    const sp = this.socket.position;
+    sp.x = f.propPos[0];
+    sp.y = f.propPos[1];
+    sp.z = f.propPos[2];
+    const r = f.propRot;
+    const seen = this.propRotSeen;
+    if (r[0] !== seen[0] || r[1] !== seen[1] || r[2] !== seen[2]) {
+      seen[0] = r[0];
+      seen[1] = r[1];
+      seen[2] = r[2];
+      const e = this.eul;
+      e[0] = r[0];
+      e[1] = r[1];
+      e[2] = r[2];
+      this.socket.rotation.fromArray(e);
+    }
     const s = f.propScale > 0.001 ? f.propScale : 0.001;
-    this.socket.scale.set(s, s, s);
-    this.spinner.rotation.y = f.propSpin;
+    const sc = this.socket.scale;
+    sc.x = s;
+    sc.y = s;
+    sc.z = s;
+    if (f.propSpin !== this.spinSeen[0]) {
+      this.spinSeen[0] = f.propSpin;
+      const e = this.eul;
+      e[0] = 0;
+      e[1] = f.propSpin;
+      e[2] = 0;
+      this.spinner.rotation.fromArray(e);
+    }
     const list = this.itemList;
     for (let i = 0; i < list.length; i++) {
       const v = list[i];
@@ -440,19 +560,50 @@ export class ViewModel {
     } else this.poof.visible = false;
   }
 
-  /** Zweiter Körper und Schnur (nur Gegenstände, die sie haben). */
+  /**
+   * Zweiter Körper (nur Gegenstände, die ihn haben). Klein gehalten und ohne Schnur (applyString): mit ihr
+   * wuchs die Methode, V8 inlinete die three-Setter nicht mehr und boxte deren Argumente (Review: 1.9 KiB/s,
+   * fallen.md #107). Position direkt in die Felder (Vector3 hat keinen Setter).
+   */
   private applySub(view: ItemView | null, f: ViewModelFrame): void {
     const sub = view?.sub;
     if (sub && this.subSocket && this.subSpin && f.subVisible > 0.001) {
       sub.visible = true;
-      this.subSocket.position.set(f.subPos[0], f.subPos[1], f.subPos[2]);
-      this.subSocket.rotation.set(f.subRot[0], f.subRot[1], f.subRot[2]);
-      this.subSpin.rotation.y = f.subSpin;
+      const p = this.subSocket.position;
+      p.x = f.subPos[0];
+      p.y = f.subPos[1];
+      p.z = f.subPos[2];
+      // Lage nur bei Änderung (Jo-Jo: konstant, Kendama: nur beim Drehen der Kugel) — spart drei geboxte Argumente.
+      const r = f.subRot;
+      const seen = this.subRotSeen;
+      if (r[0] !== seen[0] || r[1] !== seen[1] || r[2] !== seen[2]) {
+        seen[0] = r[0];
+        seen[1] = r[1];
+        seen[2] = r[2];
+        const e = this.eul;
+        e[0] = r[0];
+        e[1] = r[1];
+        e[2] = r[2];
+        this.subSocket.rotation.fromArray(e);
+      }
+      if (f.subSpin !== this.spinSeen[1]) {
+        this.spinSeen[1] = f.subSpin;
+        const e = this.eul;
+        e[0] = 0;
+        e[1] = f.subSpin;
+        e[2] = 0;
+        this.subSpin.rotation.fromArray(e);
+      }
     }
+  }
+
+  /** Schnur (Jo-Jo, Kendama) samt Schlagschatten. */
+  private applyString(view: ItemView | null, f: ViewModelFrame): void {
     const st = this.string;
     if (!st) return;
     const n = view?.stringColor !== undefined ? Math.min(VM_STRING_POINTS, Math.max(0, Math.floor(f.stringCount))) : 0;
     st.line.visible = n >= 2;
+    st.shadow.visible = n >= 2;
     if (n < 2 || view?.stringColor === undefined) return;
     const a = st.pos.array as Float32Array;
     for (let i = 0; i < n * 3; i++) a[i] = f.stringPts[i];

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
 import type { GameEvent } from '../src/engine/events';
+import type { HeldItemId } from '../src/engine/settingsTypes';
 import { compileLevel } from '../src/world/level/compileLevel';
 import { VELOCITY_DEFAULT } from '../src/player/MovementConfig';
 import { PlayerMovement } from '../src/player/PlayerMovement';
@@ -583,6 +584,49 @@ describe('View-Hand: Reaktion aufs Training (Plan 007 KI9)', () => {
     expect(ph.h.state().trick).toBe('buzz');
     for (let k = 0; k < 360; k++) ph.h.update(1 / 120, ph.inp);
     expect(ph.h.takeShutter()).toBe(false);
+  });
+
+  it('mit JEDEM Gegenstand: Jubel sofort — auch mitten in einem Leerlauf-Trick (Abbruch am Frame-Ende wie das Ziel)', () => {
+    // Review Phase 2: als Checkpoint verpuffte die Reaktion, sobald ein Trick lief (Dose/Karte/Messer nie).
+    const stageTrick = (item: HeldItemId, h: ViewHand): string => {
+      if (item === 'knife') return h.knife.isOpen ? 'close' : 'open';
+      const t: Record<string, string> = { can: 'twirl', card: 'spin', spinner: 'flick', yoyo: 'around', lighter: 'strike', coin: 'call', kendama: 'smallCup', phone: 'buzz' };
+      return t[item];
+    };
+    const doneTrick = (item: HeldItemId, h: ViewHand): string => {
+      if (item === 'can') return h.can.opened ? 'sip' : 'behindThrow';
+      const t: Record<string, string> = { card: 'vanish', knife: 'doubleAerial', spinner: 'ufo', yoyo: 'cradle', lighter: 'finale', coin: 'call', kendama: 'spike', phone: 'buzz' };
+      return t[item];
+    };
+    const ITEMS: readonly HeldItemId[] = ['can', 'card', 'knife', 'spinner', 'yoyo', 'lighter', 'coin', 'kendama', 'phone'];
+    for (const item of ITEMS) {
+      for (const done of [false, true]) {
+        const h = new ViewHand();
+        h.setItem(item);
+        const inp = makeHandInput();
+        // Stehen, bis ein Leerlauf-Trick seit 0.1 s läuft (erster nach 2.2 s, Dose: vorher die Lasche).
+        let k = 0;
+        while (!(h.state().trick !== 'none' && h.state().trickTime > 0.1) && k < 120 * 8) {
+          h.update(1 / 120, inp);
+          k++;
+        }
+        const running = h.state().trick;
+        expect(running, `${item}: läuft ein Leerlauf-Trick?`).not.toBe('none');
+        const knifeWasOpen = item === 'knife' ? h.knife.isOpen : false;
+        h.onEvent(STAGE(done));
+        h.update(1 / 120, inp);
+        const want = done ? doneTrick(item, h) : item === 'knife' ? (knifeWasOpen ? 'close' : 'open') : stageTrick(item, h);
+        expect(h.state().trick, `${item} ${done ? 'Lektion' : 'Stufe'} (lief: ${running})`).toBe(want);
+        expect(h.state().trickTime, `${item} beginnt bei Trick-Zeit 0`).toBe(0);
+        for (let f = 0; f < 10; f++) h.update(1 / 120, inp);
+        expect(h.state().trick, `${item} läuft weiter`).toBe(want);
+        expect(h.state().pose, `${item}: mit Gegenstand keine Faust`).not.toBe('fist');
+        if (item === 'phone') {
+          for (let f = 0; f < 120 * 3; f++) h.update(1 / 120, inp);
+          expect(h.takeShutter(), 'kein Selfie in der Lektion').toBe(false);
+        }
+      }
+    }
   });
 
   it('motionFx 0: nur die Pose wechselt, keine Bewegung (kein Ruck, kein Versatz)', () => {

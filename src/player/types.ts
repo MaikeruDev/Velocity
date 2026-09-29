@@ -66,7 +66,9 @@ export interface PlayerSnapshot {
   readonly surfNormal: Vector3;
   /**
    * Rutscht gerade (Plan 007, MovementConfig.slideMinSpeed). Diskret, wird nicht interpoliert
-   * (Interpolation übernimmt den neueren Snapshot). Bis Phase 1 immer false.
+   * (Interpolation übernimmt den neueren Snapshot). Gemeldet erst nach der Lande-Gnade: die Physik
+   * rutscht ab dem ersten Bodentick, `sliding`/'slideStart' kommen mit dem ersten Reibungs-Tick — ein
+   * Sprung in der Gnade ist ein Crouch-Hop, keine Rutsche (movement.md §4).
    */
   readonly sliding: boolean;
 }

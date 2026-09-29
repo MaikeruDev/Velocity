@@ -13,8 +13,8 @@ import type { PlayerInput, PlayerSnapshot } from '../../../src/player/types';
 import type { CollisionWorld } from '../../../src/world/collision/types';
 import type { CompiledLevel } from '../../../src/world/level/compileLevel';
 import type { GateDef, LevelFile, StageDef, TrainingDef, TrainingGroup, TrainingZoneDef } from '../../../src/world/level/LevelFormat';
-import { Frame, LevelBuilder, r3 } from '../lib';
-import type { V3 } from '../lib';
+import { Frame, LevelBuilder, orientedBox, r3 } from '../lib';
+import type { V2, V3 } from '../lib';
 
 /** Farben der Lektionen (Trims, Markierungen, Tore). */
 export const TC = {
@@ -107,6 +107,21 @@ export class LessonBuilder {
     this.L.box([x0 - t, y0, z1], [x1 + t, y1, z1 + t], { mat: 'wall', tag: `${tag}-s` });
     this.L.box([x0 - t, y0, z0], [x0, y1, z1], { mat: 'wall', tag: `${tag}-w` });
     this.L.box([x1, y0, z0], [x1 + t, y1, z1], { mat: 'wall', tag: `${tag}-o` });
+  }
+
+  /**
+   * Marken-Bogen über einer Surf-Rampe (Bildsprache der Surf-Level wie LevelBuilder.arch, ohne Kollision): dunkle
+   * Pfosten außerhalb der Füße (v0 − post … v0 und v1 … v1 + post, von `base` bis `top`), der Sturz darüber leuchtet
+   * in `tint` — die Lektion nennt ihn ("DURCH DIE PINKEN BÖGEN"), er muss auch bei 1000 u/s und nachts lesbar sein
+   * ('accent' wie in LevelBuilder.arch war im Spiel nur eine dunkle Silhouette).
+   */
+  markArch(f: Frame, u: number, v: readonly [number, number], base: number, top: number, tint: string, post: number, tag: string): void {
+    const L = this.L;
+    const [v0, v1] = v;
+    const us: V2 = [u - post / 2, u + post / 2];
+    L.add(orientedBox(f, us, [v0 - post, v0], [base, top], { mat: 'dark', collide: false, tag: `${tag}-pfosten` }));
+    L.add(orientedBox(f, us, [v1, v1 + post], [base, top], { mat: 'dark', collide: false, tag: `${tag}-pfosten` }));
+    L.add(orientedBox(f, us, [v0 - post, v1 + post], [top, top + post], { mat: 'light', tint, collide: false, trim: false, tag: `${tag}-sturz` }));
   }
 
   /** Portal: finish-Trigger (Ergebnis) und Leucht-Bogen, Blick durch den Bogen in Richtung −Z. */

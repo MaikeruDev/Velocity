@@ -368,6 +368,14 @@
   opacity: 0.8;
 }
 
+/* "Empfohlen: T7/T8" (prepLessons): klein in Magenta wie das Training, verschwindet mit dem Stern. */
+.vel-level-prep {
+  font-family: var(--font-head);
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: var(--magenta);
+}
+
 .vel-level-best {
   font-family: var(--font-head);
   font-size: 16px;
@@ -664,6 +672,85 @@
   letter-spacing: 4px;
   line-height: 1;
   text-shadow: -3px 0 0 var(--cyan), 3px 0 0 var(--magenta), 0 5px 0 var(--ink);
+}
+
+/* Ziel-Foto (Plan 007 I3): Kopf mit Zeit links, Polaroid rechts — dafür breiter, sonst läge die Zeit darunter. */
+.vel-finish-screen--photo {
+  max-width: 1120px;
+}
+
+.vel-finish-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.vel-finish-head-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/*
+ * Hüllen um Kopf und Freischalt-Banner (Menu.buildFinish): normal ohne eigene Box — die Teile stehen wie bisher direkt
+ * in der Spalte des Ergebnisses. Nur niedrige Fenster stellen Kopf und Banner nebeneinander (max-height 800px unten).
+ */
+.vel-finish-top,
+.vel-finish-headcol {
+  display: contents;
+}
+
+.vel-polaroid {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 8px 8px 0;
+  background: #f4f1ff;
+  box-shadow: 6px 6px 0 var(--magenta);
+}
+
+/* 96×54 ganzzahlig ×3, Nearest — das Foto ist schon im Pixelraster gedithert (render/selfie.ts). */
+.vel-polaroid-img {
+  display: block;
+  width: 288px;
+  height: 162px;
+  image-rendering: pixelated;
+  background: var(--ink);
+}
+
+.vel-polaroid-cap {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 2px 8px;
+  font-family: var(--font-head);
+  font-size: 20px;
+  letter-spacing: 1px;
+  color: var(--ink);
+}
+
+/* Auf Weiß: Medaille mit dunklem Hintergrund, damit Silber/Gold lesbar bleiben. */
+.vel-polaroid-cap .vel-medal {
+  padding: 0 6px;
+  background: var(--ink);
+}
+
+.vel-polaroid-level {
+  color: #5a527e;
+  text-transform: uppercase;
+}
+
+/* Kleine Fenster: ×2 statt ×3 (weiter ganzzahlig), damit das Ergebnis nicht höher wird als nötig. */
+@media (max-height: 820px) {
+  .vel-polaroid-img {
+    width: 192px;
+    height: 108px;
+  }
+  .vel-polaroid-cap {
+    font-size: 16px;
+  }
 }
 
 .vel-record {
@@ -1304,6 +1391,16 @@
   border-color: var(--cyan);
 }
 
+/* Sterne je Lektion: gewählte Stufe in Gold wie die Sterne der Liste. */
+.vel-admin-stars .vel-admin-star {
+  min-width: 64px;
+}
+
+.vel-admin-stars .vel-admin-star[aria-pressed='true']:not([data-stars='0']) {
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
 @media (max-width: 1100px) {
   .vel-admin-grid {
     grid-template-columns: 1fr;
@@ -1531,4 +1628,135 @@
   font-size: 12px;
   letter-spacing: 1px;
   opacity: 0.85;
+}
+
+/*
+ * Niedrige Fenster (1366×768, 1280×720): Titel mit Neulings-Band und Lektions-Pause (bis 8 Knöpfe) scrollten
+ * 23–52 px, "Klicken zum Starten" war angeschnitten. Enger statt kleiner: Abstände, Logo, Knopfhöhen.
+ */
+@media (max-height: 800px) {
+  /* 12/14 statt 16/20: mit "Empfohlen: T7/T8" unter L3/L4 scrollte der Titel bei 1280×720 wieder (5 px). */
+  .vel-title-screen {
+    gap: 12px;
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+  .vel-title-screen .vel-subtitle {
+    margin-top: 10px;
+  }
+  .vel-title-screen .vel-level {
+    min-height: 50px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  .vel-title-screen .vel-start {
+    min-height: 54px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  .vel-newbie {
+    padding: 8px 14px;
+  }
+  .vel-pause-screen {
+    gap: 14px;
+    padding-top: 20px;
+    padding-bottom: 20px;
+  }
+  .vel-pause-screen .vel-panel {
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+  .vel-pause-screen .vel-col .vel-btn {
+    min-height: 40px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  /*
+   * Ergebnis einer Lektion mit Freischaltung (T4 → Spinner; schlimmster Fall T1 mit 6 Stufen und zwei Freischaltungen):
+   * bei 1280×720 lagen die Knöpfe 35 px unter dem Rand. Sterne, Tabelle und Kästen enger, Vorschau bleibt ×2.
+   */
+  .vel-lesson-done {
+    gap: 12px;
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+  .vel-lesson-done .vel-lesson-stars {
+    font-size: 44px;
+    letter-spacing: 6px;
+  }
+  .vel-lesson-done .vel-panel {
+    padding-top: 12px;
+    padding-bottom: 10px;
+  }
+  .vel-lesson-done .vel-stages td {
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+  .vel-lesson-done .vel-unlock {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  /*
+   * Ziel-Ergebnis eines Levels: bei 1280×720 lagen die Knöpfe 129 px (ohne Freischaltung) bis 341 px (drei
+   * Freischaltungen) unter dem Rand. Breiter statt höher: Kopf neben dem Banner, Zeit kleiner, Tabelle enger.
+   */
+  .vel-finish-screen {
+    gap: 12px;
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+  .vel-finish-screen .vel-finish-time {
+    font-size: 64px;
+  }
+  .vel-finish-screen .vel-panel {
+    padding-top: 12px;
+    padding-bottom: 10px;
+  }
+  .vel-finish-screen .vel-splits th,
+  .vel-finish-screen .vel-splits td {
+    padding-top: 3px;
+    padding-bottom: 3px;
+  }
+  .vel-finish-screen .vel-unlock-name {
+    font-size: 24px;
+  }
+  .vel-finish-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 24px;
+  }
+  .vel-finish-headcol {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: 0 0 auto;
+  }
+  .vel-finish-head-main {
+    gap: 12px;
+  }
+  .vel-finish-top > .vel-unlock {
+    flex: 1 1 360px;
+    min-width: 0;
+  }
+  .vel-finish-top > .vel-finish-head {
+    flex: 1 1 auto;
+  }
+}
+
+/* Niedrig UND breit genug: die vier Werte (Bestzeit, Par, Top-Speed, Medaille) in einer Reihe statt 3 + 1. */
+@media (max-height: 800px) and (min-width: 1000px) {
+  .vel-finish-screen:not(.vel-lesson-done) {
+    max-width: 1120px;
+  }
+  .vel-finish-screen .vel-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* Logo nur über 900 px Breite verkleinern — schmaler gilt ohnehin 64 px (Kleine Fenster). */
+@media (max-height: 800px) and (min-width: 901px) {
+  .vel-logo {
+    font-size: 96px;
+  }
 }

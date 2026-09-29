@@ -48,6 +48,7 @@ uniform vec3 uSunTop;
 uniform vec3 uSunBottom;
 uniform float uSunRadius;
 uniform float uTime;
+uniform float uMoon;
 in vec2 vNdc;
 out vec4 fragColor;
 void main() {
@@ -67,13 +68,23 @@ void main() {
     // Dezenter Dunst um die Scheibe (Teil der Himmelsmalerei, kein Bloom).
     col += uSunBottom * 0.22 * (1.0 - smoothstep(0.9, 2.4, r)) * step(-0.02, e);
     if (r < 1.0 && e > -0.004) {
-      vec3 sc = mix(uSunBottom, uSunTop, smoothstep(-0.7, 0.8, sp.y));
-      // Outrun-Streifen: gleicher Abstand, Lücken werden nach unten breiter.
-      float depth = 0.3 - sp.y;
-      float ph = fract(depth * 6.0 - uTime * 0.25);
-      float gap = clamp(depth * 0.42, 0.0, 0.62);
-      bool cut = depth > 0.0 && ph < gap;
-      if (!cut) col = sc;
+      if (uMoon > 0.5) {
+        // Mond (EnvironmentDef.moon): Scheibe in der Lichtfarbe, zum Rand etwas dunkler, zwei harte "Meere",
+        // keine Outrun-Streifen — harte Stufen statt Verlauf, wie der Rest des Himmels.
+        vec2 m1 = sp - vec2(-0.3, 0.2);
+        vec2 m2 = sp - vec2(0.26, -0.22);
+        float mare = min(1.0, step(dot(m1, m1), 0.07) + step(dot(m2, m2), 0.04));
+        float rim = step(0.82, r);
+        col = uSunTop * (1.0 - 0.16 * mare) * (1.0 - 0.12 * rim);
+      } else {
+        vec3 sc = mix(uSunBottom, uSunTop, smoothstep(-0.7, 0.8, sp.y));
+        // Outrun-Streifen: gleicher Abstand, Lücken werden nach unten breiter.
+        float depth = 0.3 - sp.y;
+        float ph = fract(depth * 6.0 - uTime * 0.25);
+        float gap = clamp(depth * 0.42, 0.0, 0.62);
+        bool cut = depth > 0.0 && ph < gap;
+        if (!cut) col = sc;
+      }
     }
   }
   fragColor = vec4(col, 1.0);
@@ -281,6 +292,7 @@ export class SkyLayers {
         uSunBottom: { value: new Vector3() },
         uSunRadius: { value: 0.17 },
         uTime: shared.uTime,
+        uMoon: { value: 0 },
       },
     });
     this.skyMesh = new Mesh(fullscreenTriangle(), this.skyMat);
@@ -348,13 +360,20 @@ export class SkyLayers {
     const sun = hexToRgb(env.sunColor);
     const alt = hexToRgb(env.trimColorAlt ?? '#ff3fd0');
     const hor = hexToRgb(env.skyHorizon);
-    // Oben warmes Gelb aus der Sonnenfarbe, unten heißes Pink aus Horizont + Alt-Neon.
-    (u.uSunTop.value as Vector3).set(Math.min(1, sun[0] * 1.05 + 0.05), Math.min(1, sun[1] * 1.02 + 0.06), sun[2] * 0.55);
-    (u.uSunBottom.value as Vector3).set(
-      (hor[0] + alt[0]) * 0.5,
-      (hor[1] + alt[1]) * 0.35,
-      (hor[2] + alt[2]) * 0.5,
-    );
+    u.uMoon.value = env.moon === true ? 1 : 0;
+    if (env.moon === true) {
+      // Mond (Plan 007, L3): Scheibe genau in der Lichtfarbe, Dunst gedämpft in derselben Farbe.
+      (u.uSunTop.value as Vector3).set(sun[0], sun[1], sun[2]);
+      (u.uSunBottom.value as Vector3).set(sun[0] * 0.45, sun[1] * 0.45, sun[2] * 0.45);
+    } else {
+      // Oben warmes Gelb aus der Sonnenfarbe, unten heißes Pink aus Horizont + Alt-Neon.
+      (u.uSunTop.value as Vector3).set(Math.min(1, sun[0] * 1.05 + 0.05), Math.min(1, sun[1] * 1.02 + 0.06), sun[2] * 0.55);
+      (u.uSunBottom.value as Vector3).set(
+        (hor[0] + alt[0]) * 0.5,
+        (hor[1] + alt[1]) * 0.35,
+        (hor[2] + alt[2]) * 0.5,
+      );
+    }
 
     const fog = hexToRgb(env.fogColor);
     const bottom = hexToRgb(env.skyBottom);

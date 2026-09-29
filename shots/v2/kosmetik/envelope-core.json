@@ -29,9 +29,9 @@
       "left": 0.149
     },
     "surfBalance": {
-      "up": -0.232,
+      "up": -0.27,
       "left": 0.149,
-      "down": 0.619,
+      "down": 0.622,
       "inside": true,
       "seconds": 1.833
     }
@@ -54,9 +54,9 @@
       "left": 0.137
     },
     "surfFan": {
-      "up": -0.09,
+      "up": -0.133,
       "left": 0.259,
-      "down": 0.208,
+      "down": 0.21,
       "inside": true,
       "seconds": 1.833
     }
@@ -83,7 +83,7 @@
       "left": 0.129
     },
     "surfHeli": {
-      "up": -0.091,
+      "up": -0.131,
       "left": 0.1,
       "down": 0.404,
       "inside": true,
@@ -125,9 +125,9 @@
       "seconds": 1.117
     },
     "balance": {
-      "up": -0.066,
-      "left": 0.161,
-      "down": 0.253,
+      "up": -0.087,
+      "left": 0.163,
+      "down": 0.254,
       "inside": true,
       "seconds": 1.833
     }
@@ -155,37 +155,37 @@
       "seconds": 0.633
     },
     "breakaway": {
-      "up": -0.025,
-      "left": 0.08,
-      "down": 0.426,
+      "up": -0.016,
+      "left": 0.093,
+      "down": 0.41,
       "inside": true,
       "seconds": 0.933
     },
     "around": {
-      "up": -0.069,
-      "left": 0.062,
-      "down": 0.483,
+      "up": -0.035,
+      "left": 0.097,
+      "down": 0.444,
       "inside": true,
       "seconds": 0.983
     },
     "aroundDouble": {
-      "up": -0.069,
-      "left": 0.062,
-      "down": 0.484,
+      "up": -0.035,
+      "left": 0.097,
+      "down": 0.454,
       "inside": true,
       "seconds": 1.483
     },
     "cradle": {
       "up": 0.071,
-      "left": 0.16,
-      "down": 0.421,
+      "left": 0.111,
+      "down": 0.497,
       "inside": true,
       "seconds": 2.133
     },
     "surfSleeper": {
       "up": 0.096,
       "left": 0.225,
-      "down": 0.472,
+      "down": 0.503,
       "inside": true,
       "seconds": 1.833
     }
@@ -203,7 +203,7 @@
       "left": 0.217,
       "down": 0.363,
       "inside": true,
-      "seconds": 0.467
+      "seconds": 0.583
     },
     "snapClose": {
       "up": 0.099,
@@ -241,9 +241,9 @@
       "seconds": 2.033
     },
     "surfFlame": {
-      "up": 0.04,
+      "up": -0.003,
       "left": 0.225,
-      "down": 0.355,
+      "down": 0.358,
       "inside": true,
       "seconds": 1.833
     }
@@ -292,9 +292,9 @@
       "seconds": 0.85
     },
     "edgeSpin": {
-      "up": 0.123,
+      "up": 0.054,
       "left": 0.332,
-      "down": 0.333,
+      "down": 0.336,
       "inside": true,
       "seconds": 1.833
     }
@@ -302,24 +302,24 @@
   "kendama": {
     "bigCup": {
       "up": 0.046,
-      "left": 0.216,
+      "left": 0.217,
       "down": 0.551,
       "inside": true,
-      "seconds": 0.967
+      "seconds": 0.867
     },
     "smallCup": {
-      "up": -0.096,
-      "left": 0.239,
+      "up": -0.095,
+      "left": 0.242,
       "down": 0.437,
       "inside": true,
-      "seconds": 0.967
+      "seconds": 0.867
     },
     "aroundJapan": {
-      "up": -0.094,
-      "left": 0.215,
-      "down": 0.458,
+      "up": -0.091,
+      "left": 0.216,
+      "down": 0.457,
       "inside": true,
-      "seconds": 2.333
+      "seconds": 1.883
     },
     "spike": {
       "up": -0.043,
@@ -329,11 +329,11 @@
       "seconds": 1
     },
     "cupRide": {
-      "up": 0.05,
+      "up": -0.035,
       "left": 0.221,
       "down": 0.523,
       "inside": true,
-      "seconds": 1.75
+      "seconds": 1.917
     }
   },
   "phone": {

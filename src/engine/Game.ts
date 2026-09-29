@@ -31,11 +31,11 @@ import type { GameEvent, RunEvent } from './events';
 import type { HudLayoutInfo, TrainingDebugInfo } from './debug';
 import { Coach, hintText } from './Coach';
 import type { HintId } from './Coach';
-import { TrainingSession, createDemo } from './Training';
+import { TrainingSession, createDemo, lessonMovementConfig } from './Training';
 import type { DemoRunner } from './Training';
 import { TrainingProgress } from './TrainingProgress';
 import type { TrainingSessionApi, Verdict } from './trainingTypes';
-import { CENTER_BAND_BOTTOM, CENTER_BAND_TOP, stageLabel } from '../ui/hudLogic';
+import { CENTER_BAND_BOTTOM, CENTER_BAND_TOP, stageJudges, stageLabel } from '../ui/hudLogic';
 import { HUD_RECTS } from '../ui/Hud';
 import { keyShortLabel } from './InputState';
 import type { InputManager } from './Input';
@@ -148,15 +148,18 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 type FinishEvent = Mutable<Extract<RunEvent, { type: 'finish' }>>;
 
 /**
- * Laufende Lektion aus Sicht von Game: der Vertrag (TrainingSessionApi) plus zwei Extras der
- * Implementierung (engine/Training, Strang training-core) — Tipps im Moment (Text + Zähler) und die
- * Config (Strafe-Assist ändert das Urteil 'wHeld'). Mehr nicht: Stufe/Stufen kommen aus dem Level
- * (LessonHud.stageIndex → TrainingDef.stages), damit Game gegen den Vertrag gebaut bleibt.
+ * Laufende Lektion aus Sicht von Game: der Vertrag (TrainingSessionApi) plus drei Extras der
+ * Implementierung (engine/Training, Strang training-core) — Tipps im Moment (Text, Art, Zähler), die
+ * Config (Strafe-Assist ändert das Urteil 'wHeld') und ob die laufende Vorführung die Stufe geschafft
+ * hätte (die Session wertet sie angehalten im Schatten aus). Mehr nicht: Stufe/Stufen kommen aus dem
+ * Level (LessonHud.stageIndex → TrainingDef.stages), damit Game gegen den Vertrag gebaut bleibt.
  */
 interface LessonSession extends TrainingSessionApi {
   /** kind 'verdict' = wiederholtes Fehlurteil — nur in Stufen, die Strafen bewerten (siehe lessonJudge). */
   readonly tip: { readonly text: string; readonly kind: 'stage' | 'verdict' | 'demo'; readonly serial: number };
   setConfig(c: MovementConfig): void;
+  /** Nur während der Vorführung: sie hat die Aufgabe der Stufe erfüllt (Schatten-Zähler der Session). */
+  readonly demoPassed: boolean;
 }
 
 interface ActiveBot {
@@ -192,8 +195,9 @@ const DEMO_GOAL_HOLD = 1;
  */
 const DEMO_STILL_END = 0.5;
 const DEMO_STILL_SPEED = 40;
-/** Tempo, mit dem lessonJudge die Session fragt (turnBand ist je Stufe null oder nicht; der Wert ist egal). */
-const JUDGE_PROBE_SPEED = 300;
+/** benchLesson: Hop-Zyklus der synthetischen Session-Ticks (Luft-Ticks, dann ein Boden-Tick) und Drehrate (rad/Tick). */
+const BENCH_AIR_TICKS = 90;
+const BENCH_TURN = 0.012;
 /** speed01 für Renderer: 0 bei Laufgeschwindigkeit, 1 bei sehr hohem Tempo. */
 const SPEED01_LO = 250;
 const SPEED01_HI = 1100;
@@ -260,7 +264,10 @@ export class Game {
   private readonly rig: CameraRig;
   private readonly movement: PlayerMovement;
   private readonly loop: FixedLoop;
+  /** Wirksame Movement-Config: die des Spielers, in Lektionen die Lehr-Config (lessonMovementConfig). */
   private config: MovementConfig;
+  /** Config des Spielers (Preset, Schalter, F1-Panel) — gilt wieder, sobald ein normales Level lädt. */
+  private playerConfig: MovementConfig;
 
   // --- Zustand
   private gameState: GameState = 'title';
@@ -354,13 +361,9 @@ export class Game {
   /** Vorführung nach dem Fortsetzen starten (Pause-Menü "Vorführung ansehen"). */
   private pendingDemo = false;
   /**
-   * Schatten der Vorführung: eigene Session (ohne Welt, an der Stufe der Vorführung), die die Ticks des Bots
-   * bewertet — die echte Session ist angehalten und zählt nichts. Wechselt ihre Stufe, hat der Bot die Aufgabe
-   * erfüllt. null = keine Vorführung, Ziel schon erreicht oder Tools spielen wirklich (demoPlays).
+   * Vorführung hat das Stufenziel erreicht (LessonSession.demoPassed — die Session wertet die angehaltene
+   * Vorführung im Schatten aus und öffnet deren Tore nur für sie); Rest der "SO GEHT'S"-Phase (s).
    */
-  private demoShadow: TrainingSessionApi | null = null;
-  private readonly shadowEvents: RunEvent[] = [];
-  /** Vorführung hat das Stufenziel erreicht; Rest der "SO GEHT'S"-Phase (s). */
   private demoGoal = false;
   private demoGoalLeft = 0;
   /** Stillstand der Vorführung: Bot fuhr schon; so lange steht er am Stück (s). */
@@ -368,8 +371,8 @@ export class Game {
   private demoStill = 0;
   /**
    * Die aktive Stufe bewertet Strafen (Urteile am Gain-Popup, Urteils-Tipps, SYNC-Zeile). Kriterium der Session:
-   * turnBand() ≠ null (Stufe mit Strafe-Aufgabe in einer Lektion mit Zielband) — T1/T2/T6/T7/T8 und Prestrafe
-   * nicht: dort widersprach "W LOS" der Anweisung "W + LEERTASTE HALTEN". Je Stufe einmal bestimmt.
+   * turnBand() ≠ null = Strafe-Aufgabe (goodHops, speed, course) in einer Lektion mit Zielband (T3–T5) — in
+   * T1/T2/T6/T7/T8 nicht: dort widersprach "W LOS" der Anweisung "W + LEERTASTE HALTEN". Je Stufe einmal bestimmt.
    */
   private lessonJudge = false;
   private judgeStage = -1;
@@ -462,6 +465,7 @@ export class Game {
     this.baseUrl = deps.baseUrl;
 
     this.config = deps.tuning.getConfig();
+    this.playerConfig = this.config;
     this.coach = new Coach(this.config);
     this.progress = deps.training ?? new TrainingProgress();
     const progress = this.progress;
@@ -477,6 +481,12 @@ export class Game {
         const def = this.lessonDefs.get(id);
         if (!def) return false;
         progress.complete(id, def.stages);
+        return true;
+      },
+      setStars: (id, stars) => {
+        const def = this.lessonDefs.get(id);
+        if (!def) return false;
+        progress.setStars(id, def.stages, stars);
         return true;
       },
       reset: (id) => progress.reset(id),
@@ -536,8 +546,6 @@ export class Game {
     this.bus.on((e) => this.coach.onEvent(e));
     this.bus.on((e) => this.onGameEvent(e));
     this.bus.on((e) => this.session?.onEvent(e));
-    // Ereignis-Aufgaben (T1 Rutschen: slideStart) zählt der Schatten der Vorführung über denselben Weg.
-    this.bus.on((e) => this.demoShadow?.onEvent(e));
     this.coach.onHint = (id, verdict) => this.showHint(id, verdict);
     this.menu.setRawStatusProvider(() => this.input.rawStatus);
     // Fortschritt geändert (Lektion, Admin): offene Menü-Screens nachziehen.
@@ -680,6 +688,9 @@ export class Game {
       verdictSerial: this.hud.verdictSerial,
       verdictDrawn: this.hud.verdictDrawn,
       judge: this.hud.judge,
+      card: this.hud.cardState(),
+      wRed: this.hud.wKeyRed,
+      turnLegend: this.hud.turnLegendShown,
     };
   }
 
@@ -915,8 +926,13 @@ export class Game {
 
   setConfigPatch(patch: Partial<MovementConfig>): MovementConfig {
     const next = withMovement(this.config, patch);
-    this.tuning.setConfig(next);
-    this.applyConfig(next);
+    // Tools: gilt sofort. In einer Lektion nur für sie (Patch auf die Lehr-Config) — Panel und
+    // Spieler-Config bleiben, sonst nähme das nächste normale Level die Lehr-Config mit.
+    if (this.session === null) {
+      this.tuning.setConfig(next);
+      this.playerConfig = next;
+    }
+    this.useConfig(next);
     return next;
   }
 
@@ -1006,6 +1022,8 @@ export class Game {
     // "GESCHAFFT!": kein Blitz, kein Akkord, keine Faust. onTick fängt je Überspringen genau ein Ereignis ab.
     this.skipPending++;
     s.skipStage();
+    // Das 'lessonStage' des Überspringens erreicht das HUD nicht — Tipp und Geschafft-Blitz der alten Stufe hier verwerfen.
+    this.hud.lessonJump();
     this.respawn('manual');
   }
 
@@ -1268,6 +1286,11 @@ export class Game {
     this.setRenderedLevel(level);
     this.level = level;
     this.levelId = id;
+    // Lektionen lehren das VELOCITY-Movement mit allen Hilfen (Training.lessonMovementConfig): mit dem
+    // CS2-Preset gäbe es kein Rutschen (T1 unmöglich), ohne Auto-Hop wäre "Leertaste halten" falsch. Ein
+    // normales Level bekommt wieder die Config des Spielers. Vor Session und Spawn (Hull, Tick-Rate).
+    const cfg = level.def.training ? lessonMovementConfig() : this.playerConfig;
+    if (cfg !== this.config) this.useConfig(cfg);
     // Lektion: Session + GatedWorld (die Session öffnet die Tore darin); sonst die statische Welt.
     let session: LessonSession | null = null;
     let world: CollisionWorld = level.world;
@@ -1278,13 +1301,17 @@ export class Game {
       this.lessonDefs.set(id, level.def.training);
     }
     this.session = session;
+    // Lektionen erzwingen Auto-Sprint wie die Lehr-Config: ohne Sprint bleibt das Bodentempo bei 250 u/s — T1 RUTSCHEN
+    // (ab 280) und T4 PRESTRAFE (ab 350) wären 0/20 (Review training-core, rv-tc3/nosprint.txt).
+    const st = this.settings.get();
+    this.input.configure(st.keybinds, st.autoSprint || session !== null);
     this.lessonForceKeys = level.def.training?.hud?.forceKeys === true;
     this.world = world;
     this.demo = null;
     this.demoPlays = false;
     this.resetDemoWatch();
     // Vor dem ersten Frame gesetzt (Tools spulen Ticks auch ohne Frame vor).
-    this.lessonJudge = session !== null && session.turnBand(JUDGE_PROBE_SPEED) !== null;
+    this.lessonJudge = session !== null && stageJudges(session);
     this.judgeStage = session !== null ? session.hud.stageIndex : -1;
     this.hud.judge = this.lessonJudge;
     this.pendingDemo = false;
@@ -1412,7 +1439,7 @@ export class Game {
       }
       if (this.demo !== null) {
         this.demoLeft -= dt;
-        if (!this.demoPlays) this.watchDemo(dt, cmd, hullH);
+        if (!this.demoPlays) this.watchDemo(session, dt);
       }
     }
     this.runTick(dt);
@@ -1605,6 +1632,8 @@ export class Game {
     const track = this.ghostRec.finish(this.levelSig, time, splits);
     if (res.best && track) this.ghostStore.save(this.levelId, track);
     else if (res.best) this.ghostStore.clear(this.levelId);
+    // Ziel-Foto: einen Auslöser von vorher (Werkzeug-Trick) verwerfen, damit nur das Foto DIESES Ziels zählt.
+    this.hand.takeShutter();
     const e = this.finishEvent;
     e.time = time;
     e.best = res.best;
@@ -1630,8 +1659,24 @@ export class Game {
     };
   }
 
+  /**
+   * Ziel-Foto (Plan 007 I3): Selfie mit dem Handy (RendererApi.selfie, Rückansicht 96×54 + Peace-Hand) in
+   * FinishResult.photo, HUD-Stempel "FOTO". Nach dem Bild dieses Frames (Kamera des letzten render), einmal
+   * je Ziel; der Timer steht. Ohne Handy löst die Hand nie aus — kein Foto.
+   */
+  private takePhoto(): void {
+    const r = this.finishResult;
+    if (!r || r.photo) return;
+    const photo = this.renderer.selfie(96, 54, this.hand.selfieFrame());
+    if (!photo) return;
+    this.finishResult = { ...r, photo };
+    this.hud.showPhoto();
+  }
+
   private showFinishMenu(): void {
     if (!this.finishResult) return;
+    // Ergebnis kommt vor dem Auslöser (Enter/Esc im Ausrollen, Tod nach dem Ziel): anstehendes Foto jetzt.
+    if (!this.finishResult.photo && this.hand.takeShutterNow()) this.takePhoto();
     this.coasting = false;
     this.input.exitLock();
     this.tuning.hide();
@@ -1675,6 +1720,8 @@ export class Game {
     this.updateHud(frameDt);
     this.updateFx(frameDt);
     this.renderer.render(this.camera, this.fx);
+    // Handy im Ziel: Auslöser 0.76 s nach dem Ziel (ViewHand.takeShutter, true genau einmal).
+    if (this.gameState === 'finished' && this.finishResult !== null && this.hand.takeShutter()) this.takePhoto();
     this.frameCpuSum += performance.now() - cpu0;
     this.frameCpuN++;
   };
@@ -1694,6 +1741,65 @@ export class Game {
     this.costProbe = true;
     this.frameCpuN = 0;
     return r;
+  }
+
+  /**
+   * Mikro-Messung (Tools, __vel.benchLesson): updateLesson n-mal am Stück (Frame-Arbeit der Lektion) und
+   * session.tick n-mal auf einer Wegwerf-Session derselben Lektion ab der aktiven Stufe mit synthetischen
+   * Hops (Luft mit A + Drehung, alle BENCH_AIR_TICKS ein Boden-Tick → Urteil), abzüglich derselben Schleife
+   * ohne tick. Je Frame gemessen ist performance.now() ohne Cross-Origin-Isolation auf ~0.1 ms vergröbert —
+   * am Stück sind es Millisekunden. Nicht im Frame-Pfad (allokiert). Nebenwirkung: auflösende Tore sind
+   * danach ganz offen. null = keine laufende Lektion oder das Ergebnis läuft gerade an.
+   */
+  benchLesson(n: number): { readonly updateMs: number; readonly tickMs: number; readonly hops: number } | null {
+    const s = this.session;
+    const level = this.level;
+    if (s === null || level === null || this.lessonEndIn >= 0 || this.gameState !== 'playing') return null;
+    let t0 = performance.now();
+    for (let i = 0; i < n; i++) this.updateLesson(1 / 144);
+    const updateMs = (performance.now() - t0) / n;
+
+    const sh = new TrainingSession(level, this.config, { world: null });
+    const stage = s.hud.stageIndex;
+    for (let i = 0; i < stage && sh.hud.stageIndex < stage; i++) sh.skipStage();
+    const dt = 1 / this.loop.tickRate;
+    const prev = PlayerMovement.createSnapshot();
+    const cur = PlayerMovement.createSnapshot();
+    const cmd: MutablePlayerInput = { ...NO_INPUT, side: -1, jumpHeld: true };
+    const out: RunEvent[] = [];
+    let hops = 0;
+    const loop = (withTick: boolean): number => {
+      copySnap(this.cur, cur);
+      let yaw = 0;
+      let speed = 320;
+      const start = performance.now();
+      for (let i = 0; i < n; i++) {
+        copySnap(cur, prev);
+        const ground = i % (BENCH_AIR_TICKS + 1) === BENCH_AIR_TICKS;
+        if (!ground) {
+          yaw += BENCH_TURN;
+          speed += 0.4;
+        }
+        cur.onGround = ground;
+        cur.surfing = false;
+        cur.vel.set(-Math.sin(yaw) * speed, 0, -Math.cos(yaw) * speed);
+        cur.speed = speed;
+        cur.pos.x += cur.vel.x * dt;
+        cur.pos.z += cur.vel.z * dt;
+        cmd.yaw = yaw;
+        if (!withTick) continue;
+        out.length = 0;
+        sh.tick(dt, prev, cur, cmd, 72, out);
+        for (let k = 0; k < out.length; k++) if (out[k].type === 'lessonHop') hops++;
+        // Alle Stufen durch → von vorn (sonst misst der Rest nur den Leerlauf-Zweig ohne Stufe).
+        if (sh.hud.stageIndex >= sh.hud.stageTotal) sh.restartLesson();
+      }
+      return performance.now() - start;
+    };
+    loop(false);
+    const base = loop(false);
+    t0 = loop(true);
+    return { updateMs, tickMs: Math.max(0, t0 - base) / n, hops };
   }
 
   private handleAction(a: InputAction): void {
@@ -1754,7 +1860,7 @@ export class Game {
     if (s.hud.stageIndex !== this.judgeStage) {
       // Selten (Stufenwechsel): turnBand ist nur je Stufe null oder nicht, das Tempo zählt dafür nicht.
       this.judgeStage = s.hud.stageIndex;
-      this.lessonJudge = s.turnBand(JUDGE_PROBE_SPEED) !== null;
+      this.lessonJudge = stageJudges(s);
     }
     if (this.demo !== null && this.gameState === 'playing') {
       const keyed = !this.demoPlays && this.input.anyKeyDown();
@@ -1824,8 +1930,6 @@ export class Game {
     this.demoPlays = play;
     this.demoStage = s.hud.stageIndex;
     this.resetDemoWatch();
-    // Zuschauen: der Schatten erkennt, wann der Bot die Stufe geschafft hätte (Tools spielen echt, ohne Schatten).
-    if (!play) this.demoShadow = this.makeDemoShadow(level, s.hud.stageIndex);
     const pm = this.movement;
     this.overrideActive = true;
     this.input.setOverride(() => (this.demo !== null ? this.demo.next(pm.state, pm.surfNormal) : NO_INPUT));
@@ -1836,33 +1940,16 @@ export class Game {
   }
 
   /**
-   * Schatten-Session an Stufe `stage` (ohne Welt: Tore betreffen nur die Kollision, die die echte GatedWorld
-   * trägt). Einmal je Vorführung, nicht im Tick-Pfad. null = Stufe nicht erreichbar (sollte nicht vorkommen).
+   * Tick-Pfad während einer Vorführung (nicht demoPlays, nach session.tick): hat die Vorführung die Aufgabe
+   * erfüllt (Schatten-Auswertung der Session), steht "SO GEHT'S!" und nach DEMO_GOAL_HOLD geht es zurück —
+   * vorher lief der Bot bis zum Ablauf von DemoDef.seconds weiter bzw. stand vor dem Tor. Dazu Stillstand messen.
    */
-  private makeDemoShadow(level: CompiledLevel, stage: number): TrainingSessionApi | null {
-    const sh = new TrainingSession(level, this.config, { world: null });
-    // Über den Vertrag an die Stufe: Überspringen (die gemeldeten Ereignisse verwirft watchDemo).
-    for (let i = 0; i < stage && sh.hud.stageIndex < stage; i++) sh.skipStage();
-    return sh.hud.stageIndex === stage ? sh : null;
-  }
-
-  /**
-   * Tick-Pfad während einer Vorführung (nicht demoPlays): Schatten mit den Ticks des Bots füttern — wechselt
-   * seine Stufe, ist das Ziel erreicht ("SO GEHT'S!", nach DEMO_GOAL_HOLD zurück). Dazu Stillstand messen.
-   */
-  private watchDemo(dt: number, cmd: PlayerInput, hullH: number): void {
-    const sh = this.demoShadow;
-    if (sh !== null) {
-      const out = this.shadowEvents;
-      out.length = 0;
-      sh.tick(dt, this.prev, this.cur, cmd, hullH, out);
-      out.length = 0;
-      if (sh.hud.stageIndex !== this.demoStage) {
-        this.demoShadow = null;
-        this.demoGoal = true;
-        this.demoGoalLeft = DEMO_GOAL_HOLD;
-      }
-    } else if (this.demoGoal) this.demoGoalLeft -= dt;
+  private watchDemo(s: LessonSession, dt: number): void {
+    if (this.demoGoal) this.demoGoalLeft -= dt;
+    else if (s.demoPassed) {
+      this.demoGoal = true;
+      this.demoGoalLeft = DEMO_GOAL_HOLD;
+    }
     if (this.cur.speed >= DEMO_STILL_SPEED) {
       this.demoMoved = true;
       this.demoStill = 0;
@@ -1871,7 +1958,6 @@ export class Game {
 
   /** Beobachtung der Vorführung zurücksetzen (Start, Ende, Levelwechsel). */
   private resetDemoWatch(): void {
-    this.demoShadow = null;
     this.demoGoal = false;
     this.demoGoalLeft = 0;
     this.demoMoved = false;
@@ -1921,6 +2007,7 @@ export class Game {
     // skipPending bleibt: restartLesson leert die Warteschlange der Session nicht — ein vorher übersprungenes
     // 'lessonStage' kommt trotzdem mit dem nächsten Tick und darf nicht gefeiert werden.
     s.restartLesson();
+    this.hud.lessonJump();
     const sp = s.respawnPoint();
     this.placeAt(sp.pos, sp.yaw);
     this.bus.emit(RESPAWN_RESTART);
@@ -2250,7 +2337,7 @@ export class Game {
     this.hand.enabled = s.showHand;
     this.hand.motionFx = s.motionFx;
     this.applyCosmetics(s);
-    this.input.configure(s.keybinds, s.autoSprint);
+    this.input.configure(s.keybinds, s.autoSprint || this.session !== null);
     const jumpKey = s.keybinds.jump[0];
     const crouchKey = s.keybinds.crouch[0];
     this.hud.setKeyLabels(jumpKey !== undefined ? keyShortLabel(jumpKey) : 'RAD', crouchKey !== undefined ? keyShortLabel(crouchKey) : '-');
@@ -2280,7 +2367,17 @@ export class Game {
     this.audio.setVolumes({ master: this.muted ? 0 : s.masterVolume, music: s.musicVolume, sfx: s.sfxVolume });
   }
 
+  /**
+   * Config des Spielers geändert (Einstellungen, F1-Panel). In einer Lektion gilt weiter die Lehr-Config —
+   * nur mit ihr sind Vorführungen, Bot-Matrix und Urteile validiert; die Wahl greift ab dem nächsten Level.
+   */
   private applyConfig(c: MovementConfig): void {
+    this.playerConfig = c;
+    if (this.session === null) this.useConfig(c);
+  }
+
+  /** Config wirksam machen: Movement, Coach, Session, HUD, Kamera, Bots, Tick-Rate. */
+  private useConfig(c: MovementConfig): void {
     this.config = c;
     this.movement.setConfig(c);
     this.coach.setConfig(c);
@@ -2449,7 +2546,16 @@ export function parseIndex(data: unknown): LevelIndexEntry[] {
     const { id, name, subtitle, file } = e;
     if (typeof id !== 'string' || typeof name !== 'string' || typeof file !== 'string') continue;
     const medals = parseMedals(e.medals);
-    out.push({ id, name, file, ...(typeof subtitle === 'string' ? { subtitle } : {}), ...(medals ? { medals } : {}) });
+    // Ohne diese Kopie zeigte die Levelliste nie "Empfohlen: T7/T8" (Menu.prepText liest den Index-Eintrag).
+    const prep = Array.isArray(e.prepLessons) ? e.prepLessons.filter((p): p is string => typeof p === 'string') : [];
+    out.push({
+      id,
+      name,
+      file,
+      ...(typeof subtitle === 'string' ? { subtitle } : {}),
+      ...(medals ? { medals } : {}),
+      ...(prep.length > 0 ? { prepLessons: prep } : {}),
+    });
   }
   return out;
 }

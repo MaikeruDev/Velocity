@@ -8,7 +8,7 @@
  * Bericht: shots/playtest/report.json. Exit 1 bei Konsolen-/Seitenfehlern —
  * ein Bot, der ein Level nicht schafft, ist KEIN Fehler dieses Tools (Level-Strang).
  *
- *   node tools/playtest.mjs                 → level1, level2, sandbox
+ *   node tools/playtest.mjs                 → level1–level4, sandbox
  *   node tools/playtest.mjs level2          → nur level2
  *   node tools/playtest.mjs --sync 0.8      → unsauberer Bot
  */
@@ -29,7 +29,7 @@ const args = process.argv.slice(2);
 const syncArg = args.indexOf('--sync');
 const SYNC = syncArg >= 0 ? Number(args[syncArg + 1]) : 1.0;
 const filter = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--sync');
-const LEVELS = filter.length > 0 ? filter : ['level1', 'level2', 'sandbox'];
+const LEVELS = filter.length > 0 ? filter : ['level1', 'level2', 'level3', 'level4', 'sandbox'];
 
 mkdirSync(OUT, { recursive: true });
 const srv = await startDevServer(PORT);

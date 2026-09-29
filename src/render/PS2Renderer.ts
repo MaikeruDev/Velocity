@@ -405,7 +405,10 @@ export class PS2Renderer implements RendererApi {
     return out;
   }
 
-  /** Selfie (Plan 007): delegiert an render/selfie.ts (Phase 1: Schnittstelle, liefert null). */
+  /**
+   * Selfie (Plan 007 KI7/I3): delegiert an render/selfie.ts — ein Welt- und ein Viewmodel-Durchgang aus der
+   * Kamera des letzten render() (Rückansicht), 5 Bit + Bayer. Game ruft es im Ziel mit Handy (FinishResult.photo).
+   */
   selfie(w: number, h: number, vm: ViewModelFrame): HTMLCanvasElement | null {
     if (this.disposed) return null;
     return renderSelfie({ renderer: this.renderer, scene: this.scene, camera: this.lastCamera, viewModel: this.viewModel }, w, h, vm);

@@ -66,6 +66,8 @@ const BAL_IN = 0.35;
 const BAL_OUT = 0.3;
 const BAL_HOP = 2.2;
 const BAL_LOWER = 0.07;
+/** Einlage im Surf-Zustand: Scheitel des Hüpfers (Einheiten, wie der Hopser beim Wechsel). */
+const BEAT_HOP = 2.4;
 const CAN_HALF = 7.8 + 0.25;
 const BAL_TIP: V3 = ((): V3 => {
   const t: [number, number, number] = [0, 0, 0];
@@ -183,6 +185,12 @@ export class CanTricks extends PropTricks<CanTrick> {
     else this.start('behindThrow');
   }
 
+  /** Training (KI9): Stufe = Twirl (Jubel), Lektion fertig = wie das Ziel. */
+  protected override onLesson(done: boolean): void {
+    if (done) this.onFinish();
+    else this.start('twirl');
+  }
+
   protected override onSurfStart(speed: number): void {
     if (speed >= SURF_FROM) this.start('surfBalance');
   }
@@ -199,7 +207,7 @@ export class CanTricks extends PropTricks<CanTrick> {
   }
 
   override update(dt: number, inp: PropFrameInput): void {
-    const d = Number.isFinite(dt) ? clamp(dt, 0, 0.1) : 0;
+    const d = dt - dt === 0 ? clamp(dt, 0, 0.1) : 0;
     // Ruhezeit für den Crack: am Boden zählen, im Tempo-Flow nur langsam.
     if (inp.onGround && !inp.surfing) this.groundTime += inp.speed < 300 ? d : d * 0.1;
     super.update(dt, inp);
@@ -289,13 +297,21 @@ export class CanTricks extends PropTricks<CanTrick> {
     const hop = BAL_HOP * (this.surfOut < 0 ? Math.sin(Math.PI * clamp(t / BAL_IN, 0, 1)) : Math.sin(Math.PI * clamp((t - this.surfOut) / BAL_OUT, 0, 1)));
     for (let k = 0; k < 3; k++) o.pos[k] = CAN_HOLD_POS[k] + (p[k] - CAN_HOLD_POS[k]) * e;
     this.offsetView(o, 0, hop, 0);
+    // Einlage (PropTricks.beatU): Dose hüpft von der Kuppe, dreht sich einmal um die eigene Achse, landet wieder.
+    const u = this.beatU;
+    if (u < 1) {
+      this.offsetView(o, 0, BEAT_HOP * arc(u) * e, 0);
+      o.spin = TAU * smooth(u);
+    }
+    if (this.beatEnd()) this.kick(o, 0.14, -0.35);
     o.pose = e > 0.35 ? POSE.point : POSE.grip;
     o.poseTau = 0.06;
     // Hand tiefer: die aufrechte Dose ragt sonst bis an die Hülle der Tricks (−0.31 Bildhöhen).
     o.hy = BAL_LOWER * e;
     if (this.mark(0, BAL_IN, t)) this.kick(o, 0.12, -0.3);
     if (this.surfOut >= 0 && this.mark(1, this.surfOut + BAL_OUT, t)) this.kick(o, 0.2, -0.5);
-    return this.surfOut >= 0 && t >= this.surfOut + BAL_OUT;
+    // Endet erst nach einer laufenden Einlage (sonst spränge die Drehung auf 0).
+    return this.surfOut >= 0 && t >= this.surfOut + BAL_OUT && u >= 1;
   }
 
   /** Schluck: Dose zum Mund (links oben, zur Kamera), Deckel kippt zu uns, drei kleine Schlucke. */

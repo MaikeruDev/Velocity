@@ -5,11 +5,11 @@
     "subtitle": "Lauf. Spring. Strafe.",
     "file": "level1.json",
     "medals": {
-      "bronze": 36.2,
-      "silver": 30.4,
-      "gold": 24.5,
-      "velocity": 23.4,
-      "author": 22.25
+      "bronze": 35.2,
+      "silver": 31.1,
+      "gold": 21.5,
+      "velocity": 20.5,
+      "author": 19.49
     }
   },
   {
@@ -18,11 +18,46 @@
     "subtitle": "Speed ist eine Entscheidung.",
     "file": "level2.json",
     "medals": {
-      "bronze": 21.4,
-      "silver": 18.7,
-      "gold": 17.5,
-      "velocity": 16.7,
-      "author": 15.86
+      "bronze": 21.3,
+      "silver": 19.2,
+      "gold": 17.3,
+      "velocity": 16.5,
+      "author": 15.71
     }
+  },
+  {
+    "id": "level3",
+    "name": "03 BRANDUNG",
+    "subtitle": "Halt die Linie.",
+    "file": "level3.json",
+    "medals": {
+      "bronze": 27.3,
+      "silver": 25.1,
+      "gold": 12.8,
+      "velocity": 12.2,
+      "author": 11.6
+    },
+    "prepLessons": [
+      "t7",
+      "t8"
+    ]
+  },
+  {
+    "id": "level4",
+    "name": "04 TURM",
+    "subtitle": "Tempo ist Höhe.",
+    "file": "level4.json",
+    "medals": {
+      "bronze": 28.7,
+      "silver": 27.3,
+      "gold": 26.2,
+      "velocity": 25,
+      "author": 23.76
+    },
+    "prepLessons": [
+      "t6",
+      "t7",
+      "t8"
+    ]
   }
 ]

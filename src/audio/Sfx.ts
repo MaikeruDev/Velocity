@@ -715,13 +715,16 @@ export class Sfx {
     releaseWhenEnded([src, osc], [bp, env, oEnv]);
   }
 
-  /** Lip-Step (Kanten-Assist): kurzer Griff-Klack, Bandpass-Rauschen um 1.2 kHz, ~25 ms, etwa −12 dB. */
+  /**
+   * Lip-Step (Kanten-Assist): kurzer Griff-Klack, Bandpass-Rauschen um 1.2 kHz, ~25 ms. Spitze ~7 dB unter
+   * einem Schritt (Gate-Vorgabe; mit 0.25 war er so laut wie ein Schritt und drängte sich in den Lauf).
+   */
   private ledgeGrip(t: number): void {
     const ctx = this.ctx;
     const src = noiseBurst(ctx, this.noise, this.rng, t, 0.04);
     const bp = makeFilter(ctx, 'bandpass', 1200, 2.2);
     const env = makeGain(ctx, 0);
-    percEnvelope(env.gain, t, 0.25, 0.001, 0.005);
+    percEnvelope(env.gain, t, 0.11, 0.001, 0.005);
     src.connect(bp).connect(env).connect(this.out);
     releaseWhenEnded([src], [bp, env]);
   }

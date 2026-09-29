@@ -75,13 +75,15 @@ try {
   check((await page.evaluate(() => window.__vel.unlocks())).length === 0, 'Alles sperren: nichts frei');
   check((await page.evaluate(() => window.__vel.hand())).glove === 'classic', 'gesperrter Neon-Handschuh → Hand trägt Standard');
 
-  // Medaillen setzen: L1 Gold → Neon (Sperre für L1 aufgehoben), L2 VELOCITY → Dose; Messer bleibt gesperrt (braucht L1-VELOCITY).
+  // Medaillen setzen: L1 Gold → Jo-Jo (Silber) + Neon (Sperre für L1 aufgehoben), L2 VELOCITY → Feuerzeug (Silber),
+  // Skelett (Gold), Dose; Messer bleibt gesperrt (braucht L1-VELOCITY). Plan 007 Phase 3: ohne PENDING_UNLOCKS vergibt
+  // die Ableitung auch die neuen Freischaltungen dieser Level.
   const level = (i) => page.locator('.vel-admin-level').nth(i);
   await level(0).getByRole('button', { name: 'GOLD' }).click();
   await level(1).getByRole('button', { name: 'VELOCITY' }).click();
   await page.waitForTimeout(250);
   const u1 = await page.evaluate(() => window.__vel.unlocks());
-  check(JSON.stringify(u1) === JSON.stringify(['glove.neon', 'item.can']), `Medaille setzen schaltet frei: ${JSON.stringify(u1)}`);
+  check(JSON.stringify(u1) === JSON.stringify(['item.yoyo', 'item.lighter', 'glove.neon', 'glove.skeleton', 'item.can']), `Medaille setzen schaltet frei: ${JSON.stringify(u1)}`);
   check((await page.evaluate(() => localStorage.getItem('velocity.ghost.v1.level1'))) === null, 'Medaille setzen löscht den alten Ghost');
   // Sammelkarte von Hand an, Neon von Hand aus.
   await page.locator('[data-unlock="item.card"]').click();
@@ -91,7 +93,7 @@ try {
 
   await load();
   const u2 = await page.evaluate(() => window.__vel.unlocks());
-  check(JSON.stringify(u2) === JSON.stringify(['item.card', 'item.can']), `nach Neuladen + Ableitung unverändert: ${JSON.stringify(u2)}`);
+  check(JSON.stringify(u2) === JSON.stringify(['item.yoyo', 'item.lighter', 'glove.skeleton', 'item.card', 'item.can']), `nach Neuladen + Ableitung unverändert: ${JSON.stringify(u2)}`);
   const badges = await page.locator('.vel-level .vel-medal').allTextContents();
   check(badges[0] === 'GOLD' && badges[1] === 'VELOCITY', `Levelauswahl zeigt gesetzte Medaillen: ${JSON.stringify(badges)}`);
 
@@ -119,6 +121,17 @@ try {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(100);
   check((await page.locator('.vel-pause-screen').count()) === 1, 'Esc führt zurück in die Pause');
+
+  // Plan 007 (I2): "Alles freischalten" = alle 14 Einträge der Freischalt-Tabelle; das Kosmetik-Menü hat 14
+  // Freischalt-Kacheln (+ Standard, Nichts), keine gesperrt.
+  await page.keyboard.press('F8');
+  await page.waitForSelector('.vel-admin-screen');
+  await page.getByRole('button', { name: 'Alles freischalten' }).click();
+  await page.waitForTimeout(200);
+  const all = await page.evaluate(() => window.__vel.unlocks());
+  const rows = await page.locator('.vel-admin-row').count();
+  check(all.length === 14 && rows === 14, `Alles freischalten = 14 (frei ${all.length}, Admin-Zeilen ${rows})`);
+  await page.screenshot({ path: `${OUT}/admin-all.png` });
 } finally {
   await browser.close();
   await srv.close();

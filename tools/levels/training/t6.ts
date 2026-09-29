@@ -4,7 +4,8 @@
  * Gerade Halle Richtung −Z (768 breit), eine Treppe aus Kanten:
  *   STUFE      48 u: normal springen reicht (Sprung 57 + Kanten-Assist 5).
  *   KANTEN     drei Kanten à 66 u (Level-Regel "Crouch-Kanten ≥ 66", movement.md §5): ohne Ducken kommt
- *              man höchstens 63.5 u hoch, mit Ducken in der Luft 80. Jede Landung oben zählt (crouchLand).
+ *              man höchstens 63.5 u hoch, mit Ducken in der Luft aus dem Lauf 75 (gemessen, s. EDGE). Jede
+ *              Landung oben zählt (crouchLand).
  *              Leuchtband ↑C 100–180 u vor jeder Wand = Absprungfenster.
  *   Bonus HOCH zwei Kanten à 72 u: 3 u unter der Crouch-Reichweite aus dem Lauf, Fenster 20–140 statt 20–180
  *              (Band 60–140).
@@ -127,7 +128,7 @@ export function buildT6(): LevelFile {
   });
   B.stage({
     id: 'kanten',
-    title: 'KANTEN 66',
+    title: `KANTEN ${EDGE}`,
     text: 'AM GRÜNEN BAND SPRINGEN, DANN IN\nDER LUFT C DRÜCKEN: 3 KANTEN HOCH',
     task: { kind: 'crouchLand', zone: 'kanten-oben', count: 3 },
     opens: ['ausgang', 'bonus'],
@@ -140,18 +141,18 @@ export function buildT6(): LevelFile {
   });
   B.stage({
     id: 'hoch',
-    title: 'BONUS 72',
-    text: 'HÖHER: 2 KANTEN À 76\nSPÄTER SPRINGEN, SOFORT DUCKEN',
+    title: `BONUS ${EDGE_BONUS}`,
+    text: `HÖHER: 2 KANTEN À ${EDGE_BONUS}\nSPÄTER SPRINGEN, SOFORT DUCKEN`,
     task: { kind: 'crouchLand', zone: 'hoch-oben', count: 2 },
     rank: 'bonus',
     spawn: { pos: [0, TOP[2], z(K[2] + 200)], yaw: 0 },
     demo: { kind: 'route', from: 12, to: 17, seconds: 10 },
-    tips: [{ on: 'stuck', after: 15, text: 'AM VIOLETTEN BAND ABSPRINGEN\nUND C GLEICH DANACH DRÜCKEN' }],
+    tips: [{ on: 'stuck', after: 15, text: 'AM PINKEN BAND ABSPRINGEN\nUND C GLEICH DANACH DRÜCKEN' }],
   });
   B.stage({
     id: 'fluss',
     title: 'MEISTER: FLUSS',
-    text: 'DIE DREI 66er-KANTEN IN EINEM ZUG\nNIE STEHEN, NIE UNTER 250',
+    text: `DIE DREI ${EDGE}er-KANTEN IN EINEM ZUG\nNIE STEHEN, NIE UNTER 250`,
     task: { kind: 'course', zones: ['k0', 'k1', 'k2'], minSpeed: 250, airborne: true, groundGrace: 0.25 },
     rank: 'master',
     spawn: { pos: [0, 48, z(TOR1 + 150)], yaw: 0 },

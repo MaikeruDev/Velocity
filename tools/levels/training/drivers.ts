@@ -270,12 +270,12 @@ export function crouchHand(walls: readonly { readonly z: number; readonly top: n
 
 /**
  * Surfer (T7/T8): die SurfHand aus src/player/bots/BeginnerHand (dieselbe wie in der Vorführung) mit Zielfehler
- * σ `noiseDeg` und Reaktion `react` s nach dem ersten Kontakt. Steht er unten in der Grube (Füße unter `pitY`,
- * 0.5 s am Boden), drückt er F.
+ * σ `noiseDeg`, Reaktion `react` s nach dem ersten Kontakt und festem Blickfehler `biasDeg` (> 0 = in die Rampe).
+ * Steht er unten in der Grube (Füße unter `pitY`, 0.5 s am Boden), drückt er F.
  */
-export function surfHand(mode: SurfMode, noiseDeg: number, react: number, pitY: number) {
+export function surfHand(mode: SurfMode, noiseDeg: number, react: number, pitY: number, biasDeg = 0) {
   return (ctx: DriverContext): RespawningDriver => {
-    const hand = new SurfHand(ctx.cfg, { seed: ctx.seed, mode, noiseDeg, react, heading: (ctx.spawn.yaw * Math.PI) / 180 });
+    const hand = new SurfHand(ctx.cfg, { seed: ctx.seed, mode, noiseDeg, react, biasDeg, heading: (ctx.spawn.yaw * Math.PI) / 180 });
     const dt = 1 / ctx.cfg.tickRate;
     let pit = 0;
     return {
@@ -361,6 +361,38 @@ export function prestrafeRate(rateDeg: number, jitter = 0.15, runUp = 0.5) {
         out.side = t > runUp ? -1 : 0;
         if (t > runUp) yaw += rate * dt;
         out.yaw = yaw;
+        return out;
+      },
+    };
+  };
+}
+
+/**
+ * Rückwärts-Strafer (Fehlerbild "Taste gegen die Maus", konsequent durchgezogen): hält A (key −1) bzw. D und die
+ * Leertaste, dreht die Maus mit konstanter Rate GEGEN die Taste, W nur am Boden. Der Flug dreht sich dabei nach hinten —
+ * er gewinnt Tempo rückwärts (T4 v400 in 3 s, jeder Hop "FALSCHE SEITE"). Die BeginnerHand 'gegen' blickt am Boden
+ * wieder nach vorn und zeigt das nie. Rate je Seed lognormal gestreut (σ 0.2), Anfangsblick ±15°.
+ */
+export function backStrafe(rateDeg: number, key: -1 | 1 = -1) {
+  return (ctx: DriverContext): Driver => {
+    const rand = mulberry32(ctx.seed * 211 + 3);
+    const rate = key * rateDeg * DEG * Math.exp(gaussian(rand) * 0.2);
+    const out: MutablePlayerInput = { ...NO_INPUT };
+    const dt = 1 / ctx.cfg.tickRate;
+    let yaw = (ctx.spawn.yaw * Math.PI) / 180 + (rand() - 0.5) * 30 * DEG;
+    let first = true;
+    return {
+      next: (s) => {
+        yaw += rate * dt;
+        out.yaw = yaw;
+        out.pitch = 0;
+        out.side = key;
+        out.forward = s.onGround ? 1 : 0;
+        out.sprint = true;
+        out.crouch = false;
+        out.jumpHeld = true;
+        out.jumpPressed = first;
+        first = false;
         return out;
       },
     };

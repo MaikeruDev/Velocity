@@ -43,9 +43,11 @@ import type { YoyoTrick } from './yoyoTricks';
  * und außen, keine neuen Tricks; Lip-Step → kurzer Griff; Vault → Abdrücken.
  *
  * Phase 2 (cosmetics-items): Training (KI9) — lessonStage = Faust 0.6 s, lessonDone = Daumen hoch 2.4 s,
- * gezählter Hop = kleiner Ruck; mit Gegenstand reagiert der wie an einem Checkpoint ohne Referenz (Münze
- * Kopf, Spinner-Nabe neutral, Handy vibriert ohne Split — kein Ziel-Foto in der Lektion). Skin-Gelenke
- * (Skelett klappert, Katze tretelt) nur auf den Frame. Handy: takeShutter()/selfieFrame() für das Selfie.
+ * gezählter Hop = kleiner Ruck; mit Gegenstand jubelt der Gegenstand (PropTricks.onLesson, bricht wie das Ziel
+ * Laufendes am Frame-Ende ab — Review: als Checkpoint verpuffte es meist): Stufe = Checkpoint-Reaktion ohne
+ * Referenz (Münze Kopf, Spinner-Nabe neutral, Handy vibriert ohne Split; Dose twirl, Karte spin, Messer auf/zu),
+ * Lektion = Ziel-Trick ohne Foto (Handy vibriert). Skin-Gelenke (Skelett klappert, Katze tretelt) nur auf den
+ * Frame. Handy: takeShutter()/selfieFrame() für das Selfie.
  */
 
 /** Handgelenk so weit vom rechten Rand des Safe-Frames und von der Unterkante (Bildhöhen). */
@@ -73,8 +75,6 @@ const POSE_POP = 0.3;
 const LESSON_KICK = -0.8;
 const HOP_COUNT_KICK = 0.3;
 const HOP_COUNT_SQUASH = -0.5;
-/** Trainings-Stufe/-Abschluss für den Gegenstand: ein Checkpoint ohne Referenz (kein Split, keine Bestzeit). Einmal angelegt. */
-const LESSON_CP: GameEvent = { type: 'checkpoint', index: 0, total: 0, time: 0, split: null };
 /** Selfie-Hand (Peace) im 16:9-Bild der Rückansicht: Lage und Drehung (gemessen im Kontaktblatt). */
 const SELFIE = { x: 0.3, y: 0.16, z: 6, pitch: 0.2, yaw: -1.5, roll: -0.6 } as const;
 
@@ -128,6 +128,11 @@ export interface ViewHandState {
   readonly tricks: readonly string[];
 }
 
+/** Halbe Breite des Safe-Frames (Bildhöhen) zum Seitenverhältnis `a`: bis 16:9 (+1 %) das ganze Bild. */
+function safeHalfOf(a: number): number {
+  return (a <= SAFE_ASPECT * 1.01 ? a : SAFE_ASPECT) / 2;
+}
+
 export class ViewHand {
   readonly motion = new HandMotion();
   readonly frame: ViewModelFrame = createViewModelFrame();
@@ -141,7 +146,12 @@ export class ViewHand {
 
   private glove: GloveId = 'classic';
   private item: HeldItemId = 'none';
-  private aspect = 16 / 9;
+  /**
+   * Halbe Safe-Frame-Breite in Bildhöhen (aus setAspect): bis 16:9 (+1 %) das ganze Bild, darüber zentriert 16:9.
+   * Einmal je Seitenverhältnis — je Frame gerechnet boxte der Zusammenfluss aus Feld und Konstante eine HeapNumber
+   * (fallen.md #107.2; 0.7 KiB/s Dauer-Müll in writeFrame, bei jedem Gegenstand und Skin).
+   */
+  private safeHalf = safeHalfOf(16 / 9);
   private readonly joints = new Float32Array(VM_JOINT_COUNT);
   private pose: number = POSE.relaxed;
   private basePose: number = POSE.relaxed;
@@ -210,7 +220,7 @@ export class ViewHand {
 
   /** Seitenverhältnis des Bildes (Low-Res-Breite / -Höhe) für den Safe-Frame-Anker. */
   setAspect(a: number): void {
-    if (Number.isFinite(a) && a > 0.2) this.aspect = a;
+    if (Number.isFinite(a) && a > 0.2) this.safeHalf = safeHalfOf(a);
   }
 
   setGlove(g: GloveId): void {
@@ -279,10 +289,10 @@ export class ViewHand {
         if (!holding) this.setOverride(POSE.thumbsUp, THUMBS_FINISH);
         break;
       case 'lessonStage':
-        // KI9: Faust (Stufe) bzw. Daumen hoch (Lektion fertig); mit Gegenstand wie Checkpoint/Ziel.
+        // KI9: Faust (Stufe) bzw. Daumen hoch (Lektion fertig); mit Gegenstand jubelt der (p.onEvent oben, onLesson).
         this.motion.queueKick(LESSON_KICK, 0);
-        if (holding) p.onEvent(LESSON_CP);
-        else if (e.lessonDone) this.setOverride(POSE.thumbsUp, THUMBS_FINISH);
+        if (holding) break;
+        if (e.lessonDone) this.setOverride(POSE.thumbsUp, THUMBS_FINISH);
         else if (this.override !== POSE.thumbsUp) this.setOverride(POSE.fist, FIST_TIME);
         break;
       case 'lessonHop':
@@ -311,7 +321,7 @@ export class ViewHand {
   }
 
   update(dtRaw: number, inp: HandFrameInput): void {
-    const dt = Number.isFinite(dtRaw) ? clamp(dtRaw, 0, 0.1) : 0;
+    const dt = dtRaw - dtRaw === 0 ? clamp(dtRaw, 0, 0.1) : 0;
     if (!this.started) {
       this.started = true;
       this.writeFrame();
@@ -383,9 +393,7 @@ export class ViewHand {
   private writeFrame(): void {
     const f = this.frame;
     const m = this.motion;
-    const a = this.aspect;
-    // Safe-Frame in Bildhöhen: bis 16:9 (+1 %) das ganze Bild, darüber zentriert 16:9.
-    const safeHalf = (a <= SAFE_ASPECT * 1.01 ? a : SAFE_ASPECT) / 2;
+    const safeHalf = this.safeHalf;
     f.glove = this.glove;
     f.item = this.item;
     f.x = safeHalf - this.anchorRight + m.x;
@@ -444,7 +452,9 @@ export class ViewHand {
 
   /**
    * Handy (KI7): true genau einmal je Auslöser des Ziel-Fotos — dann macht Game das Selfie
-   * (RendererApi.selfie(96, 54, selfieFrame())). Andere Gegenstände: immer false.
+   * (RendererApi.selfie(96, 54, selfieFrame())). Andere Gegenstände: immer false. Der Auslöser kommt
+   * SHUTTER_AT (0.76 s) nach dem Ziel-Event: Game fragt JEDEN Frame des Ziel-Ausrollens ab (bis zum Ergebnis,
+   * FINISH_MENU_DELAY 1.1 s); erscheint das Ergebnis früher, takeShutterNow().
    */
   takeShutter(): boolean {
     const p = this.current;
@@ -453,6 +463,17 @@ export class ViewHand {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Ergebnis erscheint jetzt, vor dem Auslöser (Enter/Esc im Ziel-Ausrollen, Tod nach dem Ziel): ein
+   * anstehendes Ziel-Foto sofort auslösen. true = Game macht jetzt das Selfie (auch, wenn der Auslöser schon
+   * kam, aber noch nicht abgeholt wurde). Ohne Handy oder ohne Ziel-Foto: false.
+   */
+  takeShutterNow(): boolean {
+    const p = this.current;
+    if (p instanceof PhoneTricks) p.shootNow();
+    return this.takeShutter();
   }
 
   /** Peace-Hand für das Selfie (zweiter Viewmodel-Durchgang): aktueller Skin, ohne Gegenstand. */

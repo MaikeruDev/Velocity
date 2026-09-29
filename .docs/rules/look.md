@@ -120,6 +120,38 @@ pummelige Finger, Stulpe mit schwarzem Band). Bei Zweifeln gegen diese Bilder pr
   im Frame per Impulsantwort exakt nachgeholt (`Spring.impulse`, `PropTricks.spinKick`). Maßstab: jeder
   Frame bei 30/60/144/240 Hz gegen die Referenz (viewHand.test, cosmetics.test, rope.test).
 - **Ziel-Foto** (`RendererApi.snapshot`): Kopie des geditherten Low-Res-Bilds OHNE HUD, Nearest.
+- **Katzenpfote** (Nutzer-Stil "Cartoon"): runde, dicke Endglieder, getigertes Bein statt Socke, Tigerstreifen JE
+  PIXEL im Objektraum (`LitOptions.tabby`, konstantes Attribut `aTabby` je Teil — als Vertex-Farbe verschwammen
+  sie), Fell-Saum aus vielen kurzen, stumpfen Zacken mit DUNKLERER Spitze flach zum Unterarm (lange helle Kegel
+  lasen sich als Stacheln/Krallen), Krallen halb sichtbar in die Endglied-Geometrie eingebacken (`skinFx`),
+  Glöckchen mit Wulst und Schlitz. 36 Draw Calls wie der Handschuh (Budget Skin ≤ 40 inkl. Effekt).
+- **Skelett**: Knochen je Rig-Slot, klappert bei Landungen. **Gegenstände v2**: Jo-Jo (Verlet-Schnur), Fidget-
+  Spinner, Münze, Sturmfeuerzeug, Kendama, Handy (Feed, Tacho, Split, Gimbal beim Surf, Selfie im Ziel); jeder
+  Gegenstand hat einen **Surf-Zustand** (auch Dose/Karte/Messer), L3 ist eine reine Surf-Map.
+- **Schnur vor dem weißen Handschuh**: 1-px-Schlagschatten in Konturfarbe, 1 Low-Res-Pixel nach rechts unten
+  versetzt (+1 Draw Call), statt je Punkt die Farbe zu wechseln.
+- **Ziel-Reaktion bricht jeden Trick und Zustand ab** — am Frame-Ende, der alte Trick läuft den Frame zu Ende, dann
+  klingt ein EINMAL festgehaltener Versatz in 0.25 s ab (kein kürzestes Überblenden je Frame, das kippte um π).
+- **Gemessenes Budget** (Phase 3): höchstens 47 Draw Calls / 10 000 Dreiecke über alle 60 Kombinationen.
+- **Selfie im Ziel** (Handy): 96×54, Rückansicht (Kamera + π) + Peace-Hand, 5 Bit + Bayer wie das Spielbild, ein
+  Welt- und ein Viewmodel-Durchgang nach dem Bild des Frames, 0.76 s nach dem Ziel (Timer steht). HUD-Stempel
+  "FOTO" rechts oben im Safe-Frame (Magenta-Rahmen, roter Aufnahme-Punkt, 1.4 s, springt kurz eine Stufe größer
+  auf — neu gerastert, nicht skaliert) und ein weißer Auslöser-Rand 0.12 s. Im Ergebnis ein Polaroid: das Foto
+  ganzzahlig ×3 (kleine Fenster ×2), `image-rendering: pixelated`, **nie gedreht**, darunter Zeit und Medaille.
+
+## Himmel und HUD (Plan 007)
+
+- **Scheibe am Himmel**: Sonne (Outrun-Streifen, warm aus sunColor + Horizont) oder **Mond** (`environment.moon`,
+  L3): Scheibe in der Lichtfarbe, zwei harte "Meere", Rand eine Stufe dunkler, keine Streifen. Scheiben und
+  Bodenmarken nie in eine Blickrichtung der Strecke legen, in der sie hinter dem Tacho (Bildmitte) stünden;
+  Marken am Start ≤ ±25° neben der Blickachse und ~150 u voraus (sonst unter Showkeys/Hand).
+- **Lektions-HUD**: Karte oben mittig statt Timer, Urteil am Gain-Popup nur in Stufen, die Strafen lehren (T3–T5),
+  Zielband am Drehbalken (in Lektionen doppelt hoch, grün im Band), Vorführungs-Band unten; das mittlere Band
+  (35–65 % der Höhe) bleibt frei (außer dem Speedometer). Text in Kacheln vorgerendert (`HudSprite`), nie
+  Glyphe für Glyphe je Frame.
+- **Level-Trims**: Sohlen/Füllungen aus verwundenen Dreiecken mit `trim: false` (sonst Zickzack an jeder Fuge);
+  Deko an Fugen einige u zurück (koplanar = Z-Fighting); Marken auf Surf-Flanken als Bögen über der Rampe
+  (`marking` zeichnet nur auf begehbaren Flächen).
 
 ## Verboten
 

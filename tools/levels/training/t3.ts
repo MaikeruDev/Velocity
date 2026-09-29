@@ -10,7 +10,7 @@
 import { HAND_MODELS } from '../../../src/player/bots/BeginnerHand';
 import type { LevelFile } from '../../../src/world/level/LevelFormat';
 import { Frame } from '../lib';
-import { hand, naive, p2 } from './drivers';
+import { backStrafe, hand, naive, p2 } from './drivers';
 import type { HandPlan } from './drivers';
 import { ENV_BASICS, LessonBuilder, TC } from './lessonLib';
 import type { LessonCheck } from './lessonLib';
@@ -81,11 +81,17 @@ export function buildT3(): LevelFile {
   B.stage({
     id: 'links',
     title: 'LINKSKURVE',
-    text: 'IN DER LUFT: A HALTEN\nUND DIE MAUS NACH LINKS ZIEHEN',
+    // W + Leertaste zuerst: der Judge wertet Absprünge unter 200 u/s nicht — wer nur "in der Luft A" las, hüpfte mit
+    // 40 u/s 20 s ohne Rückmeldung (Review training-ui). "FLÜSSIG" statt "LANGSAM": unter 35 °/s urteilt er tooSlow.
+    text: 'W + LEERTASTE: ANLAUFEN, DANN IN DER\nLUFT A HALTEN, MAUS NACH LINKS ZIEHEN',
     task: { kind: 'goodHops', count: 5, side: 'left' },
     spawn: { pos: [0, 0, 0], yaw: 0 },
     demo: circleL,
-    tips: [{ on: 'air', text: 'JETZT: A HALTEN\nMAUS LANGSAM NACH LINKS' }],
+    tips: [
+      { on: 'air', text: 'JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS' },
+      // Der Drehbalken über W (HUD "MAUS") war nirgends erklärt (Review training-ui).
+      { on: 'stuck', after: 12, text: 'DER BALKEN ÜBER W ZEIGT DEIN MAUS-TEMPO:\nIM FLUG IM GRÜNEN BAND HALTEN' },
+    ],
   });
   B.stage({
     id: 'rechts',
@@ -136,6 +142,13 @@ export const T3_CHECK: LessonCheck = {
     { model: 'Fehler: ohne Maus', from: 'links', make: hand(HAND_MODELS.keineMaus, plan), expect: { max: 0 }, level: 'error', seconds: 60, verdicts: true },
     { model: 'Fehler: W + Leertaste', from: 'links', make: naive(p2(0, -HALF + 400)), expect: { max: 0 }, level: 'error', seconds: 60 },
     { model: 'Fehler: nur W + Maus (Wechsel)', from: 'wechsel', make: hand(HAND_MODELS.nurW, plan), expect: { max: 0 }, level: 'error', seconds: 60 },
+    // Dieselben Fehler mit schneller Maus: der Blick streicht durchs Gewinnfenster, Gewinn ohne A/D-Technik.
+    { model: 'Fehler: nur W + schnelle Maus 360 °/s', from: 'links', make: hand(HAND_MODELS.nurWSchnell, plan), expect: { max: 0 }, level: 'error', seconds: 60, verdicts: true },
+    { model: 'Fehler: gegen die schnelle Maus 360 °/s', from: 'links', make: hand(HAND_MODELS.gegenSchnell, plan), expect: { max: 0 }, level: 'error', seconds: 60, verdicts: true },
+    // Rückwärts-Strafer (A + Maus rechts, ohne W in der Luft): gewinnt Tempo rückwärts — FALSCHE SEITE, zählt nie.
+    { model: 'Fehler: Rückwärts-Strafer A + Maus rechts 90 °/s', from: 'links', make: backStrafe(90), expect: { max: 0 }, level: 'error', seconds: 60, verdicts: true },
+    // Richtige Technik mit schneller Maus: darf nicht scheitern (Band bis 540 °/s, Judge 'good').
+    { model: 'Anfänger mit schneller Maus 240 °/s', from: 'links', to: 'wechsel', make: hand({ ...HAND_MODELS.anfaenger, name: 'Anfänger 240', rateDeg: 240 }, plan), expect: { min: 18 }, level: 'warning', verdicts: true },
     { model: 'geübter Anfänger (Bonus)', from: 'frueh', make: hand(HAND_MODELS.geuebt, plan), expect: { min: 10 }, level: 'warning' },
     { model: 'ordentlicher Anfänger (Bonus)', from: 'frueh', make: hand(HAND_MODELS.anfaenger, plan), expect: { max: 20 }, level: 'info' },
     { model: 'geübter Anfänger (Meister)', from: 'profi', make: hand(HAND_MODELS.geuebt, plan), expect: { max: 20 }, level: 'info' },

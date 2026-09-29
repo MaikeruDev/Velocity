@@ -562,12 +562,10 @@ describe('levels:build (Plan 007): Registry und Filter', () => {
     expect(existsSync(join(dir, 'tiny.json'))).toBe(false);
   });
 
-  it('die Registry kennt level1–level4 in Index-Reihenfolge; jeder Builder ist Stub (null) oder baut seine id', () => {
+  // Eigenes Timeout: die Builder von L3/L4 messen beim Bau (L3 zwei Surf-Raster auf zwei Linien, ~11–19 s).
+  it('die Registry kennt level1–level4 in Index-Reihenfolge; L3/L4 bauen ihre id (keine Stubs mehr)', { timeout: 120000 }, () => {
     expect(LEVELS.map((e) => e.id)).toEqual(['level1', 'level2', 'level3', 'level4']);
-    // Nur die Phase-2-Level (die fertigen bauen viel Geometrie): bis dahin Stubs, danach Level mit derselben id.
-    for (const e of LEVELS.slice(2)) {
-      const l = e.build();
-      expect(l === null || l.id === e.id, e.id).toBe(true);
-    }
+    // L1/L2 decken die anderen Tests ab (formatLevel/Index); hier nur die Phase-2-Level.
+    for (const e of LEVELS.slice(2)) expect(e.build()?.id, e.id).toBe(e.id);
   });
 });

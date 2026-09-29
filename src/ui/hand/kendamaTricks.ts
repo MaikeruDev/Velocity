@@ -4,7 +4,7 @@ import { KNIFE_HOLD_POS } from './knifeTricks';
 import { POSE } from './poses';
 import { PropTricks } from './propTricks';
 import type { PropFrameInput, PropOut } from './propTricks';
-import { VIEW_ALIGNED, VIEW_AXES, axisAngle, fromEulerXYZ, mat3, mul, toEulerXYZ } from './rot';
+import { VIEW_ALIGNED, VIEW_AXES, axisAngleQ, fromEulerXYZ, mat3, mul, toEulerXYZ } from './rot';
 import type { Mat3 } from './rot';
 import { Rope, RopeDrive } from './rope';
 import { socketOf, socketPoint, viewPoint, viewRot } from './view';
@@ -21,9 +21,13 @@ import type { V3 } from './view';
  *
  * Für einen Becher-Fang kippen Hand und Ken den Becher nach oben (~70°); danach kippen sie zurück und
  * die Kugel fällt frei zurück ins Pendel. Tricks: Stand bigCup / smallCup, jedes 3. Mal aroundJapan
- * (klein → groß → Spitze); Lauf bigCup; Flow smallCup / bigCup; Overdrive / guter Hop spike (Kugel dreht
- * das Loch nach unten, landet auf der Spitze), Meilenstein aroundJapan; Surf ≥ 500 = Zustand cupRide
- * (liegt im großen Becher, rollt mit der Rampe); Checkpoint bigCup; Ziel spike mit Ken hoch.
+ * (klein → groß → Spitze); Lauf bigCup / smallCup; Flow smallCup / aroundJapan / bigCup; Overdrive spike /
+ * aroundJapan / bigCup, guter Hop und Meilenstein spike (Kugel dreht das Loch nach unten, landet auf der Spitze),
+ * jedes dritte Mal aroundJapan; Meilenstein im Flow klein/groß im Wechsel; Surf ≥ 500 = Zustand cupRide
+ * (liegt im großen Becher, rollt mit der Rampe, hüpft als Einlage im Becher); Checkpoint vor der Bestzeit
+ * aroundJapan, sonst klein/groß im Wechsel; Ziel spike mit Ken hoch.
+ * Abwechslung (Review Phase 2): vorher Lauf nur bigCup, Checkpoint bigCup, aroundJapan nur über den Meilenstein —
+ * bigCup machte 55–100 % der Starts, aroundJapan kam in keinem Bot-Lauf vor (event-probe --seeds 5).
  */
 
 export const KENDAMA_TRICKS = ['none', 'bigCup', 'smallCup', 'aroundJapan', 'spike', 'cupRide'] as const;
@@ -31,7 +35,7 @@ export type KendamaTrick = Exclude<(typeof KENDAMA_TRICKS)[number], 'none'>;
 const KENDAMA_NAMES: readonly string[] = KENDAMA_TRICKS.filter((t) => t !== 'none');
 
 /** Tricks je Tempo-Stufe bei Sprüngen (Tests prüfen genau diese Zuordnung). */
-export const KENDAMA_TIER_TRICKS: readonly (readonly KendamaTrick[])[] = [[], ['bigCup'], ['smallCup', 'bigCup'], ['spike', 'bigCup']];
+export const KENDAMA_TIER_TRICKS: readonly (readonly KendamaTrick[])[] = [[], ['bigCup', 'smallCup'], ['smallCup', 'aroundJapan', 'bigCup'], ['spike', 'aroundJapan', 'bigCup']];
 
 /** Schnur (Hand-Einheiten): hängend bleibt die Kugel so im Bild (11 war zu lang). */
 export const KEN_STRING = 9;
@@ -50,19 +54,31 @@ export const KEN_HOLD_POS: V3 = viewPoint([KNIFE_HOLD_POS[0], KNIFE_HOLD_POS[1],
 const CUP_TILT = 1.2;
 const HAND_SHARE = 0.45;
 
-/** Abklingzeiten (event-probe): Overdrive-Tricks länger, sonst läge L1 bei sync 1.0 über 45 % Trick-Anteil. */
-const COOLDOWN: { readonly [K in KendamaTrick]: number } = { bigCup: 0.7, smallCup: 0.8, aroundJapan: 1.2, spike: 1.3, cupRide: 0.5 };
+/**
+ * Abklingzeiten (event-probe): Overdrive-Tricks länger, sonst läge L1 bei sync 1.0 über 45 % Trick-Anteil. Seit
+ * Around Japan im Lauf vorkommt und die Becher knapper fangen (Review Phase 2) neu kalibriert.
+ */
+const COOLDOWN: { readonly [K in KendamaTrick]: number } = { bigCup: 0.85, smallCup: 0.85, aroundJapan: 1.6, spike: 1.4, cupRide: 0.5 };
 const TURN = 0.15;
-const FLIGHT = 0.38;
-/** Liegen im Becher (s) — kurz: der Takt (event-probe) lag mit 0.8 s bei 55–60 % Trick-Anteil. */
-const HOLD = 0.2;
+const FLIGHT = 0.34;
+/** Liegen im Becher (s) — kurz: der Takt (event-probe) lag mit 0.8 s bei 55–60 % Trick-Anteil, mit 0.2 s seit Around Japan im Lauf bei 52 %. */
+const HOLD = 0.14;
 const BACK = 0.22;
+/**
+ * Around Japan: klein → groß → Spitze. Knapper als zuvor (2.3 → 2.07 s: Liegen 0.2/0.15 → 0.13, Hops 0.45 →
+ * 0.4, Zeigen 0.3 → 0.26) — seit er im Lauf vorkommt (Review Phase 2), lag er sonst zu lang über dem Takt.
+ */
+const AJ_REST = 0.1;
+const AJ_HOP = 0.36;
 const AJ_SMALL = TURN + FLIGHT;
-const AJ_HOP1 = AJ_SMALL + 0.2;
-const AJ_BIG = AJ_HOP1 + 0.45;
-const AJ_HOP2 = AJ_BIG + 0.15;
-const AJ_SPIKE = AJ_HOP2 + 0.45;
-const AJ_T = AJ_SPIKE + 0.3 + BACK;
+const AJ_HOP1 = AJ_SMALL + AJ_REST;
+const AJ_BIG = AJ_HOP1 + AJ_HOP;
+const AJ_HOP2 = AJ_BIG + AJ_REST;
+const AJ_SPIKE = AJ_HOP2 + AJ_HOP;
+const AJ_RELEASE = AJ_SPIKE + 0.22;
+const AJ_T = AJ_RELEASE + BACK;
+/** Einlage im cupRide (Surf): Kugel hüpft im großen Becher (Scheitel, Einheiten). */
+const RIDE_HOP = 4.5;
 const SPIKE_LAUNCH = 0.12;
 const SPIKE_CATCH = SPIKE_LAUNCH + 0.44;
 const SPIKE_SHOW = 0.2;
@@ -91,7 +107,11 @@ function wrapPi(a: number): number {
 export class KendamaTricks extends PropTricks<KendamaTrick> {
   readonly rope = new Rope({ segments: VM_STRING_POINTS - 1, length: KEN_STRING, substep: 1 / 240, iterations: 4, endWeight: 0.15 });
   readonly drive = new RopeDrive();
-  private pick = 0;
+  /** Reihum je Tempo-Stufe (ein gemeinsamer Zähler ließ bei wechselnden Stufen einen Trick überwiegen: 52 % bigCup). */
+  private readonly picks = [0, 0, 0, 0];
+  private goodCount = 0;
+  private milestoneCount = 0;
+  private cpCount = 0;
   private idleCount = 0;
   // Zeitleisten-Ergebnis → Aufbau in afterPose (braucht die Ken-Lage dieses Frames).
   private ball: Ball = Ball.Free;
@@ -99,25 +119,43 @@ export class KendamaTricks extends PropTricks<KendamaTrick> {
   /** Start der Bahn: Kugel-Mitte (Handgelenk-Raum), einmal beim Abwurf eingefangen. */
   private readonly from: V = new Float64Array(3);
   private fromTarget: V3 | null = null;
-  private fly = 0;
-  private hop = 3;
+  // Kommazahl-Felder des Frame-Pfads mit Double-Startwert, der Konstruktor setzt sie (fallen.md #107.4).
+  private fly = 0.5;
+  private hop = 3.5;
   /** Kugel-Drehung um die Bild-Tiefenachse (Loch nach unten beim Spitzen-Fang). */
   private ballTurn = 0.5;
   /** Zuletzt in subRot geschriebene Drehung (NaN = noch nie). */
   private shownTurn = Number.NaN;
-  private launched = -1;
+  private launched = -1.5;
   /** Trick-Zeit, ab der die Kugel wieder frei ist (Loslassen nach dem Fang), −1 = noch nicht. */
-  private releaseAt = -1;
-  private surfOut = -1;
+  private releaseAt = -1.5;
+  private surfOut = -1.5;
+  /** cupRide: Landezeit des letzten Hüpfers im Becher (Trick-Zeit), −1 = keiner. */
+  private landAt = -1.5;
+  /** Ziel bricht ab, während die Kugel geführt ist (Flug/Becher): die Spitze startet von dort, ohne loszulassen. */
+  private carry = false;
   // Scratch
   private readonly tmp: V = new Float64Array(3);
   private readonly tmp2: V = new Float64Array(3);
   private readonly tmp3: V = new Float64Array(3);
   private readonly rA: Mat3 = mat3();
   private readonly rB: Mat3 = mat3();
+  /** Kugel-Lage: Bild-Ausrichtung (einmal) und Achse Kamera + Winkel für axisAngleQ (Frame-Pfad ohne Argumente). */
+  private readonly aligned: Mat3 = fromEulerXYZ(mat3(), VIEW_ALIGNED[0], VIEW_ALIGNED[1], VIEW_ALIGNED[2]);
+  private readonly turnQ = new Float64Array(4);
 
   constructor() {
     super();
+    this.fly = 0;
+    this.hop = 3;
+    this.launched = -1;
+    this.releaseAt = -1;
+    this.surfOut = -1;
+    this.landAt = -1;
+    const c = VIEW_AXES.cam;
+    this.turnQ[0] = c[0];
+    this.turnQ[1] = c[1];
+    this.turnQ[2] = c[2];
     this.rope.drive = this.drive;
     this.hangAtRest();
   }
@@ -165,7 +203,26 @@ export class KendamaTricks extends PropTricks<KendamaTrick> {
     this.launched = -1;
     this.releaseAt = -1;
     this.surfOut = -1;
+    this.landAt = -1;
     this.fromTarget = null;
+    // Abgebrochener Fang (Ziel): Abwurf gilt ab jetzt, von der gezeigten Lage (from aus onInterrupt) — losgelassen
+    // fiel die Kugel im ersten Frame 0.2–0.6 Einheiten (Verlet-Rest), ein sichtbarer Ruck.
+    if (this.carry && id === 'spike') this.launched = 0;
+    this.carry = false;
+  }
+
+  /**
+   * Ziel bricht ab (Frame-Ende): geführte Kugel (Flug/Becher) aus der Zeitleiste des alten Tricks und der
+   * Ken-Lage dieses Frames — genau dort, wo afterPose sie zeigen würde; die Spitze fliegt von dort.
+   */
+  protected override onInterrupt(): void {
+    this.carry = this.ball !== Ball.Free && this.motionFx > 0;
+    if (!this.carry) return;
+    const s = this.out.sub;
+    this.placeBall(s);
+    this.from[0] = s[0];
+    this.from[1] = s[1];
+    this.from[2] = s[2];
   }
 
   protected writeRest(o: PropOut): void {
@@ -198,15 +255,22 @@ export class KendamaTricks extends PropTricks<KendamaTrick> {
   protected onJump(tier: number, good: boolean): void {
     if (tier === 0) return;
     const list = KENDAMA_TIER_TRICKS[tier];
-    if (tier === 3 && good) this.start('spike');
-    else this.start(list[this.pick++ % list.length]);
+    // Guter Hop im Overdrive: Spitze, Spitze, Around Japan (immer Spitze war zu eintönig, jedes zweite Mal Around
+    // Japan zu lang — L1 sync 1.0 lag bei 52 % Trick-Anteil).
+    if (tier === 3 && good) this.start(this.overdrive());
+    else this.start(list[this.picks[tier]++ % list.length]);
+  }
+
+  /** Overdrive-Belohnung (guter Hop, Meilenstein): jedes dritte Mal Around Japan, sonst die Spitze. */
+  private overdrive(): KendamaTrick {
+    return this.goodCount++ % 3 === 2 ? 'aroundJapan' : 'spike';
   }
 
   protected onMilestone(tier: number): void {
     // Meilensteine achten auf die Abklingzeit (event-probe: sonst L1 bei sync 1.0 über 45 % Trick-Anteil).
     if (this.now < this.cooldownUntil) return;
-    if (tier >= 3) this.start('aroundJapan');
-    else if (tier === 2) this.start('smallCup');
+    if (tier >= 3) this.start(this.overdrive());
+    else if (tier === 2) this.start(this.milestoneCount++ % 2 === 0 ? 'smallCup' : 'bigCup');
   }
 
   protected onIdle(): number {
@@ -219,8 +283,10 @@ export class KendamaTricks extends PropTricks<KendamaTrick> {
     this.start('spike');
   }
 
-  protected override onCheckpoint(_split: number | null): void {
-    this.start('bigCup');
+  /** Checkpoint vor der Bestzeit: die große Figur (wie die Jo-Jo-Wiege), sonst kleiner und großer Becher im Wechsel. */
+  protected override onCheckpoint(split: number | null): void {
+    if (split !== null && split < 0) this.start('aroundJapan');
+    else this.start(this.cpCount++ % 2 === 0 ? 'smallCup' : 'bigCup');
   }
 
   protected override onSurfStart(speed: number): void {
@@ -231,10 +297,15 @@ export class KendamaTricks extends PropTricks<KendamaTrick> {
     if (inp.surfing && speed >= SURF_FROM) this.start('cupRide');
   }
 
-  /** Ken kippen: Anteil Hand (hroll), Rest im Griff (Drehung um die Bild-Tiefenachse). */
-  private tilt(o: PropOut, a: number): void {
+  /**
+   * Ken kippen um `camTurn` (vorher setzen): Anteil Hand (hroll), Rest im Griff (Drehung um die Bild-Tiefenachse).
+   * Winkel als Feld statt Argument (Frame-Pfad, fallen.md #107.3).
+   */
+  private tilt(o: PropOut): void {
+    const a = this.camTurn;
     o.hroll += a * HAND_SHARE;
-    this.rotateView(o, 0, 0, 1, a * (1 - HAND_SHARE));
+    this.camTurn = a * (1 - HAND_SHARE);
+    this.rotateCam(o);
   }
 
   /** Abwurf: Kugel-Lage (Pendel) einfangen — einmal, ab `at`. */
@@ -248,22 +319,19 @@ export class KendamaTricks extends PropTricks<KendamaTrick> {
     }
   }
 
-  /** Flug zum Ziel (Scheitel `hop` über der Geraden) oder, ab 1, exakt im Ziel. */
-  private aim(target: V3, s: number, hop: number): void {
+  /**
+   * Flug zum Ziel (Scheitel `hop` über der Geraden) oder, ab fly ≥ 1, exakt im Ziel. Anteil und Scheitel vorher
+   * in die Felder fly/hop schreiben (Frame-Pfad: keine Kommazahl-Argumente, fallen.md #107.3).
+   */
+  private aim(target: V3): void {
     this.target = target;
-    this.hop = hop;
-    if (s >= 1) {
-      this.ball = Ball.Caught;
-      return;
-    }
-    this.ball = Ball.Fly;
-    this.fly = s;
+    this.ball = this.fly >= 1 ? Ball.Caught : Ball.Fly;
   }
 
-  /** Hop von einem Fangpunkt zum nächsten (Start = Fangpunkt im Ken-Raum, mitbewegt). */
-  private hopFrom(from: V3, target: V3, s: number, hop: number): void {
+  /** Hop von einem Fangpunkt zum nächsten (Start = Fangpunkt im Ken-Raum, mitbewegt); fly/hop wie aim. */
+  private hopFrom(from: V3, target: V3): void {
     this.fromTarget = from;
-    this.aim(target, s, hop);
+    this.aim(target);
   }
 
   /** Tests/Tools: Kugel liegt gerade exakt auf diesem Fangpunkt (KEN_BIG_CUP, KEN_SMALL_CUP, KEN_SPIKE). */
@@ -289,7 +357,8 @@ export class KendamaTricks extends PropTricks<KendamaTrick> {
     const total = TURN + FLIGHT + HOLD + BACK;
     const back = smooth((t - TURN - FLIGHT - HOLD) / BACK);
     const e = smooth(t / TURN) * (1 - back);
-    this.tilt(o, sign * CUP_TILT * e);
+    this.camTurn = sign * CUP_TILT * e;
+    this.tilt(o);
     if (this.mark(0, 0, t)) this.kick(o, 0.12, 0);
     if (t < TURN) {
       o.hy = 0.015 * bell(t / TURN);
@@ -298,7 +367,9 @@ export class KendamaTricks extends PropTricks<KendamaTrick> {
     this.launch(t, TURN, o);
     if (this.mark(1, TURN, t)) this.kick(o, -0.3, 0);
     if (t < TURN + FLIGHT + HOLD) {
-      this.aim(big ? KEN_BIG_CUP : KEN_SMALL_CUP, (t - TURN) / FLIGHT, 4.5);
+      this.fly = (t - TURN) / FLIGHT;
+      this.hop = 4.5;
+      this.aim(big ? KEN_BIG_CUP : KEN_SMALL_CUP);
       if (this.mark(2, TURN + FLIGHT, t)) this.klack(o);
       o.hy = -0.012 * bell(clamp((t - TURN - FLIGHT) / HOLD, 0, 1));
       return false;
@@ -313,6 +384,12 @@ export class KendamaTricks extends PropTricks<KendamaTrick> {
     if (t < SPIKE_LAUNCH) {
       if (this.mark(0, 0, t)) this.kick(o, 0.15, 0);
       o.hy = 0.02 * bell(t / SPIKE_LAUNCH);
+      // Nach einem Abbruch mit geführter Kugel bleibt sie bis zum Abwurf, wo sie war (Bahn-Anfang).
+      if (this.launched >= 0) {
+        this.fly = 0;
+        this.hop = 5.5;
+        this.aim(KEN_SPIKE);
+      }
       return false;
     }
     this.launch(t, SPIKE_LAUNCH, o);
@@ -323,7 +400,9 @@ export class KendamaTricks extends PropTricks<KendamaTrick> {
     // klingt die Drehung frei ab (afterPose) — hier nicht mehr setzen, sonst hinge das Abklingen am Frame.
     if (t < release) this.ballTurn = Math.PI * 3 * smooth(Math.min(1, s)) + KEN_TILT;
     if (t < release) {
-      this.aim(KEN_SPIKE, s, 5.5);
+      this.fly = s;
+      this.hop = 5.5;
+      this.aim(KEN_SPIKE);
       if (this.mark(2, SPIKE_CATCH, t)) this.klack(o);
       // Ken hoch zeigen.
       o.hy = -0.03 * bell(clamp((t - SPIKE_CATCH) / 0.5, 0, 1));
@@ -342,45 +421,75 @@ export class KendamaTricks extends PropTricks<KendamaTrick> {
     else if (t < AJ_BIG) a = -CUP_TILT + 2 * CUP_TILT * smooth((t - AJ_HOP1) / (AJ_BIG - AJ_HOP1));
     else if (t < AJ_HOP2) a = CUP_TILT;
     else a = CUP_TILT * (1 - smooth((t - AJ_HOP2) / (AJ_SPIKE - AJ_HOP2)));
-    this.tilt(o, a);
+    this.camTurn = a;
+    this.tilt(o);
     if (t < TURN) {
       if (this.mark(0, 0, t)) this.kick(o, 0.12, 0);
       return false;
     }
     this.launch(t, TURN, o);
     if (this.mark(1, TURN, t)) this.kick(o, -0.3, 0);
-    const release = AJ_SPIKE + 0.3;
     if (t < AJ_HOP1) {
-      this.aim(KEN_SMALL_CUP, (t - TURN) / FLIGHT, 4);
+      this.fly = (t - TURN) / FLIGHT;
+      this.hop = 4;
+      this.aim(KEN_SMALL_CUP);
       if (this.mark(2, AJ_SMALL, t)) this.klack(o);
     } else if (t < AJ_HOP2) {
-      this.hopFrom(KEN_SMALL_CUP, KEN_BIG_CUP, (t - AJ_HOP1) / (AJ_BIG - AJ_HOP1), 4.5);
+      this.fly = (t - AJ_HOP1) / (AJ_BIG - AJ_HOP1);
+      this.hop = 4.5;
+      this.hopFrom(KEN_SMALL_CUP, KEN_BIG_CUP);
       if (this.mark(3, AJ_BIG, t)) this.klack(o);
-    } else if (t < release) {
+    } else if (t < AJ_RELEASE) {
       this.ballTurn = (Math.PI * 3 + KEN_TILT) * smooth((t - AJ_HOP2) / (AJ_SPIKE - AJ_HOP2));
-      this.hopFrom(KEN_BIG_CUP, KEN_SPIKE, (t - AJ_HOP2) / (AJ_SPIKE - AJ_HOP2), 4);
+      this.fly = (t - AJ_HOP2) / (AJ_SPIKE - AJ_HOP2);
+      this.hop = 4;
+      this.hopFrom(KEN_BIG_CUP, KEN_SPIKE);
       if (this.mark(4, AJ_SPIKE, t)) this.klack(o);
-    } else this.releaseAt = release;
+    } else this.releaseAt = AJ_RELEASE;
     return t >= AJ_T;
   }
 
-  /** Surf: Kugel in den großen Becher, liegt dort und rollt mit der Rampe; Surf-Ende → frei. */
+  /**
+   * Surf: Kugel in den großen Becher, liegt dort und rollt mit der Rampe; Surf-Ende → frei. Einlage (beatU):
+   * die Kugel hüpft aus dem Becher und fällt exakt zurück (Klack) — Becher bleibt Fangpunkt. Endet der Surf mitten
+   * im Hüpfer, landet sie erst und wird dann losgelassen (Loslassen zur Landezeit, exakt: framerate-unabhängig).
+   */
   private cupRide(t: number, inp: PropFrameInput, o: PropOut): boolean {
     if (this.surfOut < 0 && !inp.surfing && t >= SURF_MIN) this.surfOut = t;
     const out = this.surfOut < 0 ? 0 : smooth((t - this.surfOut) / BACK);
     const e = smooth(t / TURN) * (1 - out);
-    this.tilt(o, (CUP_TILT - 0.25 * this.surfLean) * e);
+    const u = this.beatU;
+    // Einlage: Ken schnippt kurz hoch (gegen die Kippung), die Kugel steigt.
+    this.camTurn = (CUP_TILT - 0.25 * this.surfLean - 0.35 * bell(u)) * e;
+    this.tilt(o);
     this.offsetView(o, 0.4 * e, 1.0 * e, 0.8 * e);
+    o.hy -= 0.02 * bell(u * 2) * e;
+    if (this.beatEnd()) {
+      this.klack(o);
+      this.landAt = t - this.lateness;
+    }
     if (t < TURN) return false;
     this.launch(t, TURN, o);
     if (this.mark(0, TURN, t)) this.kick(o, -0.3, 0);
-    if (this.surfOut < 0 || t < this.surfOut) {
-      this.aim(KEN_BIG_CUP, (t - TURN) / FLIGHT, 4.5);
+    const hopping = u < 1 && t >= TURN + FLIGHT;
+    if (this.surfOut < 0 || t < this.surfOut || hopping) {
+      if (hopping) {
+        // Hüpfer im Becher: vom Becher zum Becher (Bahn mitbewegt), am Ende exakt drin.
+        this.fly = u;
+        this.hop = RIDE_HOP;
+        this.hopFrom(KEN_BIG_CUP, KEN_BIG_CUP);
+        return false;
+      }
+      this.fly = (t - TURN) / FLIGHT;
+      this.hop = 4.5;
+      this.aim(KEN_BIG_CUP);
       if (this.mark(1, TURN + FLIGHT, t)) this.klack(o);
       return false;
     }
-    this.releaseAt = this.surfOut;
-    return t >= this.surfOut + BACK;
+    // Loslassen mit dem Surf-Ende — lief da gerade ein Hüpfer, erst zu seiner Landung.
+    const rel = this.landAt > this.surfOut ? this.landAt : this.surfOut;
+    this.releaseAt = rel;
+    return t >= rel + BACK;
   }
 
   /**
@@ -388,7 +497,7 @@ export class KendamaTricks extends PropTricks<KendamaTrick> {
    * vom Ken zur Kugel (frei = Pendel, sonst geführt, Länge fest — locker durchhängend).
    */
   override afterPose(_joints: ArrayLike<number>, inp: PropFrameInput, dtRaw: number): void {
-    const dt = Number.isFinite(dtRaw) ? clamp(dtRaw, 0, 0.1) : 0;
+    const dt = dtRaw - dtRaw === 0 ? clamp(dtRaw, 0, 0.1) : 0;
     const o = this.out;
     const rope = this.rope;
     const st = this.tmp;
@@ -467,19 +576,23 @@ export class KendamaTricks extends PropTricks<KendamaTrick> {
     if (f) socketOf(o, f, from);
     const u = this.fly;
     const e = smooth(u);
+    const h = this.hop * arc(u);
     const A = VIEW_AXES;
-    for (let k = 0; k < 3; k++) s[k] = from[k] + (end[k] - from[k]) * e + A.up[k] * this.hop * arc(u);
+    for (let k = 0; k < 3; k++) s[k] = from[k] + (end[k] - from[k]) * e + A.up[k] * h;
   }
 
-  /** Kugel-Lage: aufrecht (Loch oben) im Bild, um die Tiefenachse gedreht (ballTurn). Nur bei Änderung. */
+  /**
+   * Kugel-Lage: aufrecht (Loch oben) im Bild, um die Tiefenachse gedreht (ballTurn). Nur bei Änderung. Achse und
+   * Winkel über turnQ, Bild-Ausrichtung einmal im Konstruktor — mit sieben Kommazahl-Argumenten boxte das im Spiel
+   * nach 60 s noch 2.1 KiB/s (Review Phase 2). Gleiche Rechnung wie axisAngle/fromEulerXYZ (bitgleich).
+   */
   private writeBallRot(o: PropOut): void {
     if (Math.abs(this.ballTurn) < 1e-4) this.ballTurn = 0;
     if (this.ballTurn === this.shownTurn) return;
     this.shownTurn = this.ballTurn;
-    const A = VIEW_AXES;
-    axisAngle(this.rA, A.cam[0], A.cam[1], A.cam[2], this.ballTurn);
-    fromEulerXYZ(this.rB, VIEW_ALIGNED[0], VIEW_ALIGNED[1], VIEW_ALIGNED[2]);
-    mul(this.rB, this.rA, this.rB);
+    this.turnQ[3] = this.ballTurn;
+    axisAngleQ(this.rA, this.turnQ);
+    mul(this.rB, this.rA, this.aligned);
     toEulerXYZ(this.rB, o.subRot);
   }
 }

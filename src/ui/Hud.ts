@@ -1,14 +1,15 @@
 import type { GameEvent } from '../engine/events';
 import type { InputNotice } from '../engine/InputState';
-import { VERDICT_TEXT } from '../engine/strafeJudge';
+import { MIN_TAKEOFF, VERDICT_TEXT } from '../engine/strafeJudge';
 import { DEFAULT_OUTLINE, pixelFont } from './BitmapFont';
 import type { TextStyle } from './BitmapFont';
 import { formatDiff, formatTime } from './format';
-import { AirDisplay, LESSON_PIP, MAX_PIPS, SpeedTrend, lessonCardLayout, makeLessonCardLayout, turnBarLength } from './hudLogic';
+import { AirDisplay, LESSON_PIP, MAX_PIPS, SpeedTrend, lessonCardLayout, makeLessonCardLayout, stageSteps, turnBarLength } from './hudLogic';
 import type { TrendMovement } from './hudLogic';
 import type { HudData, HudKeys, LessonHud } from './types';
+import type { StageRank } from '../world/level/LevelFormat';
 import { MEDAL_COLORS, MEDAL_NAMES, MEDAL_SHIMMER } from './medals';
-import { safeLeft } from './safeFrame';
+import { safeLeft, safeRight } from './safeFrame';
 
 /**
  * HUD im Low-Res-Pixelraster: eigener transparenter Canvas in exakt der
@@ -20,8 +21,10 @@ import { safeLeft } from './safeFrame';
  * Config-Wechsel → pro Frame onEvent(e) für alle Ereignisse, update(dt, data), draw().
  *
  * Lektionen (Plan 007, HudData.lesson): die Lektionskarte ersetzt die Timerzeile (≤ 4 Zeilen oben),
- * jedes Urteil (lessonHop) steht am Gain-Popup ("+23 GUT", "+0 MAUS!"), der Drehbalken der Showkeys
- * zeigt das Zielband, unten das Coach-Band (Tipps) bzw. während der Vorführung das Demo-Band.
+ * in Stufen, die Strafen bewerten (judge), steht jedes Urteil (lessonHop) am Gain-Popup ("+23 GUT",
+ * "+0 MAUS!") — sonst Gain-Popups wie im normalen Level und keine SYNC-Zeile. Der Drehbalken der
+ * Showkeys zeigt das Zielband, unten das Coach-Band (Tipps; ein Stufenwechsel verwirft den Tipp der alten
+ * Stufe) bzw. während der Vorführung das Demo-Band.
  * Die Bildmitte bleibt frei (Landepunkt) — Rechtecke für Tools über rect().
  *
  * Frame-Pfad ohne Allokation (AGENTS.md §4, sonst GC-Ruckler bei 144 Hz):
@@ -71,7 +74,7 @@ const GHOST_DIM_ALPHA = 0.3;
 const GHOST_DIM_TIME = 0.12;
 /** Strafe-Spiegel: Farbe mindestens so lange halten (gegen Flackern zwischen Ticks). */
 const STRAFE_HOLD = 0.08;
-/** W in der Luft mit A/D ab dieser Dauer (ms) rot blinken lassen. */
+/** W in der Luft mit A/D ab dieser Dauer (ms) rot blinken lassen (nur ohne Strafe-Assist, siehe wWarn). */
 const W_AIR_WARN_MS = 150;
 /** Lektion: Titelzeile zeigt nach einer Stufe so lange "GESCHAFFT!" (s). */
 const STAGE_FLASH = 1.2;
@@ -84,6 +87,17 @@ const TITLE_LESSON_DONE = 'LEKTION GESCHAFFT!';
 const TITLE_STAGE_DONE = 'GESCHAFFT!';
 const TITLE_ALL_DONE = 'ALLES GESCHAFFT!';
 const HINT_RESULT = '[ENTER] ERGEBNIS';
+/** Kurztext am Gain-Popup für einen Absprung, der zu langsam für ein Urteil ist (strafeJudge.MIN_TAKEOFF). */
+const SLOW_TAKEOFF_TEXT = 'ANLAUF MIT W';
+/** Beschriftung des Maus-Drehbalkens in Lektionen mit Zielband (sonst sah man nur Striche über W). */
+const TURN_LABEL = 'MAUS';
+/**
+ * Legende statt "MAUS", bis der erste gute Hop der Lektion sitzt: das Band war nur per Tipp nach 12 s Stillstand
+ * erklärt — wer es nicht verstand, sah Striche. Wortlaut wie der T3-Tipp ("MAUS-TEMPO … IM GRÜNEN").
+ */
+const TURN_LEGEND = 'MAUS-TEMPO\nIM FLUG IM GRÜNEN HALTEN';
+/** Demo-Band, sobald die Vorführung die Aufgabe erfüllt hat (Game kehrt ~1 s später zum Stufen-Spawn zurück). */
+const DEMO_GOAL_TEXT = "SO GEHT'S! GLEICH BIST DU DRAN";
 /** Rand einer vorgerenderten Kachel (× UI-Skala): Akzente, Kontur und Schatten ragen über das Band. */
 const SPRITE_MARGIN = 8;
 
@@ -149,6 +163,8 @@ class HudSprite {
 /** Was die Karten-Kachel zuletzt zeigte (neu zeichnen nur bei Abweichung) und wo sie liegt. */
 interface CardCache {
   title: string;
+  /** Stufenzähler ("2/4"); während des Geschafft-Blitzes der der erledigten Stufe. '' = keiner. */
+  step: string;
   flash: boolean;
   blink: boolean;
   fresh: boolean;
@@ -156,8 +172,13 @@ interface CardCache {
   goal: number;
   style: LessonHud['style'];
   rank: LessonHud['rank'];
+  /** Hinweis rechts vom Fortschritt ("[H] ZEIGEN" bzw. "[ENTER] ERGEBNIS"). */
   hint: string;
+  /** Hinweis links vom Fortschritt: "[H] ZEIGEN", solange rechts das Ergebnis steht. */
+  hintLeft: string;
   hintGold: boolean;
+  /** Fortschritt wird gezeichnet (nach der letzten Stufe nur beim Geschafft-Blitz). */
+  progress: boolean;
   scale: number;
   width: number;
   height: number;
@@ -168,13 +189,36 @@ interface CardCache {
 }
 
 /** HUD-Rechtecke für Tools (__vel.hudLayout): Index in HudRect-Reihenfolge. */
-export const HUD_RECTS = ['card', 'verdict', 'notice', 'demo', 'speed'] as const;
+export const HUD_RECTS = ['card', 'verdict', 'notice', 'demo', 'speed', 'photo'] as const;
 export type HudRectName = (typeof HUD_RECTS)[number];
+
+/** Movement-Werte, die das HUD liest: Speedometer-Farbe (TrendMovement) und ob W in der Luft schadet. */
+export interface HudMovement extends TrendMovement {
+  /** An: W zählt in der Luft nicht, solange A/D gehalten wird — dann blinkt W nicht rot (movement.md). */
+  readonly strafeAssist: boolean;
+}
+
+/** Was die Lektionskarte zuletzt zeigte (Tools: __vel.hudLayout().card). Kein Frame-Pfad. */
+export interface HudCardState {
+  readonly title: string;
+  readonly step: string;
+  readonly count: number;
+  readonly goal: number;
+  readonly style: LessonHud['style'];
+  readonly progress: boolean;
+  readonly hint: string;
+  readonly hintLeft: string;
+}
 const R_CARD = 0;
 const R_VERDICT = 1;
 const R_NOTICE = 2;
 const R_DEMO = 3;
 const R_SPEED = 4;
+const R_PHOTO = 5;
+
+/** Ziel-Foto (Plan 007 I3): Stempel "FOTO" so lange sichtbar, der Auslöser-Blitz am Rand so kurz (s). */
+const PHOTO_LIFE = 1.4;
+const PHOTO_FLASH = 0.12;
 
 /** Texte zu den Eingabe-Hinweisen des InputManagers. */
 const NOTICE_TEXT: Readonly<Record<InputNotice, string>> = {
@@ -193,6 +237,8 @@ interface GainPopup {
   /** Urteil einer Lektion dahinter ("GUT", "MAUS!"), '' = keins. */
   verdict: string;
   verdictColor: string;
+  /** Laufende Nummer des Urteils (Hud.verdictSerial), 0 = reines Gain-Popup. */
+  serial: number;
   /**
    * Text + Urteil einmal vorgerendert (beim ersten Zeichnen), danach je Frame ein drawImage mit Deckkraft.
    * Direkt verblassend gezeichnet ging jeder Text über denselben Scratch-Canvas — zwei Texte je Popup
@@ -289,7 +335,7 @@ export class Hud {
   private readonly segs: Seg[] = [0, 1, 2].map(() => ({ text: '', color: C.white, tight: false }));
 
   /** Ring der Gain-Popups: gainHead = ältester, gainCount = belegt. */
-  private readonly gains: GainPopup[] = Array.from({ length: GAIN_SLOTS }, () => ({ born: 0, text: '', color: C.white, verdict: '', verdictColor: C.white, scale: 0, width: 0, sprite: new HudSprite() }));
+  private readonly gains: GainPopup[] = Array.from({ length: GAIN_SLOTS }, () => ({ born: 0, text: '', color: C.white, verdict: '', verdictColor: C.white, serial: 0, scale: 0, width: 0, sprite: new HudSprite() }));
   private gainHead = 0;
   private gainCount = 0;
   private split: SplitPopup | null = null;
@@ -318,9 +364,32 @@ export class Hud {
   /** Deckkraft des Speedometer-Blocks (1 = voll, GHOST_DIM_ALPHA = Ghost dahinter). */
   private speedAlpha = 1;
 
-  // Lektion (Plan 007). Game setzt demo/lessonDone/demoHint pro Frame (nur Booleans/Referenzen).
+  // Lektion (Plan 007). Game setzt demo/demoGoal/judge/lessonDone/demoAvailable pro Frame (nur Booleans).
   /** Vorführung läuft: Demo-Band statt Coach-Band. */
   demo = false;
+  /** Vorführung hat die Aufgabe der Stufe erfüllt: Demo-Band "SO GEHT'S!" (grün, ohne Puls). */
+  demoGoal = false;
+  /**
+   * Die Stufe bewertet Strafen (Game, je Stufe): Urteile am Gain-Popup und SYNC-Zeile. false = Gain-Popups
+   * wie im normalen Level — "+0 W LOS" in Gold widersprach in T1/T2 der Anweisung "W + LEERTASTE HALTEN".
+   */
+  judge = false;
+  /** Urteile angenommen (je gezeigtem 'lessonHop' +1) und höchste davon je gezeichnete Nummer (Tools: Verzug). */
+  private verdictN = 0;
+  private verdictDrawnN = 0;
+  /** Stufenzähler je Rang (hudLogic.stageSteps, Game beim Laden); null = über alle Stufen zählen. */
+  private stageStepText: readonly string[] | null = null;
+  /** Index der zuletzt erledigten Stufe (lessonStage) — ihr Zähler steht beim Geschafft-Blitz. */
+  private stageDoneIndex = -1;
+  /**
+   * Ziel und Art des Fortschritts der laufenden Stufe (zuletzt gezeichnet) und die der erledigten: beim
+   * Geschafft-Blitz steht die VOLLE Reihe der erledigten Stufe ("5/5"). Die Session setzt den Zähler im
+   * Tick der Erfüllung schon auf die neue Stufe — sonst sah man nie alle Pips gefüllt. doneGoal 0 = unbekannt.
+   */
+  private liveGoal = 0;
+  private liveStyle: LessonHud['style'] = 'pips';
+  private doneGoal = 0;
+  private doneStyle: LessonHud['style'] = 'pips';
   /** Alle Pflichtstufen erledigt: Karte zeigt "[ENTER] ERGEBNIS". */
   lessonDone = false;
   /** Stufe hat eine Vorführung: Karte zeigt z. B. "[H] ZEIGEN" (setDemoKey). */
@@ -344,6 +413,7 @@ export class Hud {
   private readonly cardSprite = new HudSprite();
   private readonly card: CardCache = {
     title: '',
+    step: '',
     flash: false,
     blink: false,
     fresh: false,
@@ -352,7 +422,9 @@ export class Hud {
     style: 'pips',
     rank: 'required',
     hint: '',
+    hintLeft: '',
     hintGold: false,
+    progress: false,
     scale: 0,
     width: 0,
     height: 0,
@@ -362,6 +434,7 @@ export class Hud {
     bh: 0,
   };
   private readonly demoSprite = new HudSprite();
+  /** phase 0/1 = Puls der laufenden Vorführung, 2 = Ziel erreicht ("SO GEHT'S!"). */
   private readonly demoBand = { phase: -1, text: '', scale: 0, width: 0, height: 0, bx: 0, by: 0, bw: 0, bh: 0 };
   /** Letzte gezeichnete Rechtecke (x, y, w, h je HUD_RECTS), w = 0 = nicht gezeichnet. */
   private readonly rects = new Int32Array(HUD_RECTS.length * 4);
@@ -373,6 +446,19 @@ export class Hud {
   private strafeUntil = -Infinity;
   /** Blinkphase (8 Hz) — in update() berechnet, damit drawKeys nur Ganzzahlen anfasst. */
   private blinkOn = false;
+  /**
+   * W in der Luft mit A/D rot blinken lassen: nur ohne Strafe-Assist. Mit Assist zählt W dort nicht
+   * (movement.md) — das Blinken widersprach dem Urteil "GUT" (der Judge urteilt 'wHeld' auch nur ohne Assist).
+   */
+  private wWarn = false;
+  /** W-Taste bzw. Legende am Drehbalken im letzten draw() gezeichnet (Tools: hudLayout().wRed/.turnLegend). */
+  private wRedDrawn = false;
+  private turnLegendDrawn = false;
+  /** Lektion mit Zielband: noch kein guter Hop — Legende am Drehbalken (TURN_LEGEND). Neu je Level/Lektion. */
+  private turnLegend = true;
+  /** Beschriftung des Drehbalkens vorgerendert (2 Zeilen Legende wären je Frame Glyphe für Glyphe). */
+  private readonly turnSprite = new HudSprite();
+  private readonly turnLabel = { text: '', color: '', x: -1, y: -1, scale: 0 };
 
   // Wiederverwendete Stile (Felder werden pro Frame gesetzt, nie neue Objekte).
   private readonly stTimerMain: MutableStyle = { outline: DEFAULT_OUTLINE, shadow: C.shadow, scale: 2, color: C.white, alpha: 1 };
@@ -400,9 +486,20 @@ export class Hud {
   private readonly stCardText: MutableStyle = { scale: 1, color: C.white, outline: DEFAULT_OUTLINE, align: 'center' };
   private readonly stCardHint: MutableStyle = { scale: 1, color: C.dim, shadow: true };
   private readonly stDemo: MutableStyle = { scale: 1, color: C.cyan, outline: DEFAULT_OUTLINE, align: 'center', alpha: 1 };
+  private readonly stPhoto: MutableStyle = { scale: 2, color: C.white, outline: DEFAULT_OUTLINE, tracking: 1, alpha: 1 };
+  /** HUD-Uhr beim Auslösen des Ziel-Fotos, −∞ = keins (showPhoto). */
+  private photoAt = -Infinity;
   // Showkeys: je Farbe ein eigenes Stil-Objekt (Memo-Treffer im BitmapFont, keine Allokation).
   private readonly stKeyDim: MutableStyle = { scale: 1, color: C.dim };
   private readonly stKeyDark: MutableStyle = { scale: 1, color: DEFAULT_OUTLINE };
+  /**
+   * "MAUS" am Drehbalken: frei über dem Boden, daher mit Schatten (die Tasten-Beschriftungen liegen in Kästen).
+   * Grün, solange der Balken in der Luft im Band liegt — dieselbe Farbe wie der Balken selbst.
+   */
+  private readonly stTurnLabel: MutableStyle = { scale: 1, color: C.dim, shadow: true };
+  private readonly stTurnLabelIn: MutableStyle = { scale: 1, color: C.gain, shadow: true };
+  /** Legende in Weiß: gedimmt war sie auf dem hellen Boden von T3 schwer zu lesen. */
+  private readonly stTurnLegend: MutableStyle = { scale: 1, color: C.white, shadow: true };
 
   constructor(canvas: HTMLCanvasElement = document.createElement('canvas')) {
     this.canvas = canvas;
@@ -454,8 +551,9 @@ export class Hud {
    * Movement-Werte für die Speedometer-Farbe (Maßstab = größtmöglicher Luftgewinn).
    * Bei jedem Config-Wechsel aufrufen (Preset, Tuning-Panel); Default VELOCITY_DEFAULT.
    */
-  setMovement(m: TrendMovement): void {
+  setMovement(m: HudMovement): void {
     this.trend.setMovement(m);
+    this.wWarn = !m.strafeAssist;
   }
 
   /** Level-Intro manuell zeigen (passiert sonst automatisch bei 'levelLoaded'). */
@@ -474,6 +572,33 @@ export class Hud {
   /** Text des gerade sichtbaren Hinweises (Tools/Tests), sonst null. */
   get currentNotice(): string | null {
     return this.notice ? this.notice.text : null;
+  }
+
+  /**
+   * Coach-Band verwerfen (Stufenwechsel einer Lektion: der Tipp gehörte zur alten Stufe und widersprach der
+   * neuen Karte). Info-Hinweise ("Ton an") bleiben. Auch im Tick-Pfad erlaubt (keine Allokation).
+   */
+  dropCoachNotice(): void {
+    if (this.notice !== null && this.notice.kind === 'coach') this.notice = null;
+  }
+
+  /**
+   * Stufe ohne Erfolg gewechselt (Überspringen, Lektion neu): Tipp UND Geschafft-Blitz der alten Stufe weg. Sonst stand
+   * nach "R" kurz nach einer erledigten Stufe noch "1/3 GESCHAFFT!" mit voller Pip-Reihe über der neu begonnenen Lektion.
+   */
+  lessonJump(): void {
+    this.dropCoachNotice();
+    this.stageDoneAt = -Infinity;
+    this.lessonDoneAt = -Infinity;
+    this.stageDoneIndex = -1;
+    this.doneGoal = 0;
+  }
+
+  /** Was die Lektionskarte zuletzt zeigte (Tools); null = keine Karte gezeichnet. Kein Frame-Pfad. */
+  cardState(): HudCardState | null {
+    const c = this.card;
+    if (!this.lessonActive || c.scale === 0) return null;
+    return { title: c.title, step: c.step, count: c.count, goal: c.goal, style: c.style, progress: c.progress, hint: c.hint, hintLeft: c.hintLeft };
   }
 
   /** Beschriftung der Showkeys aus der Belegung (Kurznamen, z. B. 'SPACE', 'C', 'M4'). */
@@ -503,6 +628,39 @@ export class Hud {
     return [r[o], r[o + 1], r[o + 2], r[o + 3]];
   }
 
+  /**
+   * Stufen der Lektion (Rang je Stufe) für den Zähler der Karte: Pflichtstufen "2/4", danach "BONUS 1/1",
+   * "MEISTER 1/1" — über alle Stufen gezählt stand "LEKTION GESCHAFFT!" bei "4/6". null = normales Level.
+   * Beim Laden, nicht im Frame-Pfad.
+   */
+  setLessonStages(ranks: readonly StageRank[] | null): void {
+    this.stageStepText = ranks !== null ? stageSteps(ranks) : null;
+    this.stageDoneIndex = -1;
+    this.doneGoal = 0;
+    // Karte neu aufbauen (Zähler-Text hängt an den Rängen).
+    this.cardIndex = -1;
+  }
+
+  /** Anzahl angenommener Urteile (je gezeigtem 'lessonHop' +1) — Tools vergleichen mit verdictDrawn. */
+  get verdictSerial(): number {
+    return this.verdictN;
+  }
+
+  /** Höchste Urteilsnummer, die draw() schon sichtbar gezeichnet hat (0 = noch keins). */
+  get verdictDrawn(): number {
+    return this.verdictDrawnN;
+  }
+
+  /** W-Showkey im letzten Frame rot (Warnung "W in der Luft", nur ohne Strafe-Assist) — Tools. */
+  get wKeyRed(): boolean {
+    return this.wRedDrawn;
+  }
+
+  /** Legende am Drehbalken sichtbar (Lektion mit Zielband, noch kein guter Hop) — Tools. */
+  get turnLegendShown(): boolean {
+    return this.turnLegendDrawn;
+  }
+
   /** Gerade sichtbares Urteil am Gain-Popup (Tools/Tests), sonst null. */
   get currentVerdict(): string | null {
     for (let k = this.gainCount - 1; k >= 0; k--) {
@@ -512,8 +670,18 @@ export class Hud {
     return null;
   }
 
+  /**
+   * Ziel-Foto ausgelöst (Plan 007 I3, Handy): Stempel "FOTO" rechts oben im Safe-Frame und ein kurzer
+   * weißer Auslöser-Rahmen. Einmal je Ziel, außerhalb des Frame-Pfads gerufen.
+   */
+  showPhoto(): void {
+    this.photoAt = this.t;
+  }
+
   /** Alle Popups/Overlays verwerfen (z. B. beim Levelwechsel). */
   clear(): void {
+    this.photoAt = -Infinity;
+    this.turnLegend = true;
     this.gainCount = 0;
     this.split = null;
     this.finish = null;
@@ -524,6 +692,9 @@ export class Hud {
     this.strafeShown = 0;
     this.stageDoneAt = -Infinity;
     this.lessonDoneAt = -Infinity;
+    this.stageDoneIndex = -1;
+    this.liveGoal = 0;
+    this.doneGoal = 0;
     this.pipPopAt = -Infinity;
     this.trend.reset();
     this.air.reset();
@@ -533,24 +704,43 @@ export class Hud {
     switch (e.type) {
       case 'jump': {
         // Läuft im Tick-Pfad (EventBus) — Ring-Slot und gecachter Text statt neuer Objekte.
-        // In Lektionen trägt das Urteil (lessonHop) den Gewinn — sonst stünde "+23" doppelt da.
-        if (e.chain < 2 || this.lessonActive) break;
+        if (this.lessonActive && this.judge) {
+          // In Stufen mit Urteil trägt das Urteil (lessonHop) den Gewinn — sonst stünde "+23" doppelt da. Einen
+          // Absprung unter MIN_TAKEOFF beurteilt der Judge nie: ohne Anlauf (Probe T3: Leertaste + A in der Luft,
+          // 40 u/s) kam sonst bis zu 20 s gar keine Rückmeldung. Nicht in der Vorführung (die zeigt, wie es geht).
+          if (e.speed < MIN_TAKEOFF && !this.demo) this.pushGain('', C.white, SLOW_TAKEOFF_TEXT, C.gold, 0);
+          break;
+        }
+        if (e.chain < 2) break;
         const g = Math.round(e.gain);
         if (Math.abs(g) < GAIN_MIN_SHOWN) break;
-        this.pushGain(g, '', C.white);
+        this.pushGain(gainText(g), gainColor(g), '', C.white, 0);
         break;
       }
       case 'lessonHop': {
+        if (e.counted) this.pipPopAt = this.t;
+        // Erster guter Hop der Lektion: das Band ist verstanden, "MAUS" reicht (kein Zustandswechsel im Frame-Pfad).
+        if (e.verdict === 'good' && !this.demo) this.turnLegend = false;
+        // Stufe ohne Strafe-Aufgabe: kein Urteil (den Gewinn zeigt das 'jump'-Popup wie im normalen Level).
+        if (!this.judge) break;
         // Urteil erscheint im selben Frame wie die Landung (Event aus dem Tick, draw danach).
         const g = Math.round(e.gain);
         const good = e.verdict === 'good';
-        this.pushGain(g, VERDICT_TEXT[e.verdict].short, good ? C.gain : C.gold);
-        if (e.counted) this.pipPopAt = this.t;
+        this.pushGain(gainText(g), gainColor(g), VERDICT_TEXT[e.verdict].short, good ? C.gain : C.gold, ++this.verdictN);
         break;
       }
       case 'lessonStage':
+        // Erfüllen zwei Stufen im selben Frame (T4: HALTEN und BONUS 500), feiert der Blitz die erste — ihre
+        // Pips standen auf dem Bild, die zweite war nie zu sehen.
+        if (this.stageDoneAt !== this.t) {
+          this.stageDoneIndex = e.index;
+          this.doneGoal = this.liveGoal;
+          this.doneStyle = this.liveStyle;
+        }
         this.stageDoneAt = this.t;
         if (e.lessonDone) this.lessonDoneAt = this.t;
+        // Der Tipp der alten Stufe widerspräche der neuen Karte (Probe T3: "JETZT: A HALTEN" unter "D HALTEN").
+        this.dropCoachNotice();
         break;
       case 'checkpoint': {
         // Selten (einmal pro Checkpoint) — hier darf formatiert werden. Den Stand "CP x/n"
@@ -584,9 +774,11 @@ export class Hud {
       case 'runStart':
         this.finish = null;
         this.split = null;
+        this.photoAt = -Infinity;
         break;
       case 'respawn':
         this.finish = null;
+        this.photoAt = -Infinity;
         this.gainCount = 0;
         if (e.reason === 'restart') this.split = null;
         this.trend.reset();
@@ -604,16 +796,20 @@ export class Hud {
     }
   }
 
-  /** Gain-Popup in den Ring (ältestes fällt raus). verdict '' = reines Gain-Popup. */
-  private pushGain(g: number, verdict: string, verdictColor: string): void {
+  /**
+   * Popup in den Ring (ältestes fällt raus): text = Gewinn ("+23", '' = keiner), verdict = Urteil ('' = reines
+   * Gain-Popup), serial = Urteilsnummer (0 = kein Urteil des Judge).
+   */
+  private pushGain(text: string, color: string, verdict: string, verdictColor: string, serial: number): void {
     const slot = this.gains[(this.gainHead + this.gainCount) % GAIN_SLOTS];
     if (this.gainCount < GAIN_SLOTS) this.gainCount++;
     else this.gainHead = (this.gainHead + 1) % GAIN_SLOTS;
     slot.born = this.t;
-    slot.text = gainText(g);
-    slot.color = g > 0 ? C.gain : g < 0 ? C.loss : C.white;
+    slot.text = text;
+    slot.color = color;
     slot.verdict = verdict;
     slot.verdictColor = verdictColor;
+    slot.serial = serial;
     slot.scale = 0;
   }
 
@@ -653,6 +849,8 @@ export class Hud {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.w, this.h);
     this.rects.fill(0);
+    this.wRedDrawn = false;
+    this.turnLegendDrawn = false;
     if (!this.visible) return;
     const d = this.data;
     const s = this.uiScale();
@@ -677,6 +875,7 @@ export class Hud {
     if (this.intro) this.drawIntro(this.intro, d, s);
     if (this.finish) this.drawFinish(this.finish, s);
     else this.drawCrosshair();
+    if (this.t - this.photoAt < PHOTO_LIFE) this.drawPhoto(s);
     if (this.demo) this.drawDemoBand(s);
     else if (this.notice) this.drawNotice(this.notice, s);
   }
@@ -878,7 +1077,8 @@ export class Hud {
     let n = 0;
     if (d.hopChain >= 2 && d.speed >= CHAIN_MIN_SPEED) setSeg(segs[n++], chainText(d.hopChain), C.cyan, false);
     if (this.air.surf) setSeg(segs[n++], 'SURF', C.magenta, false);
-    else if (this.air.air) {
+    // Lektion ohne Strafe-Aufgabe: kein "SYNC 0 %" in Rot für jemanden, der genau die Anweisung (W + Leertaste) befolgt.
+    else if (this.air.air && (!this.lessonActive || this.judge)) {
       const sync = Math.round(Math.max(0, Math.min(1, d.strafeSync)) * 100);
       setSeg(segs[n++], 'SYNC', C.dim, false);
       setSeg(segs[n++], percentText(sync), sync >= 80 ? C.gain : sync >= 50 ? C.white : C.loss, true);
@@ -897,7 +1097,10 @@ export class Hud {
       const rise = Math.round(age * 10 * s);
       const alpha = (age < 0.5 ? 1 : 1 - (age - 0.5) * 2) * fade;
       if (p.scale !== s) this.renderGain(p, s);
-      if (alpha > 0) p.sprite.blitAt(this.ctx, px, y - rise, alpha);
+      if (alpha > 0) {
+        p.sprite.blitAt(this.ctx, px, y - rise, alpha);
+        if (p.serial > this.verdictDrawnN) this.verdictDrawnN = p.serial;
+      }
       if (y - rise < top) top = y - rise;
       if (px + p.width > right) right = px + p.width;
     }
@@ -907,20 +1110,21 @@ export class Hud {
   /** Gain-Popup (+ Urteil) voll deckend in seine Kachel; Nullpunkt = linke obere Ecke des Texts. Selten. */
   private renderGain(p: GainPopup, s: number): void {
     const m = SPRITE_MARGIN * s;
-    const gw = pixelFont.width(p.text, s);
-    const vw = p.verdict !== '' ? 3 * s + pixelFont.width(p.verdict, s) : 0;
+    const gw = p.text !== '' ? pixelFont.width(p.text, s) : 0;
+    const gap = gw > 0 ? 3 * s : 0;
+    const vw = p.verdict !== '' ? gap + pixelFont.width(p.verdict, s) : 0;
     const ctx = p.sprite.begin(-m, -m, gw + vw + 2 * m, 7 * s + 2 * m);
     const sg = this.stGain;
     sg.scale = s;
     sg.color = p.color;
     sg.alpha = 1;
-    pixelFont.drawText(ctx, p.text, 0, 0, sg);
+    if (gw > 0) pixelFont.drawText(ctx, p.text, 0, 0, sg);
     if (vw > 0) {
       const sv = this.stVerdict;
       sv.scale = s;
       sv.color = p.verdictColor;
       sv.alpha = 1;
-      pixelFont.drawText(ctx, p.verdict, gw + 3 * s, 0, sv);
+      pixelFont.drawText(ctx, p.verdict, gw + gap, 0, sv);
     }
     p.sprite.end();
     p.scale = s;
@@ -1035,6 +1239,56 @@ export class Hud {
     }
   }
 
+  /**
+   * Stempel "FOTO" (Plan 007 I3): kleiner Kasten rechts oben im 16:9-Safe-Frame — frei von Ziel-Band,
+   * Hand (rechts unten) und Showkeys. Die ersten PHOTO_FLASH s ein weißer Auslöser-Rahmen um das Bild
+   * (Rand, nie die Mitte). Der Stempel springt kurz größer auf und blendet am Ende aus — neu gerastert,
+   * nicht skaliert (fallen.md #76).
+   */
+  private drawPhoto(s: number): void {
+    const ctx = this.ctx;
+    const age = this.t - this.photoAt;
+    if (age < PHOTO_FLASH) {
+      const a = 1 - age / PHOTO_FLASH;
+      const t = 3 * s;
+      ctx.globalAlpha = a;
+      ctx.fillStyle = C.white;
+      ctx.fillRect(0, 0, this.w, t);
+      ctx.fillRect(0, this.h - t, this.w, t);
+      ctx.fillRect(0, 0, t, this.h);
+      ctx.fillRect(this.w - t, 0, t, this.h);
+      ctx.globalAlpha = 1;
+    }
+    const scale = age < 0.08 ? 3 * s : 2 * s;
+    const fade = age > PHOTO_LIFE - 0.3 ? Math.max(0, (PHOTO_LIFE - age) / 0.3) : 1;
+    const st = this.stPhoto;
+    st.scale = scale;
+    st.tracking = s;
+    st.alpha = fade;
+    const tw = pixelFont.width('FOTO', scale) + 3 * s;
+    const th = 7 * scale;
+    const pad = 3 * s;
+    const bw = tw + 2 * pad + 6 * s;
+    const bh = th + 2 * pad;
+    const right = Math.floor(safeRight(this.w, this.h)) - 6 * s;
+    const x = right - bw;
+    const y = 6 * s;
+    ctx.globalAlpha = fade;
+    ctx.fillStyle = C.band;
+    ctx.fillRect(x, y, bw, bh);
+    // Rahmen in Magenta (Stempel), Punkt in Rot wie die Aufnahme-Leuchte einer Kamera.
+    ctx.fillStyle = C.magenta;
+    ctx.fillRect(x, y, bw, s);
+    ctx.fillRect(x, y + bh - s, bw, s);
+    ctx.fillRect(x, y, s, bh);
+    ctx.fillRect(x + bw - s, y, s, bh);
+    ctx.fillStyle = C.loss;
+    ctx.fillRect(x + pad, y + Math.floor((bh - 3 * s) / 2), 3 * s, 3 * s);
+    ctx.globalAlpha = 1;
+    this.text('FOTO', x + pad + 5 * s, y + pad, st);
+    this.setRect(R_PHOTO, x, y, bw, bh);
+  }
+
   private drawFinish(f: FinishInfo, s: number): void {
     const age = this.t - f.born;
     const cx = Math.floor(this.w / 2);
@@ -1073,24 +1327,27 @@ export class Hud {
   }
 
   /**
-   * Lektionskarte oben mittig (≤ 4 Zeilen): Stufe "2/3" + Titel groß, Aufgabe in 1–2 Zeilen,
-   * Fortschritt als Pips (≤ 12) oder Balken, rechts "[H] ZEIGEN" bzw. "[ENTER] ERGEBNIS".
-   * Nach einer Stufe steht kurz "GESCHAFFT!" in der Titelzeile (der Text zeigt schon die neue Stufe).
+   * Lektionskarte oben mittig (≤ 4 Zeilen): Stufe "2/4" (Pflicht) bzw. "BONUS 1/1" + Titel groß, Aufgabe
+   * in 1–2 Zeilen, Fortschritt als Pips (≤ 12) oder Balken, rechts "[H] ZEIGEN" bzw. "[ENTER] ERGEBNIS"
+   * (dann "[H] ZEIGEN" links). Nach einer Stufe steht kurz "GESCHAFFT!" mit dem Zähler und der vollen
+   * Pip-Reihe der erledigten Stufe (der Text zeigt schon die neue Stufe).
    *
    * Vorgerendert (HudSprite): Glyphe für Glyphe kostete die Karte ~0.3 ms je Frame. Neu gezeichnet
    * wird nur, wenn sich ein angezeigter Wert ändert (Zähler, Blitz, Hinweis) — Vergleiche ohne String-Bau.
    */
   private drawLesson(L: LessonHud, s: number): void {
     const c = this.card;
-    // Texte ändern sich nur beim Stufenwechsel — "2/3" und Zeilenzahl nur dann neu (selten, darf bauen).
+    const steps = this.stageStepText !== null && this.stageStepText.length === L.stageTotal ? this.stageStepText : null;
+    // Texte ändern sich nur beim Stufenwechsel — Zähler und Zeilenzahl nur dann neu (selten, darf bauen).
     let dirty = false;
     if (L.stageTitle !== this.cardTitleSrc || L.text !== this.cardTextSrc || L.stageIndex !== this.cardIndex || L.stageTotal !== this.cardTotal) {
       this.cardTitleSrc = L.stageTitle;
       this.cardTextSrc = L.text;
       this.cardIndex = L.stageIndex;
       this.cardTotal = L.stageTotal;
-      // Nach der letzten Stufe steht der Index hinter dem Ende (TrainingSession): dann "3/3".
-      this.cardStep = `${Math.min(L.stageIndex + 1, L.stageTotal)}/${L.stageTotal}`;
+      // Nach der letzten Stufe steht der Index hinter dem Ende (TrainingSession) — dann kein Zähler.
+      this.cardStep =
+        L.stageIndex >= L.stageTotal ? '' : steps !== null ? steps[L.stageIndex] : `${L.stageIndex + 1}/${L.stageTotal}`;
       this.cardLines = L.text === '' ? 0 : L.text.split('\n').length;
       dirty = true;
     }
@@ -1099,35 +1356,57 @@ export class Hud {
     const flash = done || since < STAGE_FLASH;
     const allDone = L.stageIndex >= L.stageTotal;
     const title = done ? TITLE_LESSON_DONE : flash ? TITLE_STAGE_DONE : allDone ? TITLE_ALL_DONE : L.stageTitle;
+    // Beim Blitz der Zähler der erledigten Stufe ("4/4 LEKTION GESCHAFFT!"), nicht der neuen.
+    const di = this.stageDoneIndex;
+    const step = flash && steps !== null && di >= 0 && di < steps.length ? steps[di] : this.cardStep;
     // Geschafft-Blitz: die ersten 0.3 s im 10-Hz-Takt blinken (liest sich als Ereignis).
     const blink = flash && since < 0.3 && Math.floor(since * 10) % 2 === 1;
     const fresh = this.t - this.pipPopAt < PIP_POP;
-    const hint = this.lessonDone ? HINT_RESULT : this.demoAvailable && !L.demo && !this.demo ? this.demoHint : '';
+    // Während STAGE_FLASH die volle Reihe der erledigten Stufe, danach der Fortschritt der neuen.
+    const full = since < STAGE_FLASH && this.doneGoal > 0;
+    // Stand der laufenden Stufe merken — kommt im nächsten Tick 'lessonStage', war es dieser.
+    this.liveGoal = L.goal;
+    this.liveStyle = L.style;
+    const count = full ? this.doneGoal : L.count;
+    const goal = full ? this.doneGoal : L.goal;
+    const style = full ? this.doneStyle : L.style;
+    const progress = full || !allDone;
+    // Rechts "[H] ZEIGEN" bzw. nach den Pflichtstufen "[ENTER] ERGEBNIS" — dann steht die Vorführung links
+    // (sonst verschwand der Hinweis in Bonus-/Meisterstufen mit Vorführung).
+    const demoHint = this.demoAvailable && !L.demo && !this.demo ? this.demoHint : '';
+    const hint = this.lessonDone ? HINT_RESULT : demoHint;
+    const hintLeft = this.lessonDone ? demoHint : '';
     if (
       dirty ||
       title !== c.title ||
+      step !== c.step ||
       flash !== c.flash ||
       blink !== c.blink ||
       fresh !== c.fresh ||
-      L.count !== c.count ||
-      L.goal !== c.goal ||
-      L.style !== c.style ||
+      count !== c.count ||
+      goal !== c.goal ||
+      style !== c.style ||
+      progress !== c.progress ||
       L.rank !== c.rank ||
       hint !== c.hint ||
+      hintLeft !== c.hintLeft ||
       this.lessonDone !== c.hintGold ||
       s !== c.scale ||
       this.w !== c.width ||
       this.h !== c.height
     ) {
       c.title = title;
+      c.step = step;
       c.flash = flash;
       c.blink = blink;
       c.fresh = fresh;
-      c.count = L.count;
-      c.goal = L.goal;
-      c.style = L.style;
+      c.count = count;
+      c.goal = goal;
+      c.style = style;
+      c.progress = progress;
       c.rank = L.rank;
       c.hint = hint;
+      c.hintLeft = hintLeft;
       c.hintGold = this.lessonDone;
       c.scale = s;
       c.width = this.w;
@@ -1146,19 +1425,26 @@ export class Hud {
     const flash = c.flash;
     const title = c.title;
     const hint = c.hint;
-    const rank = L.rank === 'bonus' ? 'BONUS' : L.rank === 'master' ? 'MEISTER' : '';
-    const stepW = pixelFont.width(this.cardStep, s);
-    const rankW = rank !== '' && !flash ? pixelFont.width(rank, s) + 4 * s : 0;
+    const hintLeft = c.hintLeft;
+    // Rang vor dem Zähler ("BONUS 1/1"); beim Blitz und nach der letzten Stufe ohne Rang.
+    const rank = flash || allDone ? '' : L.rank === 'bonus' ? 'BONUS' : L.rank === 'master' ? 'MEISTER' : '';
+    const step = c.step;
+    const stepW = step !== '' ? pixelFont.width(step, s) + 5 * s : 0;
+    const rankW = rank !== '' ? pixelFont.width(rank, s) + 4 * s : 0;
     this.cardTitleW = pixelFont.width(title, 2 * s);
-    const rowW = stepW + 5 * s + rankW + this.cardTitleW;
+    const rowW = rankW + stepW + this.cardTitleW;
     this.cardTextW = this.cardLines > 0 ? pixelFont.width(L.text, s) : 0;
-    const goal = L.goal > 0 ? L.goal : 1;
-    const pips = L.style === 'pips' && goal <= MAX_PIPS;
-    const progW = allDone ? 0 : pips ? goal * (LESSON_PIP + 3) * s - 3 * s : 64 * s;
+    // Zähler/Ziel/Art aus dem Cache: beim Geschafft-Blitz die der erledigten Stufe (drawLesson).
+    const goal = c.goal > 0 ? c.goal : 1;
+    const pips = c.style === 'pips' && goal <= MAX_PIPS;
+    const progW = !c.progress ? 0 : pips ? goal * (LESSON_PIP + 3) * s - 3 * s : 64 * s;
     const hintW = hint !== '' ? pixelFont.width(hint, s) + 8 * s : 0;
+    const hintLeftW = hintLeft !== '' ? pixelFont.width(hintLeft, s) + 8 * s : 0;
+    // Fortschritt bleibt mittig: beide Seiten so breit wie der breitere Hinweis.
+    const sideW = hintW > hintLeftW ? hintW : hintLeftW;
     let bw = rowW;
     if (this.cardTextW > bw) bw = this.cardTextW;
-    if (progW + 2 * hintW > bw) bw = progW + 2 * hintW;
+    if (progW + 2 * sideW > bw) bw = progW + 2 * sideW;
     bw += 16 * s;
     const bx = cx - (bw >> 1);
     const bh = lay.bottom - lay.top;
@@ -1180,18 +1466,20 @@ export class Hud {
     ctx.fillStyle = C.magenta;
     ctx.fillRect(bx, lay.top + bh - s, bw, s);
 
-    // Titelzeile: "2/3" klein und gedimmt, Rang, Titel groß (Grundlinie wie der Timer).
+    // Titelzeile: Rang, "2/4" klein und gedimmt, Titel groß (Grundlinie wie der Timer).
     let x = cx - (rowW >> 1);
-    const small = this.stCardSmall;
-    small.scale = s;
-    pixelFont.drawText(ctx, this.cardStep, x, lay.titleY + 7 * s, small);
-    x += stepW + 5 * s;
     if (rankW > 0) {
       const rs = this.stCardRank;
       rs.scale = s;
       rs.color = L.rank === 'master' ? C.magenta : C.gold;
       pixelFont.drawText(ctx, rank, x, lay.titleY + 7 * s, rs);
       x += rankW;
+    }
+    if (stepW > 0) {
+      const small = this.stCardSmall;
+      small.scale = s;
+      pixelFont.drawText(ctx, step, x, lay.titleY + 7 * s, small);
+      x += stepW;
     }
     const ts = this.stCardTitle;
     ts.scale = 2 * s;
@@ -1206,11 +1494,11 @@ export class Hud {
     }
 
     // Fortschritt: Pips (Einzelziele) oder Balken (Tempo, Zeit, große Ziele).
-    const count = L.count < 0 ? 0 : L.count > goal ? goal : L.count;
+    const count = c.count < 0 ? 0 : c.count > goal ? goal : c.count;
     const px0 = cx - (progW >> 1);
     const py = lay.progressY;
     const pip = LESSON_PIP * s;
-    if (allDone) {
+    if (!c.progress) {
       // keine Aufgabe mehr — nur der Hinweis aufs Ergebnis
     } else if (pips) {
       for (let i = 0; i < goal; i++) {
@@ -1241,18 +1529,28 @@ export class Hud {
     if (hint !== '') {
       const hs = this.stCardHint;
       hs.scale = s;
-      hs.color = this.lessonDone ? C.gold : C.dim;
+      hs.color = c.hintGold ? C.gold : C.dim;
       pixelFont.drawText(ctx, hint, px0 + progW + 8 * s, py - s, hs);
+    }
+    if (hintLeft !== '') {
+      const hs = this.stCardHint;
+      hs.scale = s;
+      hs.color = C.dim;
+      pixelFont.drawText(ctx, hintLeft, px0 - hintLeftW, py - s, hs);
     }
     this.cardSprite.end();
   }
 
-  /** Vorführung: Band unten mittig, an der Stelle des Coach-Bands (vorgerendert, 2 Farbphasen). */
+  /**
+   * Vorführung: Band unten mittig, an der Stelle des Coach-Bands (vorgerendert, 2 Farbphasen). Hat die
+   * Vorführung die Aufgabe erfüllt (demoGoal), steht dort grün "SO GEHT'S!" — dann geht es zurück zum Spieler.
+   */
   private drawDemoBand(s: number): void {
     // "Aufnahme"-Puls: 1 Hz gedimmt — es ist nicht der Spieler, der steuert. Farbe statt Alpha:
     // halbtransparenter Text ginge über den teuren Einzel-Blit (BitmapFont.blitLineFaded).
-    const phase = Math.floor(this.t * 2) % 2;
-    const text = this.demoBandText;
+    const goal = this.demoGoal;
+    const phase = goal ? 2 : Math.floor(this.t * 2) % 2;
+    const text = goal ? DEMO_GOAL_TEXT : this.demoBandText;
     const d = this.demoBand;
     if (phase !== d.phase || text !== d.text || s !== d.scale || this.w !== d.width || this.h !== d.height) {
       d.phase = phase;
@@ -1277,12 +1575,12 @@ export class Hud {
       ctx.fillStyle = C.band;
       ctx.fillRect(bx, by, bw, bh);
       ctx.globalAlpha = 1;
-      ctx.fillStyle = C.cyan;
+      ctx.fillStyle = goal ? C.gain : C.cyan;
       ctx.fillRect(bx, by, bw, s);
       ctx.fillRect(bx, by + bh - s, bw, s);
       const st = this.stDemo;
       st.scale = s;
-      st.color = phase === 0 ? C.cyan : C.cyanDim;
+      st.color = goal ? C.gain : phase === 0 ? C.cyan : C.cyanDim;
       pixelFont.drawText(ctx, text, cx, y, st);
       this.demoSprite.end();
     }
@@ -1324,10 +1622,11 @@ export class Hud {
 
   /**
    * Showkeys + Strafe-Spiegel unten links: W A S D, Sprung und Ducken leuchten,
-   * solange gehalten; darüber ein 1-px-Balken für Drehrichtung und -rate der Maus.
+   * solange gehalten; darüber ein 1-px-Balken für Drehrichtung und -rate der Maus (in Lektionen mit
+   * Zielband 3 px hoch mit Beschriftung "MAUS", im Band grün, daneben Gold).
    * In der Luft wird A/D grün, wenn die Taste zur Drehrichtung passt und Tempo
    * brachte, rot bei Taste gegen die Maus; W blinkt rot, wenn es in der Luft mit
-   * A/D gehalten wird. Nur fillRect und feste Stile — keine Allokation.
+   * A/D gehalten wird und Strafe-Assist aus ist. Nur fillRect und feste Stile — keine Allokation.
    */
   private drawKeys(k: HudKeys, s: number): void {
     const u = 11 * s;
@@ -1344,7 +1643,8 @@ export class Hud {
 
     const air = k.inAir;
     const strafe = air ? this.strafeShown : 0;
-    const wBlink = air && k.forward > 0 && k.forwardInAirMs > W_AIR_WARN_MS && this.blinkOn;
+    const wBlink = this.wWarn && air && k.forward > 0 && k.forwardInAirMs > W_AIR_WARN_MS && this.blinkOn;
+    this.wRedDrawn = wBlink;
     this.keyBox(colS, row0, u, s, 'W', k.forward > 0, wBlink ? K.loss : K.on);
     this.keyBox(colA, row1, u, s, 'A', k.side < 0, k.side < 0 ? sideColor(strafe) : K.on);
     this.keyBox(colS, row1, u, s, 'S', k.forward < 0, K.on);
@@ -1358,32 +1658,66 @@ export class Hud {
     // Nur Ganzzahl-Rechnung (>> statt /): kein Gleitkomma-Zwischenwert, der in kaltem Code geboxt würde.
     const half = spaceW >> 1;
     const mid = x0 + half;
-    const by = row0 - 4 * s;
-    ctx.fillStyle = K.tick;
-    ctx.fillRect(mid, by - s, s, 3 * s);
+    let by = row0 - 4 * s;
     const len = turnBarLength(k.turnDeg, half);
-    // Zielband der Lektion (°/s): auf beiden Seiten unter dem Balken, Enden als Striche.
     const band = k.turnBand ?? null;
-    let inBand = false;
-    if (band !== null) {
-      const lo = turnBarLength(band.lo, half);
-      const hi = turnBarLength(band.hi, half);
-      const abs = k.turnDeg < 0 ? -k.turnDeg : k.turnDeg;
-      inBand = air && abs >= band.lo && abs <= band.hi;
-      ctx.fillStyle = K.band;
-      ctx.fillRect(mid - hi, by + s, hi - lo, s);
-      ctx.fillRect(mid + s + lo, by + s, hi - lo, s);
-      ctx.fillStyle = K.bandEdge;
-      ctx.fillRect(mid - hi, by - s, s, 3 * s);
-      ctx.fillRect(mid - lo, by - s, s, 3 * s);
-      ctx.fillRect(mid + s + lo, by - s, s, 3 * s);
-      ctx.fillRect(mid + s + hi, by - s, s, 3 * s);
+    if (band === null) {
+      ctx.fillStyle = K.tick;
+      ctx.fillRect(mid, by - s, s, 3 * s);
+      if (len > 0) {
+        ctx.fillStyle = K.turn;
+        if (k.turnDeg > 0) ctx.fillRect(mid - len, by, len, s);
+        else ctx.fillRect(mid + s, by, len, s);
+      }
+      return;
     }
+    // Lektion mit Zielband (°/s): Balken dreimal so hoch (1–2 Low-Res-Pixel gingen neben den Showkeys unter, das
+    // Band war nirgends erklärt), rechts daneben "MAUS". Band als Fläche dahinter, Enden als Striche. In der Luft:
+    // im Band grün, daneben Gold — am Boden neutral.
+    const bh = 3 * s;
+    by -= s;
+    const lo = turnBarLength(band.lo, half);
+    const hi = turnBarLength(band.hi, half);
+    const abs = k.turnDeg < 0 ? -k.turnDeg : k.turnDeg;
+    const inBand = abs >= band.lo && abs <= band.hi;
+    ctx.fillStyle = K.band;
+    ctx.fillRect(mid - hi, by, hi - lo, bh);
+    ctx.fillRect(mid + s + lo, by, hi - lo, bh);
+    ctx.fillStyle = K.tick;
+    ctx.fillRect(mid, by - s, s, bh + 2 * s);
+    ctx.fillStyle = K.bandEdge;
+    ctx.fillRect(mid - hi, by - s, s, bh + 2 * s);
+    ctx.fillRect(mid - lo, by - s, s, bh + 2 * s);
+    ctx.fillRect(mid + s + lo, by - s, s, bh + 2 * s);
+    ctx.fillRect(mid + s + hi, by - s, s, bh + 2 * s);
     if (len > 0) {
-      ctx.fillStyle = inBand ? K.gain : K.turn;
-      if (k.turnDeg > 0) ctx.fillRect(mid - len, by, len, s);
-      else ctx.fillRect(mid + s, by, len, s);
+      ctx.fillStyle = !air ? K.turn : inBand ? K.gain : C.gold;
+      if (k.turnDeg > 0) ctx.fillRect(mid - len, by, len, bh);
+      else ctx.fillRect(mid + s, by, len, bh);
     }
+    // Beschriftung rechts neben dem Band (über D frei, Showkeys-Spalte bleibt gleich): letzte Zeile mittig zum Balken,
+    // die Legende wächst nach oben. Vorgerendert, neu nur bei Wechsel von Text, Farbe oder Lage.
+    const legend = this.turnLegend;
+    const text = legend ? TURN_LEGEND : TURN_LABEL;
+    const st = air && inBand ? this.stTurnLabelIn : legend ? this.stTurnLegend : this.stTurnLabel;
+    const lx = mid + half + 4 * s;
+    const ly = by + ((bh - 7 * s) >> 1) - (legend ? 11 * s : 0);
+    const c = this.turnLabel;
+    if (text !== c.text || st.color !== c.color || lx !== c.x || ly !== c.y || s !== c.scale) {
+      c.text = text;
+      c.color = st.color ?? '';
+      c.x = lx;
+      c.y = ly;
+      c.scale = s;
+      st.scale = s;
+      const lh = (legend ? 18 : 7) * s;
+      const m = SPRITE_MARGIN * s;
+      const tctx = this.turnSprite.begin(lx - m, ly - m, pixelFont.width(text, s) + 2 * m, lh + 2 * m);
+      pixelFont.drawText(tctx, text, lx, ly, st);
+      this.turnSprite.end();
+    }
+    this.turnSprite.blit(ctx);
+    this.turnLegendDrawn = legend;
   }
 
   private keyBox(x: number, y: number, w: number, s: number, label: string, on: boolean, fill: string): void {
@@ -1468,6 +1802,10 @@ const CACHE_LIMIT = 10000;
 function intText(n: number): string {
   if (n < 0 || n >= CACHE_LIMIT) return String(n);
   return (INT_TEXT[n] ??= String(n));
+}
+
+function gainColor(g: number): string {
+  return g > 0 ? C.gain : g < 0 ? C.loss : C.white;
 }
 
 function gainText(g: number): string {

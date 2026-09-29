@@ -1,6 +1,6 @@
 # Plan 007 — v2: Arcade-Movement, Trainingsmodus, Level 3/4, Kosmetik v2
 
-**Stand:** 2026-09-28 · **Status:** in Arbeit (Phase 0 Verträge umgesetzt)
+**Stand:** 2026-09-29 · **Status:** umgesetzt (Phase 0–3; Mensch-Playtest S6 und die Lead-Fragen in §10 offen)
 
 ## Problem
 
@@ -59,7 +59,7 @@ Jede Abweichung ist ein Feld in `MovementConfig`. Im CS2-Preset steht es auf 0/a
 | A3 | **Lande-Gnade** `landGraceTime` | 0.0625 s (8 Ticks) keine Friction nach ≥ 0.1 s Luft. In der Zeit hebt Boden-Schub \|v_h\| nicht über max(davor, wishspeed). Die Kette reißt erst danach | Tipp-Hand ±20 ms: H20 732 → 1142 u/s. Später Sprung (4 Ticks, 700 u/s) 593 → 700. Die Schub-Kappe ist Pflicht, ohne sie gemessen +18 % Exploit. Perfekter Bot bitgleich | 0 |
 | A4 | **Deterministische Hang-Landung** `slopeLandGain` | 1. Bergab gewinnt man in jeder Phase, bergauf verliert man nichts. Die Richtung bleibt, die Rampslide-Entscheidung ist phasenfest | Beendet die Lotterie: 10° bergab 320–415 → immer 415; 16° bergauf 172–320 → 320. W+Space-Kette auf 16°: 320 → 656 u/s. Die Energie-Decke wird nie überschritten. Kippt 2–3 chaotische L1/L2-Proben (siehe §1) | 0 |
 | A5 | **Anfänger-Cap** `airSpeedCapLow` | 32 → **40** (Fade 350/700 bleibt) | 4°-Hand bis 500 u/s: 4.0 → 1.8 s. 5°-Hand erreicht 500 in 8/8 statt 4/8 Seeds. Perfekt H20 +2.1 % (Testgrenze 1140 → 1170). Abstand perfekt/3° bleibt (1.82 → 1.77) | 0 |
-| A6 | **Kanten-Assist** `ledgeStep`/`ledgeMemory` | Lip-Step ≤ 5 u, danach Landung auf der Kante (`vel.y = 0`). Tempo-Gedächtnis 0.2 s. Nur frontal (≤ 45°), nur in der Luft | Bonk → Kriechen beseitigt: gekrochen 15–23/40 → 1/40. Spät geduckt kommt man mit 77–86 % statt 15 % Tempo an. Turm 48/192: 7.1 → 3.2 s. **Crouch-Kante ohne Ducken 0/200.** Level-Regel: Crouch-Kanten ≥ 57 + 5 + 2 = **64 u** | 0 |
+| A6 | **Kanten-Assist** `ledgeStep`/`ledgeMemory` | Lip-Step ≤ 5 u, danach Landung auf der Kante (`vel.y = 0`). Tempo-Gedächtnis 0.2 s. Nur frontal (≤ 45°), nur in der Luft | Bonk → Kriechen beseitigt: gekrochen 15–23/40 → 1/40. Spät geduckt kommt man mit 77–86 % statt 15 % Tempo an. Turm 48/192: 7.1 → 3.2 s. **Crouch-Kante ohne Ducken 0/200.** Level-Regel: Crouch-Kanten ≥ 57 + 5 + 2 = **64 u** (umgesetzt: **≥ 66 u**, die Auto-Hop-Landung schwebt bis 1.5 u; §10) | 0 |
 | A7 | **Rutschen (Slide)** `slide*` | Eintritt ab 280 u/s geduckt am Boden. Reibung 0.3 1/s + 80 u/s². Schub 50 bis 380, nur aus dem Lauf (≥ 0.25 s Boden, 2 s Abklingzeit). Lenken 1.4 rad/s. Hangabtrieb an. Ende < 160 u/s. Auge in 0.06 s | Neues Verb: Landung 800 + Ducken, Sprung nach 0.2 s: 272 → 737 u/s. Duck-Tunnel 768 u bei 900: 9.1 → 1.17 s. Bots rutschen nie, dadurch bitgleich. W-Farmen +5 % | `slideMinSpeed` 0 |
 | A8 | **Luftlenkung mit W** `airControl*` + Setting | Nur W, kein A/D: v_h dreht zur Blickrichtung, 1.6 rad/s bis 350 u/s, dann linear auf 0.8 rad/s bei 700. Der Betrag bleibt. 0.5 s Pause nach steilem Kontakt | Slalom-Tode von Anfängern 30 → 22. W-Halter kommen durch L2 CP1→CP2. Strafer bitgleich. Kein Vorteil für Könner: W-Lenken 32° in 0.3 s, Strafen 98° | Setting aus |
 
@@ -72,7 +72,7 @@ Movement-Regeln, die sich ändern (movement.md):
 - §4 neu: „Rutschen".
 - §5 neu: „Lande-Gnade", „Kanten-Assist", „Luftlenkung".
 - §1: neue Abweichungsliste mit Rampbug-Fix und Hang-Landung.
-- Neue Level-Regel: „Crouch-Kanten ≥ 64 u".
+- Neue Level-Regel: „Crouch-Kanten ≥ 64 u" (umgesetzt: ≥ 66 u, §10).
 
 ---
 
@@ -90,7 +90,7 @@ Umgesetzt wie im Prototyp (`tools/critique/v2/level3/level3.ts`, DEFAULT_L3):
 ### Level 4 — „04 TURM · Tempo ist Höhe."
 Umgesetzt wie im Prototyp (`tools/critique/v2/level4/level4.ts`):
 - Wendel E1–E4 um den Kern, drei Podest-CPs.
-- E2 Innenbahn mit Gräben als Wahl, E3 zwei 64-u-Crouch-Kanten.
+- E2 Innenbahn mit Gräben als Wahl, E3 zwei 64-u-Crouch-Kanten (umgesetzt: 66 u).
 - Steg mit Geländer (Clip + Deko), Krone (CP4), Sprungbrett, Surf-Abfahrt mit 4 Drops (CP5).
 - **Keine Jump-Pads:** gemessen verschlechtern sie die Graben-Rettung (bis 6 s festhängen).
 - Wird in Phase 2 **gegen die neue Physik neu gebaut**. A4 und A6 verändern den Aufstieg stark: bergauf landen kostet nichts mehr, Stufen-Bonks verzeihen.
@@ -113,7 +113,7 @@ Datengetriebene Lektions-Maps (`LevelFile.training`), aufgebaut aus diesen Baust
 | T3 AIR-STRAFE | Arena 4800² mit Schüssel-Rand: 5 links, 5 rechts, 6 im Wechsel (verzeihend) | Grundlagen |
 | T4 SPEED | Oval, endlos: 400, dann 5 Landungen ≥ 400; Bonus **Prestrafe** (≥ 350 u/s am Boden vor dem 1. Hop) und 500; Meister 600 | Grundlagen |
 | T5 KURVEN | Luft-Tore auf dem Bogen, **entschärft** (siehe Phase 2) | Fortgeschritten |
-| T6 CROUCH-JUMP | 48 / 64 (/ 72 Bonus): „erst springen, dann ducken" | Fortgeschritten |
+| T6 CROUCH-JUMP | 48 / 64 (/ 72 Bonus): „erst springen, dann ducken" (umgesetzt 48 / 66 / 72) | Fortgeschritten |
 | T7 SURF: HALTEN | 3°-Rampe, Einstieg 120 u unter dem First, 40 u Drop | Fortgeschritten |
 | T8 SURF: SPEED | 10°-Kette, 800 → Drop → 1000 | Fortgeschritten |
 
@@ -128,7 +128,7 @@ Nicht in v2: T9 (optionale Mechanik-Lektion, das Rutschen steckt in T1), T10 (Pr
 - Kein Trail, keine Musik-Packs, keine Gegenstand-Sounds.
 
 ### Werkzeug-/Medaillen-Entscheidungen
-- sync-1.0-Medaillen (Gold, VELOCITY, Autor) werden als **Median über 5 Start-Jitter** gemessen, nicht als ein deterministischer Lauf. Begründung: Einzelläufe sind chaotisch (L4 Autor 23.9–27.9 s je Variante; L1 25.1 → 29.3 s im Gesamtpaket).
+- sync-1.0-Medaillen (Gold, VELOCITY, Autor) werden als **Median über 5 Start-Jitter** (umgesetzt: 49, dazu Zweig-Warnung; Bronze/Silber über 48 Seeds, §10) gemessen, nicht als ein deterministischer Lauf. Begründung: Einzelläufe sind chaotisch (L4 Autor 23.9–27.9 s je Variante; L1 25.1 → 29.3 s im Gesamtpaket).
 - `levels:build -- <id>` schreibt nur diese Level-Datei und **nicht** index.json. index.json baut nur Phase 3.
 - Jeder Strang schreibt Erkenntnisse nach `.docs/learnings/inbox/<strang>.md`. Phase 3 führt sie in `fallen.md` zusammen, damit Dateibesitz disjunkt bleibt.
 
@@ -408,7 +408,7 @@ Besitz: `src/player/**` (außer `bots/`), `src/audio/Sfx.ts`, `src/ui/TuningPane
 - **T4 build.ts:**
   - Registry mit Stubs `level3.ts`, `level4.ts`, `training/index.ts`.
   - Filter `-- <id>` ohne index.json.
-  - sync-1.0-Median über 5 Start-Jitter (±16 u quer, ±1° yaw).
+  - sync-1.0-Median über 5 Start-Jitter (±16 u quer, ±1° yaw). Umgesetzt: 7 × 7 = 49 Zellmitten.
   - Abnahme: Medaillen-Reihenfolge hält; die L1/L2-Abweichung zur Einzelmessung ist dokumentiert (nicht committen).
 - **T5 designProbes/selftest:**
   - Stubs `probes/level3.ts` und `probes/level4.ts`.
@@ -490,7 +490,7 @@ Besitz: `tools/levels/level4.ts`, `tools/levels/probes/level4.ts`, `public/level
 Abnahme:
 - `levels:check -- level1 level2` 0 F.
 - L1-Autor ≤ 23.35 s (heute 22.24 + 5 %; ungetunt 25.9–29.3).
-- Crouch-Kante ≥ 64 u.
+- Crouch-Kante ≥ 64 u (umgesetzt 66 u).
 - Surf-Rutsche fängt weiter jeden (250 Läufe, auch mit Luftlenkung).
 - Könner-Inseln lohnen (Hand 1° ≥ 5/6, ≥ 1 s).
 
@@ -508,7 +508,7 @@ Abnahme (je 20 Seeds, Grenze 120 s):
 - T1/T2: NaiveBot 'hold' und RouteFollower 5° je 20/20; T1-Rutschstufe mit Sprint + C 20/20.
 - T3: ordentlicher Anfänger ≥ 18/20.
 - T4-Oval ≥ 18/20.
-- **T5 entschärft:** ordentlicher Anfänger ≥ 14/20 (heute 4/20). Stellschrauben: Tore 384 breit, R 1200, minSpeed 300, 0.3 s Bodenkontakt erlaubt.
+- **T5 entschärft:** ordentlicher Anfänger ≥ 14/20 (heute 4/20). Stellschrauben: Tore 384 breit, R 1200, minSpeed 300, 0.3 s Bodenkontakt erlaubt. Umgesetzt: 5 Tore (je 45°), 576 breit als ehrliche Streifen-Zonen: 16/20.
 - T6-64 mit Markierung ≥ 18/20, ohne Ducken 0/20.
 - T7: Grundtechnik ±6°/0.6 s 20/20.
 - T8 ≥ 18/20.
@@ -631,7 +631,7 @@ Abnahme:
 - **Lande-Gnade und Rutschen verbilligen Hop-Timing.** Gewollt; die Decke bleibt das Strafen. Das Gefühl zeigt erst der Mensch-Playtest (S6).
 - **Die Hang-Landung erzeugt eine Hügel-Pumpe** (bergauf gratis, bergab Gewinn). Energie-begrenzt. Level-Regel: auf/ab-Ketten auf Routen nur mit Messung.
 - **Luftlenkung nimmt Anfängern den Druck, A/D zu lernen.** Das Training lehrt ausdrücklich „W lenkt, A/D + Maus beschleunigt"; der Judge meldet wOnly.
-- **Kanten-Assist:** Die Sicherheit der Crouch-Kanten hängt an „≥ 64 u". Der Validator prüft „ohne Ducken 0 Erfolge".
+- **Kanten-Assist:** Die Sicherheit der Crouch-Kanten hängt an „≥ 64 u" (umgesetzt ≥ 66 u). Der Validator prüft „ohne Ducken 0 Erfolge".
 - **Trainings-Schwellen stammen aus Bot-Händen.** Alle Schwellen stehen an einer Stelle (`strafeJudge.ts`) und werden nach jedem Tuning neu erzeugt.
 - **Registry-Umbau berührt frisch abgenommenen Plan-006-Code.** Abgesichert durch den Pixelvergleich.
 - **Katzenpfote** liest sich im Prototyp als oranger Handschuh. Deshalb Silhouetten-Runde und Nutzer-Abnahme.

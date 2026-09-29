@@ -5,9 +5,9 @@
  * 1. Innenvorteil: Koralle (route) ist spürbar schneller als Türkis (safeRoute) — für den perfekten Bot UND die
  *    3°-Hand. Gemessen mit wenig Rauschen: sync 1.0 als Median über die 49 Start-Jitter (wie die Medaillen),
  *    Hand 3° über 24 Seeds (die 8 Validator-Seeds streuen auf Türkis um ±1.5 s, Zahl steht mit im Bericht).
- * 2. Außenbahn fängt Nicht-Drücker: W-Halter ab CP1/CP2 (Blick auf einen Türkis-Knoten ≥ 320 u voraus ±15/±30°
- *    oder in Flugrichtung, mit und ohne Leertaste) erreichen den nächsten Checkpoint ohne Tod; mit Blick auf den
- *    nächsten Knoten stirbt keiner (Stau erlaubt).
+ * 2. Außenbahn fängt Nicht-Drücker: W-Halter ab dem Start (rechts der Finne, W1-Band) und ab CP1/CP2 (Blick auf einen
+ *    Türkis-Knoten ≥ 320 u voraus ±15/±30° oder in Flugrichtung, mit und ohne Leertaste) erreichen den nächsten
+ *    Checkpoint ohne Tod; mit Blick auf den nächsten Knoten stirbt keiner (Stau erlaubt).
  * 3. Kein Checkpoint-Pad liegt näher als 64 u an einer der beiden Linien (Pads in der Fahrlinie stoppen, #47).
  * 4. Grundtechnik-Surfer (Blick 0°) ist an jedem folgenden Checkpoint ≥ 700 u/s schnell — auf beiden Linien, und
  *    zwar auf der EIGENEN Bahn (Bahnprüfung über den Grat, sonst Fehler).
@@ -15,16 +15,27 @@
  * 6. Risiko nur innen: Aussetzer-Modell (Hand 2°, A/D beim Surfen periodisch losgelassen) stirbt auf Koralle,
  *    auf Türkis nie. Die Gabel ist für jeden, der die Kurve HÄLT, keine Zeitfrage (Abnahme: Hand 1–3° 0 Tode,
  *    Quote ≤ 0.90) — sie trennt, wer sie hält, von dem, der zwischendurch loslässt.
- * 7. Medaillen-Stichprobe: Bronze/Silber (build.ts: Hand 3°/2° auf safeRoute über die 8 Validator-Seeds) gegen
- *    24 Seeds — schafft die Hand, für die die Medaille steht, sie in weniger als der Hälfte der Läufe, warnt die Probe.
+ * 7. Medaillen-Stichprobe: Bronze/Silber (build.ts: Hand 3°/2° auf safeRoute, Median über 48 Seeds) gegen 24 Seeds —
+ *    schafft die Hand, für die die Medaille steht, sie in weniger als der Hälfte der Läufe, warnt die Probe.
+ * 8. Bande-Gleiter: wer auf dem Band an der unsichtbaren Außenbande entlanggleitet oder -hüpft, kommt über jede
+ *    Fuge (W1 → Viertel 1 … Viertel 3 → 4) mit ≤ 10 % Tempoverlust (Review Phase 3: Lippe 1.5 u, 943 → 0 u/s).
+ * 9. Mensch-Band: Grundtechnik-Surfer mit Blickversatz, Blick-Verzug und Rauschen ab dem Brett, ab CP1/CP2 und quer
+ *    über W1 berührt kein Checkpoint-Pad (Luftticks ≥ PAD_AIR_GAP daneben) und bricht nie in einem Tick ein (Review
+ *    Phase 3: Pads im Flugband); ab CP3 kommt jeder ins Ziel (Türkis-Bandfahrer sterben nach CP3 am Rand von R1 — der
+ *    Respawn muss sie tragen). Dazu die Zeiten gegen die Medaillen (build.ts misst Gold/VELOCITY/Autor seit Phase 3 an
+ *    derselben Grundtechnik, `level3Reference`): Warnung, wenn sie den Autor deutlich unterbietet oder Türkis VELOCITY schafft.
+ *    Info: Koralle-Wähler, die vom Spawn schräg links um die Finne laufen (bekannte Falle am Drop W1 → Viertel 1).
  * Geometrie über Tags (cp<n>pad, outer<k><a–z>), Linien über route/safeRoute — nie über Notizen.
  */
 import { Box3, Vector3 } from 'three';
 import type { RunEvent } from '../../../src/engine/events';
 import { RunState } from '../../../src/engine/runState';
-import type { MovementConfig } from '../../../src/player/MovementConfig';
+import { VELOCITY_DEFAULT, type MovementConfig } from '../../../src/player/MovementConfig';
 import { PlayerMovement } from '../../../src/player/PlayerMovement';
-import { RouteFollower, makeBotInput } from '../../../src/player/bots';
+import type { PlayerInput, PlayerSnapshot } from '../../../src/player/types';
+import { RouteFollower, makeBotInput, mulberry32 } from '../../../src/player/bots';
+import { BrushWorld } from '../../../src/world/collision/BrushWorld';
+import type { CollisionWorld, CompiledBrush } from '../../../src/world/collision/types';
 import type { CompiledLevel, CompiledTrigger } from '../../../src/world/level/compileLevel';
 import type { LevelFile, RouteNode } from '../../../src/world/level/LevelFormat';
 import { finaleReserve, passedNode, type DesignReport } from '../designProbes';
@@ -32,13 +43,16 @@ import {
   SurfRider,
   jitterMedian,
   nextGoal,
+  medianOf,
   resumeIndex,
   routeAxis,
   simulate,
   timedMedian,
   withRoute,
   type Controller,
+  type MedalReference,
   type ProbeOutcome,
+  type ReferenceRuns,
   type StrafeModel,
   type TimedRun,
 } from '../physics';
@@ -98,6 +112,8 @@ export function level3Probes(level: CompiledLevel, cfg: MovementConfig, r: Desig
   r.warnings.push(...s.warnings.map((x) => `[safeRoute] ${x}`));
   r.info.push(...s.info.map((x) => `[safeRoute] ${x}`));
   lapseRisk(level, safe, cfg, r);
+  bankGliders(level, cfg, r);
+  humanBand(level, cfg, r);
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +145,45 @@ export function kehreRidge(def: LevelFile): RidgePoint[] {
     }
   }
   return out;
+}
+
+/** Surf-Stücke der Strecke: W1, beide Kehren-Bahnen, R1, Z, Finale (lib.SurfPath-Tags). */
+const RAMP_TAG = /^(w1|outer[1-4][a-z]|inner[1-4][a-z]|r1|z|finale[a-z])$/;
+
+/**
+ * Fahrtrichtung der nächsten Surf-Rampe (yaw, rad) an (x, z) — so blickt, wer "entlang der Rampe" schaut. Aus den
+ * Fugen-Querschnitten der Stücke (lib.SurfPath: je Fuge [Grat, links, rechts] bzw. [Grat, Fuß, Innenwand]).
+ * Statt der Route-Achse: die zog zwischen W1 und Viertel 1 schräg über die Bahn, ein Fahrer an der Finne blickte
+ * dort 18° in die Rampe und bremste sich selbst (Mess-Artefakt).
+ */
+export function rampAxis(def: LevelFile): (x: number, z: number) => number {
+  const segs: Array<{ ax: number; az: number; bx: number; bz: number; yaw: number }> = [];
+  for (const b of def.brushes) {
+    if (b.type !== 'hull' || b.tag === undefined || !RAMP_TAG.test(b.tag)) continue;
+    const P = b.points;
+    if (P.length !== 6) continue;
+    const both = !/^(outer|inner)/.test(b.tag);
+    const sign = b.tag.startsWith('inner') ? -1 : 1;
+    const rx = sign * (P[both ? 2 : 1][0] - P[0][0]);
+    const rz = sign * (P[both ? 2 : 1][2] - P[0][2]);
+    segs.push({ ax: P[0][0], az: P[0][2], bx: P[3][0], bz: P[3][2], yaw: Math.atan2(-rz, rx) });
+  }
+  return (x, z) => {
+    let best = Infinity;
+    let yaw = 0;
+    for (const s of segs) {
+      const sx = s.bx - s.ax;
+      const sz = s.bz - s.az;
+      const l2 = sx * sx + sz * sz;
+      const t = l2 > 0 ? Math.max(0, Math.min(1, ((x - s.ax) * sx + (z - s.az) * sz) / l2)) : 0;
+      const d = (x - s.ax - sx * t) ** 2 + (z - s.az - sz * t) ** 2;
+      if (d < best) {
+        best = d;
+        yaw = s.yaw;
+      }
+    }
+    return yaw;
+  };
 }
 
 /** Querabstand zum nächsten Gratpunkt (u): > 0 außen (Türkis), < 0 innen (Koralle); `dist` waagrecht. */
@@ -219,10 +274,10 @@ function forkAdvantage(level: CompiledLevel, safe: CompiledLevel, cfg: MovementC
 }
 
 /**
- * 7. Bronze/Silber stehen für die 3°/2°-Hand auf der sicheren Linie (build.ts, Median der 8 Validator-Seeds × 1.05).
- * Die 8 Seeds streuen auf Türkis stark (ein Fall aufs Band kostet 2–4 s): gemessen wird, wie viele von 24 Läufen der
- * Medaillen-Hand die Medaille wirklich schaffen. Weniger als die Hälfte = die Medaille hängt an einer glücklichen
- * Stichprobe (Warnung; die Messung selbst gehört build.ts).
+ * 7. Bronze/Silber stehen für die 3°/2°-Hand auf der sicheren Linie (build.ts, Median über 48 Seeds × 1.05, seit
+ * Plan 007 Phase 3; vorher die 8 Validator-Seeds). Türkis streut stark (ein Fall aufs Band kostet 2–4 s): gemessen
+ * wird, wie viele von 24 Läufen der Medaillen-Hand die Medaille wirklich schaffen. Weniger als die Hälfte = die
+ * Medaille hängt an einer glücklichen Stichprobe (Warnung; die Messung selbst gehört build.ts).
  */
 function medalSample(level: CompiledLevel, safe: CompiledLevel, hand3: readonly TimedRun[], cfg: MovementConfig, r: DesignReport): void {
   const m = level.def.medals;
@@ -242,19 +297,23 @@ function medalSample(level: CompiledLevel, safe: CompiledLevel, hand3: readonly 
     if (ok < MEDAL_SHARE * runs.length) short.push(name);
   }
   const text = `Medaillen-Stichprobe — ${parts.join('; ')}`;
-  if (short.length) r.warnings.push(`Design L3: ${short.join('/')} zu streng für die Medaillen-Hand (build.ts misst über 8 Seeds) — ${text}`);
+  if (short.length) r.warnings.push(`Design L3: ${short.join('/')} zu streng für die Medaillen-Hand (build.ts misst über 48 Seeds) — ${text}`);
   else r.info.push(`Design L3: ${text}`);
 }
 
 // ---------------------------------------------------------------------------
 // 2. W-Halter auf Türkis
 
+/** Blickmodelle der W-Halter: erster Türkis-Knoten mindestens so weit voraus (u); 0 = der nächste. */
+const HOLDER_AHEAD = [LOOK_AHEAD, 200, 120, 0] as const;
+
 /**
- * 2. W-Halter ab CP1/CP2 auf Türkis: 6 Blicke × mit/ohne Leertaste. Blickziel = erster Türkis-Knoten ≥ LOOK_AHEAD
- * voraus (+ Versatz) oder die Flugrichtung: jeder erreicht den nächsten Checkpoint ohne Tod. Zweites Blickmodell
- * "nächster Knoten" (wie novice.ts): nur Tod ist ein Fehler — auf dem Band liegt der nächste Knoten oft direkt
- * NEBEN einem an der Flanke, wer darauf blickt, drückt W senkrecht in die Flanke und steht (Stau, fallen.md #73;
- * gemessen: 1/24 Stau, 0 Tode). Wer schaut, wohin er will, hüpft weiter.
+ * 2. W-Halter auf Türkis ab dem Start (Spawn rechts der Finne, W1-Band) und ab CP1/CP2: 5 Blicke (Knoten ±15/±30/0°) ×
+ * mit/ohne Leertaste je Blickmodell, dazu Blick in Flugrichtung. Abnahme (Fehler): mit Blick ≥ LOOK_AHEAD voraus
+ * erreicht jeder den nächsten Checkpoint, und in KEINEM Modell stirbt einer. Mit kürzerem Blickziel steht mancher
+ * (Bericht, kein Fehler): auf dem Band liegt der nächste Knoten oft direkt NEBEN einem an der Flanke, W drückt senkrecht
+ * hinein (Stau, fallen.md #73/#123) — wer schaut, wohin er will, hüpft weiter. Alle vier Modelle stehen im Bericht
+ * (Review: das 320-u-Modell war nachträglich gewählt). Bis zum W1-Band starben W-Halter ab dem Start 12/12 auf W1.
  */
 function outerCatchesHolders(level: CompiledLevel, safe: CompiledLevel, cfg: MovementConfig, r: DesignReport): void {
   const route = safe.def.route ?? [];
@@ -263,41 +322,55 @@ function outerCatchesHolders(level: CompiledLevel, safe: CompiledLevel, cfg: Mov
     r.errors.push('Design L3: W-Halter-Probe findet CP1/CP2 nicht');
     return;
   }
+  // Start = "CP0": Spawn auf dem Brett, Route ab Knoten 1.
+  const starts = [{ order: 0, spawn: level.spawnPos, from: 1 }, ...cps.map((cp) => ({ order: cp.order, spawn: cp.spawnPos, from: resumeIndex(route, cp) }))];
   const fails: string[] = [];
   const dead: string[] = [];
-  let runs = 0;
+  const per: string[] = [];
   let slow = 0;
-  let stuck = 0;
-  for (const cp of cps) {
-    const goal = nextGoal(level, cp.order);
-    const from = resumeIndex(route, cp);
-    if (!goal || from < 1) {
-      r.errors.push(`Design L3: W-Halter-Probe — kein Ziel oder Wiedereinstieg ab CP${cp.order}`);
-      return;
-    }
-    // Blick: auf den Türkis-Knoten + Versatz (Grad) oder in Flugrichtung (NaN) — wie ein Anfänger, der schaut, wohin er will.
-    for (const look of [-30, -15, 0, 15, 30, Number.NaN]) {
-      for (const hold of [false, true]) {
-        const name = `CP${cp.order} ${Number.isNaN(look) ? 'Blick Flugrichtung' : `Blick Knoten ${look > 0 ? '+' : ''}${look}°`}${hold ? ' + Leertaste' : ''}`;
-        const res = wHolder(level, route, from, cp.spawnPos, look, hold, goal.bounds, cfg, LOOK_AHEAD);
-        runs++;
-        if (!res.ok) fails.push(`${name}: ${res.reason} nach ${res.time.toFixed(1)} s bei ${f0(res.end.x)},${f0(res.end.y)},${f0(res.end.z)}`);
-        else slow = Math.max(slow, res.time);
-        if (Number.isNaN(look)) continue;
-        const near = wHolder(level, route, from, cp.spawnPos, look, hold, goal.bounds, cfg, 0);
-        if (near.reason === 'kill' || near.reason === 'fell') dead.push(`${name} (nächster Knoten): ${near.reason} nach ${near.time.toFixed(1)} s bei ${f0(near.end.x)},${f0(near.end.y)},${f0(near.end.z)}`);
-        else if (!near.ok) stuck++;
+  for (const ahead of HOLDER_AHEAD) {
+    let runs = 0;
+    let ok = 0;
+    let stuck = 0;
+    for (const st of starts) {
+      const goal = nextGoal(level, st.order);
+      const at = st.order === 0 ? 'Start' : `CP${st.order}`;
+      if (!goal || st.from < 1) {
+        r.errors.push(`Design L3: W-Halter-Probe — kein Ziel oder Wiedereinstieg ab ${at}`);
+        return;
+      }
+      // Blick: auf den Türkis-Knoten + Versatz (Grad) oder in Flugrichtung (NaN, nur einmal) — wie ein Anfänger, der schaut, wohin er will.
+      for (const look of ahead === LOOK_AHEAD ? [-30, -15, 0, 15, 30, Number.NaN] : [-30, -15, 0, 15, 30]) {
+        for (const hold of [false, true]) {
+          const name = `${at} ${Number.isNaN(look) ? 'Blick Flugrichtung' : `Blick Knoten ${look > 0 ? '+' : ''}${look}°`}${hold ? ' + Leertaste' : ''} (${ahead} u voraus)`;
+          const res = wHolder(level, route, st.from, st.spawn, look, hold, goal.bounds, cfg, ahead);
+          runs++;
+          const where = `${res.reason} nach ${res.time.toFixed(1)} s bei ${f0(res.end.x)},${f0(res.end.y)},${f0(res.end.z)}`;
+          if (res.ok) {
+            ok++;
+            if (ahead === LOOK_AHEAD) slow = Math.max(slow, res.time);
+          } else if (res.reason === 'kill' || res.reason === 'fell') dead.push(`${name}: ${where}`);
+          else {
+            stuck++;
+            if (ahead === LOOK_AHEAD) fails.push(`${name}: ${where}`);
+          }
+        }
       }
     }
+    per.push(`${ahead} u voraus ${ok}/${runs} am CP${stuck ? `, ${stuck} Stau` : ''}`);
   }
-  if (fails.length) r.errors.push(`Design L3: Außenbahn fängt Nicht-Drücker nicht — ${fails.length}/${runs} W-Halter tot oder hängen (${fails.slice(0, 3).join('; ')})`);
-  else r.info.push(`Design L3: Außenbahn fängt Nicht-Drücker — ${runs}/${runs} W-Halter ab CP1/CP2 (Blick ≥ ${LOOK_AHEAD} u voraus ±15/±30°/0°, Flugrichtung; mit/ohne Leertaste) am nächsten Checkpoint, langsamster ${slow.toFixed(1)} s`);
-  const nearRuns = (runs * 5) / 6;
-  if (dead.length) r.errors.push(`Design L3: W-Halter mit Blick auf den nächsten Knoten sterben — ${dead.length}/${nearRuns} (${dead.slice(0, 3).join('; ')})`);
-  else r.info.push(`Design L3: W-Halter mit Blick auf den nächsten Knoten — 0/${nearRuns} Tode, ${stuck} Stau (drücken senkrecht in die Flanke)`);
+  const text = per.join('; ');
+  if (dead.length) r.errors.push(`Design L3: W-Halter auf Türkis sterben — ${dead.length} Läufe (${dead.slice(0, 3).join('; ')}); ${text}`);
+  if (fails.length) r.errors.push(`Design L3: Außenbahn fängt Nicht-Drücker nicht — ${fails.length} W-Halter mit Blick ≥ ${LOOK_AHEAD} u voraus hängen (${fails.slice(0, 3).join('; ')})`);
+  if (!dead.length && !fails.length)
+    r.info.push(
+      `Design L3: Außenbahn fängt Nicht-Drücker — W-Halter ab Start/CP1/CP2 (Blick auf einen Türkis-Knoten ±15/±30°/0°, mit/ohne Leertaste; Flugrichtung), ` +
+        `0 Tode: ${text}; langsamster ${slow.toFixed(1)} s`,
+    );
 }
 
-function wHolder(level: CompiledLevel, route: readonly RouteNode[], from: number, spawn: Vector3, look: number, hold: boolean, goal: Box3, cfg: MovementConfig, ahead: number): ProbeOutcome {
+/** W-Halter ab `spawn` bis `goal`: Blick auf den ersten Knoten ≥ `ahead` u voraus (+ `look` Grad; NaN = Flugrichtung), W, optional Leertaste. */
+export function wHolder(level: CompiledLevel, route: readonly RouteNode[], from: number, spawn: Vector3, look: number, hold: boolean, goal: Box3, cfg: MovementConfig, ahead: number): ProbeOutcome {
   const pm = new PlayerMovement(level.world, cfg);
   pm.teleport(spawn);
   const out = makeBotInput();
@@ -434,6 +507,578 @@ function surferSpeed(level: CompiledLevel, safe: CompiledLevel, ridge: readonly 
     if (slow.length) r.errors.push(`Design L3 [${name}]: ${text} — unter ${SURFER_MIN_SPEED}: ${slow.join(', ')}`);
     else r.info.push(`Design L3 [${name}]: ${text}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Bande-Gleiter an den Viertel-Fugen des Auffang-Bands
+
+/** Fugen-Fall: Fuge Viertel `joint` → `joint`+1 (0 = W1-Band), Abstand Hull ↔ Bande (u), Tempo entlang (u/s), Eingabe. */
+export interface GlideCase {
+  readonly joint: number;
+  readonly d: number;
+  readonly v: number;
+  /** 'hop': W + Leertaste gehalten, auf dem Band; 'air': ohne Eingabe, 64 u über dem Band, 60 u vor dem Bankende. */
+  readonly input: 'hop' | 'air';
+}
+
+export interface GlideResult {
+  /** Kleinstes Tempo zwischen 40 u vor und 160 u hinter dem Ende der Bank (u/s). */
+  readonly min: number;
+  /** Größter Einbruch in einem Tick (Anteil). */
+  readonly worstTick: number;
+  readonly passed: boolean;
+}
+
+const GLIDE_DOWN = new Vector3(-16, 0, -16);
+const GLIDE_UP = new Vector3(16, 72, 16);
+
+/**
+ * Wer die konvexe Türkis-Flanke verliert, gleitet oder hüpft auf dem Band an der unsichtbaren Außenbande entlang —
+ * über die Fugen der Viertel. Dort stand die erste Bank des Folgeviertels 1.5 u vor der Innenfläche der vorigen (943 →
+ * 0 u/s, Review Phase 3). Start vor dem Ende der letzten Bank von Viertel `joint`, Hull-Kante `d` vor ihrer Innenfläche
+ * (Ausdehnung der achsparallelen Hull quer zur Fläche mitgerechnet), Tempo `v` entlang.
+ */
+export function bankGlide(level: CompiledLevel, c: GlideCase, cfg: MovementConfig): GlideResult {
+  const hulls = level.def.brushes.filter((b) => b.type === 'hull' && b.tag === `outerCatch${c.joint}Bank`);
+  const last = hulls[hulls.length - 1];
+  if (last?.type !== 'hull') return { min: 0, worstTick: 1, passed: false };
+  // catchBand-Punkte je Fuge: oben innen, oben außen, unten innen, unten außen (Fuge a 0–3, Fuge b 4–7).
+  const P = last.points;
+  const ul = Math.hypot(P[4][0] - P[0][0], P[4][2] - P[0][2]);
+  const ux = (P[4][0] - P[0][0]) / ul;
+  const uz = (P[4][2] - P[0][2]) / ul;
+  const ol = Math.hypot(P[0][0] - P[1][0], P[0][2] - P[1][2]);
+  const nx = (P[0][0] - P[1][0]) / ol;
+  const nz = (P[0][2] - P[1][2]) / ol;
+  const back = c.input === 'hop' ? 160 : 60;
+  const reach = 16 * (Math.abs(nx) + Math.abs(nz)) + c.d;
+  const x = P[4][0] - ux * back + nx * reach;
+  const z = P[4][2] - uz * back + nz * reach;
+  const tr = level.world.traceBox(new Vector3(x, P[0][1], z), new Vector3(x, P[0][1] - 1200, z), GLIDE_DOWN, GLIDE_UP);
+  const pm = new PlayerMovement(level.world, cfg);
+  pm.teleport(new Vector3(x, tr.endPos.y + (c.input === 'hop' ? 2 : 64), z));
+  pm.state.vel.set(ux * c.v, 0, uz * c.v);
+  const out = makeBotInput();
+  out.yaw = Math.atan2(-ux, -uz);
+  out.sprint = true;
+  let min = Infinity;
+  let worst = 0;
+  let prev = c.v;
+  let passed = false;
+  for (let i = 0; i < 1.5 * cfg.tickRate; i++) {
+    const hop = c.input === 'hop';
+    out.forward = hop ? 1 : 0;
+    out.jumpHeld = hop;
+    out.jumpPressed = hop && i === 0;
+    pm.tick(out);
+    const s = pm.state;
+    const along = (s.pos.x - P[4][0]) * ux + (s.pos.z - P[4][2]) * uz;
+    if (along > -40 && along < 160) {
+      min = Math.min(min, s.speed);
+      if (prev > 100) worst = Math.max(worst, (prev - s.speed) / prev);
+    }
+    prev = s.speed;
+    if (along >= 160) {
+      passed = true;
+      break;
+    }
+    // Ohne Eingabe nur die Luftphase: am Boden bremst die Reibung, nicht die Bande.
+    if (!hop && s.onGround) break;
+  }
+  return { min: Number.isFinite(min) ? min : c.v, worstTick: worst, passed: passed || c.input === 'air' };
+}
+
+/** Bande-Gleiter: höchstens so viel Tempoverlust über eine Fuge. */
+export const GLIDE_LOSS = 0.1;
+
+/** Fugen des Auffang-Bands: 0 = W1 → Viertel 1 (das W1-Band endet 128 u über dem nächsten), 1–3 = Viertel k → k+1. */
+export const GLIDE_JOINTS = [0, 1, 2, 3] as const;
+
+/** 8. Bande-Gleiter über alle Fugen: Abstand 0.5/4/16 u, 400/900 u/s, hüpfend und frei fliegend. */
+function bankGliders(level: CompiledLevel, cfg: MovementConfig, r: DesignReport): void {
+  const bad: string[] = [];
+  let runs = 0;
+  let worst = 0;
+  for (const input of ['hop', 'air'] as const) {
+    for (const joint of GLIDE_JOINTS) {
+      for (const d of [0.5, 4, 16]) {
+        for (const v of [400, 900]) {
+          const g = bankGlide(level, { joint, d, v, input }, cfg);
+          runs++;
+          const loss = 1 - g.min / v;
+          worst = Math.max(worst, loss);
+          if (loss > GLIDE_LOSS || !g.passed) bad.push(`${input} ${joint === 0 ? 'W1' : `Viertel ${joint}`}→${joint + 1}, ${d} u, ${v} u/s: min ${f0(g.min)} u/s${g.passed ? '' : ', hängt'}`);
+        }
+      }
+    }
+  }
+  const text = `${runs} Gleiter (hüpfend/frei, 0.5/4/16 u vor der Bande, 400/900 u/s) über die Fugen W1 → Viertel 1 → … → 4`;
+  if (bad.length) r.errors.push(`Design L3: Außenbande bremst an den Fugen (Soll ≤ ${f0(100 * GLIDE_LOSS)} % Verlust) — ${bad.length}/${text}: ${bad.slice(0, 3).join('; ')}`);
+  else r.info.push(`Design L3: Außenbande glatt — ${text}, größter Verlust ${(100 * worst).toFixed(1)} %`);
+}
+
+
+// ---------------------------------------------------------------------------
+// 9. Mensch-Band: Grundtechnik mit Blickversatz, Verzug und Rauschen
+
+/** Mensch mit Grundtechnik: Blickversatz zur Rampe (Grad, + = hinein), Blick-Verzug (Tiefpass, s), Rauschen (Grad), Seed. */
+export interface HumanModel {
+  readonly look: number;
+  readonly lag: number;
+  readonly sigma: number;
+  readonly seed: number;
+}
+
+const DEG = Math.PI / 180;
+/** Zeitkonstante des Blickrauschens (AR(1), s) — wie rv2-l3/novice.ts. */
+const NOISE_TAU = 0.15;
+
+/**
+ * Grundtechnik-Surfer als Mensch (Review Phase 3, Modell aus rv2-l3/novice.ts): physics.SurfRider — Taste in die Rampe,
+ * Blick entlang der Rampe + Versatz, frei in der Luft keine Eingabe; auf dem Startbrett Blick in Spawn-Richtung und an
+ * der Kante springen — dazu Blick-Verzug (Tiefpass τ auf den Soll-Yaw: der Blick hinkt Kurven nach, in der Linkskurve
+ * drückt das Koralle-Fahrer in die Rampe) und Rauschen (AR(1)). Achse = Richtung der Rampe (`rampAxis`), nicht die
+ * Route: die Koralle-Linie zieht zwischen W1 und Viertel 1 schräg über die Bahn. Mit `walkYaw` läuft er zuerst von
+ * einer Plattform (CP-Respawn), bis er fällt.
+ */
+export class HumanSurfer implements Controller {
+  private readonly rider: SurfRider;
+  private readonly out = makeBotInput();
+  private readonly rand: () => number;
+  private readonly k: number;
+  private readonly lagK: number;
+  private yaw = Number.NaN;
+  private aim = 0;
+  private walking: boolean;
+
+  constructor(
+    cfg: MovementConfig,
+    world: CollisionWorld,
+    axis: (x: number, z: number) => number,
+    private readonly m: HumanModel,
+    private readonly walkYaw: number | null,
+  ) {
+    this.rider = new SurfRider(cfg, world, axis, m.look * DEG);
+    this.rand = mulberry32(m.seed * 7919 + 13);
+    this.k = Math.exp(-1 / cfg.tickRate / NOISE_TAU);
+    this.lagK = m.lag > 0 ? 1 - Math.exp(-1 / cfg.tickRate / m.lag) : 1;
+    this.walking = walkYaw !== null;
+  }
+
+  next(s: PlayerSnapshot, n: Vector3): PlayerInput {
+    const out = this.out;
+    if (this.walking && this.walkYaw !== null) {
+      if (s.onGround || s.vel.y > -50) {
+        out.forward = 1;
+        out.side = 0;
+        out.jumpHeld = false;
+        out.jumpPressed = false;
+        out.crouch = false;
+        out.sprint = true;
+        out.pitch = 0;
+        out.yaw = this.walkYaw;
+        this.yaw = this.walkYaw;
+        return out;
+      }
+      this.walking = false;
+    }
+    Object.assign(out, this.rider.next(s, n));
+    if (Number.isNaN(this.yaw)) this.yaw = out.yaw;
+    else {
+      let d = out.yaw - this.yaw;
+      while (d > Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      this.yaw += d * this.lagK;
+    }
+    if (this.m.sigma > 0) {
+      const g = Math.sqrt(-2 * Math.log(this.rand() || 1e-9)) * Math.cos(2 * Math.PI * this.rand());
+      this.aim = this.aim * this.k + g * this.m.sigma * DEG * Math.sqrt(1 - this.k * this.k);
+    }
+    out.yaw = this.yaw + this.aim;
+    return out;
+  }
+}
+
+/** Gemeinsames für alle Läufe des Mensch-Bands. */
+export interface HumanCtx {
+  readonly pads: readonly CompiledBrush[];
+  readonly padWorlds: readonly BrushWorld[];
+  readonly axis: (x: number, z: number) => number;
+  readonly start: Box3 | null;
+  readonly kills: readonly CompiledTrigger[];
+}
+
+export interface HumanRun {
+  /** Ziel bzw. Checkpoint erreicht: Spiel-Uhr (Brett) bzw. Zeit ab Start (s); sonst null. */
+  readonly time: number | null;
+  readonly reason: 'ziel' | 'tod' | 'stau';
+  /** Abschnitt beim Tod (RunState.checkpoint: 0 = vor CP1 … 3 = nach CP3), sonst −1. */
+  readonly deathAt: number;
+  /** Berührte Checkpoint-Pads (Tags). */
+  readonly pads: readonly string[];
+  /** Erster Einbruch > 30 % in einem Tick (nicht im Ziel, nicht in den 2 s vor einem Tod), sonst null. */
+  readonly collapse: string | null;
+  /** Stau, während man auf dem Auffang-Band steht. */
+  readonly bandStop: boolean;
+  /** Kleinster Abstand Hull ↔ Pad in der Luft (u), je Pad. */
+  readonly padGap: readonly number[];
+}
+
+const COLLAPSE = 0.3;
+const HUMAN_TIMEOUT = 40;
+
+export function humanCtx(level: CompiledLevel): HumanCtx {
+  const pads = level.brushes.filter((b) => b.tag !== null && /^cp\d+pad$/.test(b.tag));
+  return {
+    pads,
+    padWorlds: pads.map((p) => new BrushWorld([p])),
+    axis: rampAxis(level.def),
+    start: level.brushes.find((b) => b.tag === 'start')?.bounds ?? null,
+    kills: level.triggers.filter((t) => t.kind === 'kill'),
+  };
+}
+
+/**
+ * Ein Lauf des Mensch-Modells: vom Brett (`goal` null, Spiel-Uhr bis ins Ziel, ohne Respawn) oder ab einem Punkt bis
+ * zum Trigger `goal`. Auf dem Brett blickt er in Spawn-Richtung (Achse), von einer Plattform läuft er in `walkYaw`.
+ */
+export function humanRun(level: CompiledLevel, ctx: HumanCtx, pos: Vector3, walkYaw: number | null, goal: CompiledTrigger | null, m: HumanModel, cfg: MovementConfig): HumanRun {
+  const sb = ctx.start;
+  const onStart = (x: number, z: number): boolean => sb !== null && x > sb.min.x - 40 && x < sb.max.x + 40 && z > sb.min.z - 40 && z < sb.max.z + 40;
+  const axis = (x: number, z: number): number => (onStart(x, z) ? level.spawnYaw * DEG : ctx.axis(x, z));
+  const ctl = new HumanSurfer(cfg, level.world, axis, m, walkYaw);
+  const pm = new PlayerMovement(level.world, cfg);
+  pm.teleport(pos);
+  const run = new RunState(level);
+  run.reset(null);
+  const events: RunEvent[] = [];
+  const dt = 1 / cfg.tickRate;
+  const lo = new Vector3();
+  const hi = new Vector3();
+  const gMin = new Vector3();
+  const gMax = new Vector3();
+  const hit = (b: Box3): boolean => lo.x < b.max.x && hi.x > b.min.x && lo.y < b.max.y && hi.y > b.min.y && lo.z < b.max.z && hi.z > b.min.z;
+  const hull = new Box3();
+  const pads: string[] = [];
+  const padGap = ctx.pads.map(() => Infinity);
+  let collapse: string | null = null;
+  let collapseT = -1;
+  let prev = pm.state.speed;
+  const done = (time: number | null, reason: HumanRun['reason'], t: number, bandStop = false): HumanRun => ({
+    time,
+    reason,
+    deathAt: reason === 'tod' ? run.checkpoint : -1,
+    pads,
+    // Ein Einbruch kurz vor dem Tod gehört zum Absturz (Fuß der Flanke verlassen), nicht zur Bahn.
+    collapse: reason === 'tod' && collapseT >= 0 && t - collapseT < 2 ? null : collapse,
+    bandStop,
+    padGap,
+  });
+  for (let i = 1; i <= HUMAN_TIMEOUT * cfg.tickRate; i++) {
+    pm.tick(ctl.next(pm.state, pm.surfNormal));
+    const s = pm.state;
+    const t = i * dt;
+    lo.copy(s.pos).add(pm.hullMins);
+    hi.copy(s.pos).add(pm.hullMaxs);
+    gMin.copy(pm.hullMins).addScalar(-1);
+    gMax.copy(pm.hullMaxs).addScalar(1);
+    for (let k = 0; k < ctx.pads.length; k++) {
+      const tag = ctx.pads[k].tag ?? '';
+      // Der eigene Respawn-Pad zählt nicht, solange man darauf steht.
+      if (walkYaw !== null && t < 2 && ctx.padWorlds[k].testBox(pos, gMin, gMax)) continue;
+      if (!pads.includes(tag) && ctx.padWorlds[k].testBox(s.pos, gMin, gMax)) pads.push(tag);
+      if (!s.onGround) {
+        hull.min.copy(lo);
+        hull.max.copy(hi);
+        padGap[k] = Math.min(padGap[k], boxGap(hull, ctx.pads[k].bounds));
+      }
+    }
+    if (collapse === null && prev > 300 && s.speed < (1 - COLLAPSE) * prev) {
+      collapse = `${f0(prev)} → ${f0(s.speed)} u/s bei ${f0(s.pos.x)},${f0(s.pos.y)},${f0(s.pos.z)}`;
+      collapseT = t;
+    }
+    prev = s.speed;
+    if (goal === null) {
+      const o = run.tick(dt, s.pos, pm.hullMins, pm.hullMaxs, s.speed, s.onGround, events);
+      if (o === 'finish') return done(run.time, 'ziel', t);
+      if (o === 'fall' || o === 'kill') return done(null, 'tod', t);
+    } else {
+      if (hit(goal.bounds)) return done(t, 'ziel', t);
+      if (s.pos.y < level.def.killY || ctx.kills.some((k) => hit(k.bounds))) return done(null, 'tod', t);
+    }
+  }
+  // Stau: steht er auf dem Auffang-Band?
+  const s = pm.state;
+  const tr = level.world.traceBox(s.pos, new Vector3(s.pos.x, s.pos.y - 8, s.pos.z), pm.hullMins, pm.hullMaxs);
+  const onBand = tr.fraction < 1 && /^outerCatch\d$/.test(level.brushes[tr.brushIndex]?.tag ?? '');
+  return done(null, 'stau', HUMAN_TIMEOUT, onBand);
+}
+
+/** Seeds der Medaillen-Referenz je Blickversatz (build.ts; die Probe fährt 4). */
+export const REFERENCE_SEEDS: readonly number[] = Array.from({ length: 16 }, (_, i) => i + 1);
+
+/**
+ * Medaillen-Referenz L3 (build.ts, Freischalt-Leiter; Lead-Entscheid Phase 3): der Grundtechnik-Surfer (Taste in die
+ * Rampe, Blick entlang, σ 1°, ohne Verzug) vom Brett auf der Koralle-Seite (x −160) mit dem BESTEN Blickversatz aus
+ * −3…+1° — der Median über REFERENCE_SEEDS (Tod = ohne Ziel, Mehrheit nötig). Nur für die Modelle des perfekten Bots
+ * (Gold/VELOCITY/Autor): der RouteFollower strafet an jedem Drop zum nächsten Knoten und verliert 150–190 u/s, die
+ * Grundtechnik schlug so VELOCITY auf beiden Bahnen. Bronze/Silber bleiben die Hände auf Türkis (samt Band-Stürzen):
+ * "kommt durch" bzw. "kommt sauber durch".
+ */
+export function level3Reference(): MedalReference {
+  return {
+    name: 'L3-Grundtechnik (bester Blickversatz, Koralle)',
+    runs(level, model, line, _jitter, _seeds, cfg = VELOCITY_DEFAULT): ReferenceRuns | null {
+      if (model.aimNoiseDeg !== undefined || line !== 'route') return null;
+      const ctx = humanCtx(level);
+      const pos = new Vector3(HUMAN_XS[0], level.spawnPos.y + 1, level.spawnPos.z);
+      let best: { runs: TimedRun[]; look: number; median: number } | null = null;
+      for (const look of HUMAN_LOOKS) {
+        const runs = REFERENCE_SEEDS.map((seed): TimedRun => {
+          const h = humanRun(level, ctx, pos, null, null, { look, lag: 0, sigma: 1, seed }, cfg);
+          return { time: h.time, deaths: h.reason === 'tod' ? 1 : 0, reason: h.reason === 'ziel' ? null : h.reason, splits: [] };
+        });
+        const med = medianOf(runs);
+        if (med !== null && (best === null || med < best.median)) best = { runs, look, median: med };
+      }
+      if (!best) return null;
+      const n = best.runs.filter((x) => x.time !== null).length;
+      // Seeds statt Start-Jitter: Tode sind hier das Risiko des Blickversatzes, keine Chaos-Zweige.
+      return { runs: best.runs, detail: `Koralle x ${HUMAN_XS[0]}, Blick ${best.look}°, ${n}/${best.runs.length} im Ziel`, overJitter: false };
+    },
+  };
+}
+
+/** Abstand zweier achsparalleler Boxen (0 = berühren/überlappen). */
+function boxGap(a: Box3, b: Box3): number {
+  const dx = Math.max(0, b.min.x - a.max.x, a.min.x - b.max.x);
+  const dy = Math.max(0, b.min.y - a.max.y, a.min.y - b.max.y);
+  const dz = Math.max(0, b.min.z - a.max.z, a.min.z - b.max.z);
+  return Math.hypot(dx, dy, dz);
+}
+
+/** Mensch-Band: Blickversatz (Grad, + = in die Rampe), Verzug (s), Seeds; σ 1°. */
+export const HUMAN_LOOKS = [-3, -2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1];
+export const HUMAN_LAGS = [0, 0.1, 0.2];
+const HUMAN_SEEDS = [1, 2, 3, 4];
+const HUMAN_CP_SEEDS = [1, 2];
+/** Brett-Starts quer (u): Koralle links, der Spawn, Türkis rechts (Review: x ±160). */
+const HUMAN_XS = [-160, 160];
+/** Abgang von einer CP-Plattform: Türkis geradeaus, Koralle 20° nach links. */
+const HUMAN_EXITS: ReadonlyArray<readonly [string, number]> = [
+  ['Türkis', 0],
+  ['Koralle', 20],
+];
+
+/** Luftticks des Mensch-Bands bleiben so weit von jedem Checkpoint-Pad weg (u): Kontakt allein wäre knapp an der Kante. */
+export const PAD_AIR_GAP = 32;
+/**
+ * Höchstens so viele Türkis-Brettläufe sterben nach CP3 (Warnung darüber). Bandfahrer kommen tief neben R1 an und
+ * driften nach außen; ohne die Finale-Schürze (level3.finSkirt) starben 91/216, mit ihr 4 (Strandstirn).
+ */
+export const TURKIS_TAIL_DEATHS = 0.1;
+/** Abgang von der CP3-Plattform (Grad zur Spawn-Richtung): geradeaus, 20° links, 20° rechts. */
+const HUMAN_CP3_EXITS = [0, 20, -20];
+
+/**
+ * 9. Mensch-Band (Review Phase 3): ~750 Läufe des Mensch-Modells — vom Brett (x ±160 und Spawn, Blick −3…+1°, Verzug
+ * 0/0.1/0.2 s, 4 Seeds), ab CP1/CP2 (Türkis geradeaus, Koralle 20° links vom Pad), ab CP3 (0/±20°) bis ins Ziel und
+ * quer über W1 (−340…+340 u, Blick −2…+1°, bis CP2). Fehler: ein Checkpoint-Pad berührt oder ein Luftick näher als
+ * PAD_AIR_GAP, ein Einbruch > 30 % in einem Tick, ein Stau auf dem Band, ein Tod auf Türkis in der Kehre, ein Lauf ab
+ * CP3 ohne Ziel. Warnung: die Grundtechnik (bester Blickversatz ohne Verzug, Median) passt nicht zu den Medaillen.
+ */
+function humanBand(level: CompiledLevel, cfg: MovementConfig, r: DesignReport): void {
+  const ctx = humanCtx(level);
+  if (ctx.pads.length !== 3) {
+    r.errors.push(`Design L3: Mensch-Band findet ${ctx.pads.length} statt 3 Checkpoint-Pads`);
+    return;
+  }
+  const padHits: string[] = [];
+  const collapses: string[] = [];
+  const bandStops: string[] = [];
+  const turkisKehre: string[] = [];
+  const gap = ctx.pads.map(() => Infinity);
+  const stats = { runs: 0, dead: 0, stau: 0 };
+  // Tode vom Brett je Spur und Abschnitt (0 = W1 … 3 = R1/Z/Finale).
+  const deaths: Record<'Koralle' | 'Türkis', number[]> = { Koralle: [0, 0, 0, 0], Türkis: [0, 0, 0, 0] };
+  const boardRuns: Record<'Koralle' | 'Türkis', number> = { Koralle: 0, Türkis: 0 };
+  const note = (name: string, h: HumanRun, lane: 'Koralle' | 'Türkis' | null): void => {
+    stats.runs++;
+    if (h.pads.length) padHits.push(`${name}: ${h.pads.join('/')}`);
+    if (h.collapse) collapses.push(`${name}: ${h.collapse}`);
+    if (h.bandStop) bandStops.push(name);
+    if (h.reason === 'tod') stats.dead++;
+    if (h.reason === 'stau') stats.stau++;
+    if (h.deathAt === 1 || h.deathAt === 2) {
+      if (lane === 'Türkis') turkisKehre.push(name);
+    }
+    if (lane && h.deathAt >= 0) deaths[lane][h.deathAt]++;
+    h.padGap.forEach((g, k) => (gap[k] = Math.min(gap[k], g)));
+  };
+  // Brett: Zeiten je Spur und Blick (Verzug 0) für die Medaillen-Frage.
+  const xs = [...HUMAN_XS, level.spawnPos.x];
+  const times = new Map<string, number[]>();
+  for (const x of xs) {
+    const lane = x < 0 ? 'Koralle' : 'Türkis';
+    for (const look of HUMAN_LOOKS) {
+      for (const lag of HUMAN_LAGS) {
+        for (const seed of HUMAN_SEEDS) {
+          const h = humanRun(level, ctx, new Vector3(x, level.spawnPos.y + 1, level.spawnPos.z), null, null, { look, lag, sigma: 1, seed }, cfg);
+          note(`Brett x ${f0(x)} Blick ${look}° τ ${lag} s Seed ${seed}`, h, lane);
+          boardRuns[lane]++;
+          if (lag === 0) {
+            const key = `${lane}|${look}`;
+            const list = times.get(key) ?? [];
+            list.push(h.time ?? Infinity);
+            times.set(key, list);
+          }
+        }
+      }
+    }
+  }
+  // Ab CP1/CP2: vom Pad geradeaus (Türkis) oder 20° links (Koralle) bis zum nächsten Checkpoint.
+  for (const cp of level.triggers.filter((t) => t.kind === 'checkpoint' && t.order <= 2)) {
+    const goal = nextGoal(level, cp.order);
+    for (const [lane, turn] of HUMAN_EXITS) {
+      for (const look of HUMAN_LOOKS) {
+        for (const lag of HUMAN_LAGS) {
+          for (const seed of HUMAN_CP_SEEDS) {
+            const h = humanRun(level, ctx, new Vector3(cp.spawnPos.x, cp.spawnPos.y + 1, cp.spawnPos.z), (cp.spawnYaw + turn) * DEG, goal, { look, lag, sigma: 1, seed }, cfg);
+            note(`CP${cp.order} ${lane} Blick ${look}° τ ${lag} s Seed ${seed}`, h, null);
+          }
+        }
+      }
+    }
+  }
+  // Ab CP3 bis ins Ziel: Türkis-Bandfahrer kommen mit ~1250 u/s tief neben R1 an und sterben danach oft (Blick weg von der
+  // Rampe drückt ab ~1000 u/s nicht mehr) — der Respawn auf der CP3-Plattform muss sie tragen, sonst ist es eine Falle.
+  const cp3 = level.triggers.find((t) => t.kind === 'checkpoint' && t.order === 3) ?? null;
+  const finish = level.triggers.find((t) => t.kind === 'finish') ?? null;
+  const fromCp3: string[] = [];
+  let cp3Runs = 0;
+  let cp3Slow = 0;
+  if (cp3 && finish) {
+    for (const turn of HUMAN_CP3_EXITS) {
+      for (const look of HUMAN_LOOKS) {
+        for (const lag of HUMAN_LAGS) {
+          for (const seed of HUMAN_CP_SEEDS) {
+            const name = `CP3 ${turn}° Blick ${look}° τ ${lag} s Seed ${seed}`;
+            const h = humanRun(level, ctx, new Vector3(cp3.spawnPos.x, cp3.spawnPos.y + 1, cp3.spawnPos.z), (cp3.spawnYaw + turn) * DEG, finish, { look, lag, sigma: 1, seed }, cfg);
+            note(name, h, null);
+            cp3Runs++;
+            if (h.reason !== 'ziel') fromCp3.push(`${name}: ${h.reason}`);
+            else cp3Slow = Math.max(cp3Slow, h.time ?? 0);
+          }
+        }
+      }
+    }
+  } else fromCp3.push('CP3 oder Ziel fehlt');
+  // Quer über W1 (Review w1lat): Start bei s 300, ~160 u über der Flanke, bis CP2. |Querlage| < 40 läge in der Finne.
+  const cp2 = level.triggers.find((t) => t.kind === 'checkpoint' && t.order === 2) ?? null;
+  const w1 = level.brushes.find((b) => b.tag === 'w1');
+  if (cp2 && w1) {
+    const top = w1.bounds.max.y;
+    for (const look of [-2, -1, 0, 1]) {
+      for (let lat = -340; lat <= 340; lat += 60) {
+        if (Math.abs(lat) < 40) continue;
+        const y = top - 300 * Math.tan(10 * DEG) - Math.abs(lat) * Math.tan(60 * DEG) + 160;
+        const h = humanRun(level, ctx, new Vector3(lat, y, -300), null, cp2, { look, lag: 0, sigma: 0, seed: 1 }, cfg);
+        note(`W1 quer ${lat} Blick ${look}°`, h, null);
+      }
+    }
+  }
+  const head = `${stats.runs} Läufe (Brett x ${xs.map(f0).join('/')} × Blick −3…+1° × Verzug 0/0.1/0.2 s × ${HUMAN_SEEDS.length} Seeds, σ 1°; ab CP1/CP2 Türkis/Koralle; ab CP3 0/±20°; quer über W1)`;
+  const gaps = ctx.pads.map((p, k) => `${p.tag} ${Number.isFinite(gap[k]) ? f0(gap[k]) : '–'}`).join(', ');
+  const near = ctx.pads.flatMap((p, k) => (gap[k] < PAD_AIR_GAP ? [`${p.tag} ${f0(gap[k])} u`] : []));
+  const errs: string[] = [];
+  if (padHits.length) errs.push(`${padHits.length} berühren ein Checkpoint-Pad (${padHits.slice(0, 3).join('; ')})`);
+  if (near.length) errs.push(`Luftticks näher als ${PAD_AIR_GAP} u an einem Pad (${near.join(', ')})`);
+  if (fromCp3.length) errs.push(`${fromCp3.length}/${cp3Runs} ab CP3 ohne Ziel (${fromCp3.slice(0, 3).join('; ')})`);
+  if (collapses.length) errs.push(`${collapses.length} brechen in einem Tick um > ${f0(100 * COLLAPSE)} % ein (${collapses.slice(0, 3).join('; ')})`);
+  if (bandStops.length) errs.push(`${bandStops.length} stehen auf dem Band (${bandStops.slice(0, 3).join('; ')})`);
+  if (turkisKehre.length) errs.push(`${turkisKehre.length} sterben auf Türkis in der Kehre (${turkisKehre.slice(0, 3).join('; ')})`);
+  const turkisRuns = boardRuns.Türkis;
+  const tail = deaths.Türkis[3];
+  const tailText = `Türkis vom Brett nach CP3 tot ${tail}/${turkisRuns} (Soll ≤ ${f0(100 * TURKIS_TAIL_DEATHS)} %)`;
+  if (errs.length) r.errors.push(`Design L3: Mensch-Band — ${head}: ${errs.join('; ')}`);
+  else
+    r.info.push(
+      `Design L3: Mensch-Band — ${head}: 0 Pad-Kontakte, 0 Einbrüche, 0 Stau auf dem Band, 0 Tode auf Türkis in der Kehre, ` +
+        `ab CP3 ${cp3Runs}/${cp3Runs} im Ziel (langsamster ${cp3Slow.toFixed(1)} s); ${stats.dead} Tode, ${stats.stau} Stau; vom Brett je Abschnitt ` +
+        `W1/CP1–2/CP2–3/nach CP3: Koralle ${deaths.Koralle.join('/')}, Türkis ${deaths.Türkis.join('/')}; Pad-Abstand der Luftticks ${gaps} u (Soll ≥ ${PAD_AIR_GAP})`,
+    );
+  // Bandfahrer sterben nach CP3 am Rand von R1/Finale: der Respawn trägt sie (oben), aber ein Viertel davon wäre die
+  // sichere Linie nicht mehr.
+  if (turkisRuns > 0 && tail > TURKIS_TAIL_DEATHS * turkisRuns) r.warnings.push(`Design L3: Türkis-Bandfahrer sterben nach CP3 — ${tailText} (Finale-Schürze level3.finSkirt?)`);
+  else r.info.push(`Design L3: ${tailText}`);
+  r.info.push(`Design L3: ${koralleDiagonal(level, ctx, cfg)}`);
+  medalsVsHuman(level, times, r);
+}
+
+/** Koralle-Wähler, die vom Spawn (rechts der Finne) schräg links um die Finne laufen: Winkel zur Blickachse (Grad). */
+export const KORALLE_DIAGONALS = [24, 28, 32] as const;
+
+/**
+ * Koralle-Einstieg (Info, bekannte Falle): wer vom Spawn schräg links um die Finne läuft, landet auf W1 bei Querlage
+ * −260…−300 — W1 trägt links bis 384, die Innenbahn von Viertel 1 nur bis 192, am Drop fällt er ins Leere. Der Hebel
+ * (level3.q1Skirt) ist medaillenwirksam und bleibt dem Medaillen-Neubau vorbehalten (level3.md, Fix-Runde 2).
+ */
+function koralleDiagonal(level: CompiledLevel, ctx: HumanCtx, cfg: MovementConfig): string {
+  const sp = level.spawnPos;
+  const parts: string[] = [];
+  let ok = 0;
+  let n = 0;
+  for (const ang of KORALLE_DIAGONALS) {
+    let k = 0;
+    let m = 0;
+    for (const look of [-2.5, -2, -1, 0, 1]) {
+      for (const seed of [1, 2]) {
+        const h = humanRun(level, ctx, new Vector3(sp.x, sp.y + 1, sp.z), (level.spawnYaw + ang) * DEG, null, { look, lag: 0, sigma: 1, seed }, cfg);
+        m++;
+        if (h.reason === 'ziel') k++;
+      }
+    }
+    parts.push(`${ang}° ${k}/${m}`);
+    ok += k;
+    n += m;
+  }
+  return `Koralle-Einstieg schräg vom Spawn (bekannte Falle, level3.q1Skirt): ${ok}/${n} im Ziel (${parts.join(', ')}; Blick −2.5…+1°)`;
+}
+
+/** Toleranz der Probe gegen die Medaillen-Referenz (4 statt 16 Seeds). */
+export const REFERENCE_TOLERANCE = 0.03;
+
+/**
+ * Grundtechnik gegen die Medaillen: je Spur der beste Blickversatz (Verzug 0, Median der Seeds, ohne Ziel = ∞). Seit
+ * Phase 3 misst build.ts Gold/VELOCITY/Autor aus dem schnelleren von RouteFollower (verliert an jedem Surf-Drop
+ * 150–190 u/s) und `level3Reference` (dieselbe Grundtechnik auf Koralle über 16 Seeds): Koralle mit bestem Blick ≈ Autor.
+ * Warnung, wenn (a) die Probe den Autor um mehr als REFERENCE_TOLERANCE unterbietet (Medaillen veraltet — levels:build)
+ * oder (b) Türkis VELOCITY schafft (VELOCITY/Gold sollen nur innen gehen, sonst lohnt die Gabel nicht).
+ */
+function medalsVsHuman(level: CompiledLevel, times: ReadonlyMap<string, readonly number[]>, r: DesignReport): void {
+  const m = level.def.medals;
+  if (!m) return;
+  const best = (lane: string): { look: number; median: number; under: number; n: number } => {
+    let out = { look: 0, median: Infinity, under: 0, n: 0 };
+    for (const look of HUMAN_LOOKS) {
+      const list = [...(times.get(`${lane}|${look}`) ?? [])].sort((a, b) => a - b);
+      if (!list.length) continue;
+      const med = list[Math.floor((list.length - 1) / 2)];
+      if (med < out.median) out = { look, median: med, under: list.filter((t) => t < m.velocity).length, n: list.length };
+    }
+    return out;
+  };
+  const k = best('Koralle');
+  const t = best('Türkis');
+  const all = [...times.values()].flat();
+  const under = all.filter((x) => x < m.velocity).length;
+  const text =
+    `Grundtechnik (bester Blickversatz, Verzug 0, Median): Koralle ${f2(k.median)} s (${k.look}°), Türkis ${f2(t.median)} s (${t.look}°); ` +
+    `${under}/${all.length} Brett-Läufe ohne Verzug unter VELOCITY ${m.velocity} s (Gold ${m.gold}, Autor ${m.author})`;
+  if (k.median < (1 - REFERENCE_TOLERANCE) * m.author)
+    r.warnings.push(`Design L3: Grundtechnik auf Koralle unterbietet den Autor um > ${f0(100 * REFERENCE_TOLERANCE)} % — Medaillen passen nicht zur Referenz (levels:build, level3Reference) — ${text}`);
+  else if (t.median < m.velocity) r.warnings.push(`Design L3: Grundtechnik auf Türkis schafft VELOCITY — die Gabel lohnt nicht — ${text}`);
+  else r.info.push(`Design L3: ${text}`);
 }
 
 // ---------------------------------------------------------------------------

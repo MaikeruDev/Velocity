@@ -42,7 +42,7 @@ export const UNITS_PER_IMAGE_HEIGHT = 2 * Math.tan((27 * Math.PI) / 180) * 40;
 /** Größte Unterschritte pro Frame (Hänger im Browser): Rest verwerfen. */
 const MAX_SUBSTEPS = 40;
 
-/** Plätze in Rope.sc: Zeit-Rest, Unterschritt-Länge, -Anteil am Teil-Frame, am ganzen Frame (Drive), Ausgabe-Interpolation, Teil-Frame von/bis. */
+/** Plätze in Rope.sc: Zeit-Rest, Unterschritt-Länge, -Anteil am Teil-Frame, am ganzen Frame (Drive), Ausgabe-Interpolation, Teil-Frame von/bis, Gesamtlänge. */
 const R_ACC = 0;
 const R_H = 1;
 const R_FRAC = 2;
@@ -50,11 +50,16 @@ const R_DRIVE = 3;
 const R_ALPHA = 4;
 const R_F0 = 5;
 const R_F1 = 6;
+const R_LEN = 7;
+/** Gespannt (setTaut): Faktor (0 = aus), kleinste und größte Länge. */
+const R_TK = 8;
+const R_TMIN = 9;
+const R_TMAX = 10;
+/** Segmentlänge. */
+const R_SEG = 11;
 
 export class Rope {
   readonly n: number;
-  segLen: number;
-  length: number;
   /** Ausgabe für den Renderer: n × xyz im Handgelenk-Raum. */
   readonly out: Float32Array;
   /** Schwerkraft (Einheiten/s²) und Scheinkraft (Handbeschleunigung), vom Aufrufer gesetzt. */
@@ -84,10 +89,12 @@ export class Rope {
    * Spielminute läuft der Pfad in Chrome in der Zwischenstufe (Maglev), die jedes Double-Feld-Schreiben und
    * jede Schleifen-Variable mit Kommazahl boxte (Rope.advance 145 B/Frame); Typed-Array-Plätze nie.
    */
-  readonly sc = new Float64Array(7);
+  readonly sc = new Float64Array(12);
   private readonly iterations: number;
   private readonly h: number;
   private readonly keep240: number;
+  /** Geschwindigkeits-Erhalt je Unterschritt (h fest) — einmal gerechnet, nicht je Unterschritt Math.pow. */
+  private readonly keepH: number;
   private readonly endW: number;
   /** Gewichte [fest 0, Mitte 0.5, freies Ende endW]. */
   private readonly wts: Float64Array;
@@ -96,8 +103,8 @@ export class Rope {
 
   constructor(o: RopeOptions) {
     this.n = o.segments + 1;
-    this.length = o.length;
-    this.segLen = o.length / o.segments;
+    this.sc[R_LEN] = o.length;
+    this.sc[R_SEG] = o.length / o.segments;
     this.p = new Float64Array(this.n * 3);
     this.q = new Float64Array(this.n * 3);
     this.prevP = new Float64Array(this.n * 3);
@@ -106,15 +113,41 @@ export class Rope {
     // Immer ein fester Unterschritt (> 0): der alte "ein Schritt je Frame"-Pfad wurde nicht mehr benutzt.
     this.h = o.substep !== undefined && o.substep > 0 ? o.substep : 1 / 240;
     this.keep240 = o.damping ?? 0.985;
+    this.keepH = Math.pow(this.keep240, this.h * 240);
     this.endW = o.endWeight ?? 0.15;
     this.wts = new Float64Array([0, 0.5, this.endW]);
   }
 
+  /**
+   * Gesamt- und Segmentlänge — Plätze in sc wie der übrige Frame-Zustand: die gespannte Länge schreibt advance
+   * je Frame, und Double-Felder boxten in Chromes Zwischenstufe (Review-Nachmessung: advance 1.0 KiB/s).
+   */
+  get length(): number {
+    return this.sc[R_LEN];
+  }
+
+  get segLen(): number {
+    return this.sc[R_SEG];
+  }
+
   /** Länge ändern (Jo-Jo wickelt ab/auf) — in place, keine Allokation. */
   setLength(L: number): void {
-    if (!Number.isFinite(L) || L <= 0) return;
-    this.length = L;
-    this.segLen = L / (this.n - 1);
+    // !(L > 0) fängt auch NaN; L − L ≠ 0 fängt +∞ (ohne Number.isFinite, siehe advance).
+    if (!(L > 0) || L - L !== 0) return;
+    this.sc[R_LEN] = L;
+    this.sc[R_SEG] = L / (this.n - 1);
+  }
+
+  /**
+   * Geführtes Ende gespannt halten (Jo-Jo): in jedem Frame Länge = Abstand Anfang–Ende × k, geklemmt auf
+   * [min, max]; k = 0 schaltet ab (Kendama: feste Länge, locker). Einmal setzen — advance() rechnet es: als
+   * eigener kleiner Aufruf je Frame lief die Rechnung im Spiel minutenlang ohne TurboFan und boxte (Review:
+   * 1.4 KiB/s nach 150 s); die Schleifen-Funktion advance ist früh optimiert.
+   */
+  setTaut(k: number, min: number, max: number): void {
+    this.sc[R_TK] = k;
+    this.sc[R_TMIN] = min;
+    this.sc[R_TMAX] = max;
   }
 
   get endX(): number {
@@ -217,23 +250,45 @@ export class Rope {
     const ex = E[0];
     const ey = E[1];
     const ez = E[2];
-    if (!(Number.isFinite(sx) && Number.isFinite(sy) && Number.isFinite(sz) && Number.isFinite(ex) && Number.isFinite(ey) && Number.isFinite(ez))) return;
+    // x − x ist nur für endliche x genau 0 (NaN/±∞ → NaN): Prüfung ohne Builtin-Aufruf — Number.isFinite
+    // auf einer Kommazahl boxte im Spiel (Chrome-Zwischenstufe) jeden Wert, Rope.advance ~100 B/Frame.
+    if (sx - sx + (sy - sy) + (sz - sz) + (ex - ex) + (ey - ey) + (ez - ez) !== 0) return;
+    const tk = this.sc[R_TK];
+    if (tk > 0 && !this.freeEnd) {
+      const dx = ex - sx;
+      const dy = ey - sy;
+      const dz = ez - sz;
+      const L = Math.min(this.sc[R_TMAX], Math.max(this.sc[R_TMIN], Math.sqrt(dx * dx + dy * dy + dz * dz) * tk));
+      this.sc[R_LEN] = L;
+      this.sc[R_SEG] = L / (this.n - 1);
+    }
     if (!this.started) {
       this.reset(sx, sy, sz, ex, ey, ez);
       return;
     }
     // Ohne Verzweigungen um Kommazahlen (`c ? zahl : 0`): im ersten Spielminute läuft der Frame-Pfad in
     // Chrome noch nicht in TurboFan — die Zwischenstufe boxte jeden solchen Zusammenfluss (Rope 155 B/Frame).
-    const dt = Math.min(Math.max(Number.isFinite(dtRaw) ? dtRaw : 0, 0), 0.1);
-    if (dt <= 0) {
+    // NaN bleibt NaN und fällt unten heraus (!(dt > 0)), +∞ wird 0.1.
+    const dt = Math.min(Math.max(dtRaw, 0), 0.1);
+    if (!(dt > 0)) {
+      // Frame ohne Dauer (Rest eines an seinem Ende geteilten Frames): die Ziele gelten ab jetzt — der
+      // nächste Frame interpoliert von hier (sonst zöge er das geführte Ende vom alten Anker her).
+      this.a0[0] = sx;
+      this.a0[1] = sy;
+      this.a0[2] = sz;
+      this.a1[0] = ex;
+      this.a1[1] = ey;
+      this.a1[2] = ez;
       this.sc[R_ALPHA] = 1;
       this.writeOut();
       return;
     }
     // Nicht-endliche Kräfte (NaN aus einer kaputten Eingabe) würden die Kette vergiften.
+    const acc = this.accel;
+    const grv = this.gravity;
     for (let k = 0; k < 3; k++) {
-      if (!Number.isFinite(this.accel[k])) this.accel[k] = 0;
-      if (!Number.isFinite(this.gravity[k])) this.gravity[k] = k === 1 ? -ROPE_G : 0;
+      if (acc[k] - acc[k] !== 0) acc[k] = 0;
+      if (grv[k] - grv[k] !== 0) grv[k] = k === 1 ? -ROPE_G : 0;
     }
     const h = this.h;
     const sc = this.sc;
@@ -309,7 +364,7 @@ export class Rope {
       sc[R_DRIVE] = sc[R_F0] + (sc[R_F1] - sc[R_F0]) * f;
       this.drive.substep(this);
     }
-    const keep = Math.pow(this.keep240, h * 240);
+    const keep = this.keepH;
     const gx = (this.gravity[0] - this.accel[0]) * h * h;
     const gy = (this.gravity[1] - this.accel[1]) * h * h;
     const gz = (this.gravity[2] - this.accel[2]) * h * h;
@@ -343,7 +398,7 @@ export class Rope {
       p[e + 1] = a1[1] + (ey - a1[1]) * f;
       p[e + 2] = a1[2] + (ez - a1[2]) * f;
     }
-    const L = this.segLen;
+    const L = this.sc[R_SEG];
     for (let it = 0; it < this.iterations; it++) {
       // Abwechselnd vorwärts/rückwärts: gleichmäßigere Verteilung bei gespannter Schnur.
       const fwd = (it & 1) === 0;
@@ -407,7 +462,7 @@ export class Rope {
     }
     const W = this.worst;
     W[0] = 0;
-    const L = this.segLen;
+    const L = this.sc[R_SEG];
     for (let i = 0; i < n - 1; i++) {
       const k = i * 3;
       const dx = p[k + 3] - p[k];
@@ -429,13 +484,14 @@ export class Rope {
  */
 export function driveRope(rope: Rope, ax: number, ay: number, tiltDeg: number, motionFx = 1): void {
   const A = VIEW_AXES;
-  const r = Number.isFinite(tiltDeg) ? (tiltDeg * Math.PI) / 180 : 0;
+  // x − x ist nur für endliche x genau 0 (Number.isFinite auf Kommazahlen boxte im Spiel, siehe Rope.advance).
+  const r = tiltDeg - tiltDeg === 0 ? (tiltDeg * Math.PI) / 180 : 0;
   const gs = Math.sin(r);
   const gc = Math.cos(r);
   for (let k = 0; k < 3; k++) rope.gravity[k] = ROPE_G * (-A.up[k] * gc - A.right[k] * gs);
   const m = motionFx > 0 ? (motionFx < 1 ? motionFx : 1) : 0;
-  let x = Number.isFinite(ax) ? ROPE_CARTOON * ax * m : 0;
-  let y = Number.isFinite(ay) ? ROPE_CARTOON * ay * m : 0;
+  let x = ax - ax === 0 ? ROPE_CARTOON * ax * m : 0;
+  let y = ay - ay === 0 ? ROPE_CARTOON * ay * m : 0;
   const l = Math.sqrt(x * x + y * y);
   const cap = ROPE_CAP_G * ROPE_G;
   if (l > cap) {
@@ -457,6 +513,10 @@ const D_FY = 7;
 const D_VX = 8;
 const D_VY = 9;
 const D_M = 10;
+/** Eingang dieses Frames (roh, vor der Prüfung): Anker x/y (Bildhöhen), Neigung (Grad). */
+const D_NX = 11;
+const D_NY = 12;
+const D_NT = 13;
 
 /** Eigenfrequenz des Glättungs-Folgers der Hand-Bewegung (rad/s, kritisch gedämpft). */
 const FOLLOW_OMEGA = 2 * Math.PI * 8;
@@ -478,7 +538,7 @@ export class RopeDrive {
    * Geschwindigkeit), motionFx. In der Chrome-Zwischenstufe boxten Double-Felder und `c ? zahl : 0`
    * im Unterschritt-Takt (~70 B/Frame); Typed-Array-Plätze und verzweigungsfreie Rechnung nicht.
    */
-  private readonly d = new Float64Array(11);
+  private readonly d = new Float64Array(14);
   private primed = false;
 
   /** Neu beginnen (Respawn, Gegenstand gewechselt): der Folger steht an der nächsten Position. */
@@ -486,22 +546,40 @@ export class RopeDrive {
     this.primed = false;
   }
 
-  /** Wie setFrame, Werte aus der Frame-Eingabe (Frame-Pfad der Gegenstände: keine Kommazahl-Argumente). */
+  /**
+   * Wie setFrame, Werte aus der Frame-Eingabe (Frame-Pfad der Gegenstände): direkt in die Plätze, dann
+   * commit() ohne Argumente — berechnete Kommazahlen als Argumente (vorher setFrame(fin(x), …)) und
+   * Number.isFinite boxte V8 je Frame (Review: setFrameFrom 1.5 KiB/s nach 150 s).
+   */
   setFrameFrom(inp: { readonly handX?: number; readonly handY?: number; readonly handTilt?: number }, motionFx: number): void {
-    const x = inp.handX ?? 0;
-    const y = inp.handY ?? 0;
-    const t = inp.handTilt ?? 0;
-    this.setFrame(Number.isFinite(x) ? x : 0, Number.isFinite(y) ? y : 0, Number.isFinite(t) ? t : 0, motionFx);
+    const d = this.d;
+    d[D_NX] = inp.handX ?? 0;
+    d[D_NY] = inp.handY ?? 0;
+    d[D_NT] = inp.handTilt ?? 0;
+    d[D_M] = motionFx > 0 ? (motionFx < 1 ? motionFx : 1) : 0;
+    this.commit();
   }
 
   /** Einmal pro Frame VOR rope.update: Anker in Bildhöhen (x rechts, y unten), Neigung in Grad (+ = gegen den UZS). */
   setFrame(x: number, y: number, tiltDeg: number, motionFx: number): void {
     const d = this.d;
-    // Nicht endlich → letzter Wert: danach ist im Unterschritt-Takt alles endlich (keine Prüfung dort).
-    const X = Number.isFinite(x) ? x * UNITS_PER_IMAGE_HEIGHT : d[D_X1];
-    const Y = Number.isFinite(y) ? -y * UNITS_PER_IMAGE_HEIGHT : d[D_Y1];
-    const T = Number.isFinite(tiltDeg) ? tiltDeg : d[D_T1];
+    d[D_NX] = x;
+    d[D_NY] = y;
+    d[D_NT] = tiltDeg;
     d[D_M] = motionFx > 0 ? (motionFx < 1 ? motionFx : 1) : 0;
+    this.commit();
+  }
+
+  /** Eingang (D_N*) übernehmen. Nicht endlich → letzter Wert: danach ist im Unterschritt-Takt alles endlich. */
+  private commit(): void {
+    const d = this.d;
+    const x = d[D_NX];
+    const y = d[D_NY];
+    const t = d[D_NT];
+    // x − x ist nur für endliche x genau 0 (NaN/±∞ → NaN) — ohne Builtin-Aufruf.
+    const X = x - x === 0 ? x * UNITS_PER_IMAGE_HEIGHT : d[D_X1];
+    const Y = y - y === 0 ? -y * UNITS_PER_IMAGE_HEIGHT : d[D_Y1];
+    const T = t - t === 0 ? t : d[D_T1];
     if (!this.primed) {
       d[D_X0] = X;
       d[D_X1] = X;

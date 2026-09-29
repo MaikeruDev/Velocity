@@ -20,14 +20,20 @@ import type { V3 } from './view';
  * - Ziel: photo — Handy nach rechts oben (erlaubt, der Timer steht), quer, Sucher, AUSLÖSER nach
  *   SHUTTER_AT s: Display blitzt, `shutterCount` zählt hoch → ViewHand.takeShutter() → Game macht das
  *   Selfie (RendererApi.selfie, Phase 3). Vor dem Ergebnis (Game: 1.1 s), damit man den Blitz sieht.
+ *   Das Ziel bricht Laufendes ab (auch gimbal, PropTricks) — das Foto kommt bei jedem Ziel. Bei motionFx 0
+ *   bleibt das Handy stehen, Anzeige und Auslöser laufen trotzdem (das Selfie ist eine Freischaltung).
+ *   Kommt das Ergebnis früher (Enter, Tod nach dem Ziel): shootNow() löst sofort aus.
  */
 
 export const PHONE_TRICKS = ['none', 'scroll', 'tap', 'flipCatch', 'spinToss', 'buzz', 'photo', 'gimbal'] as const;
 export type PhoneTrick = Exclude<(typeof PHONE_TRICKS)[number], 'none'>;
 const PHONE_NAMES: readonly string[] = PHONE_TRICKS.filter((t) => t !== 'none');
 
-/** Tricks je Tempo-Stufe bei Sprüngen (Tests prüfen genau diese Zuordnung). */
-export const PHONE_TIER_TRICKS: readonly (readonly PhoneTrick[])[] = [[], ['tap'], ['flipCatch', 'tap'], ['spinToss', 'flipCatch']];
+/**
+ * Tricks je Tempo-Stufe bei Sprüngen (Tests prüfen genau diese Zuordnung). Lauf tap / scroll: mit tap allein machte
+ * er bei der 1.5°-Hand 54 % der Starts (Review Phase 2).
+ */
+export const PHONE_TIER_TRICKS: readonly (readonly PhoneTrick[])[] = [[], ['tap', 'scroll'], ['flipCatch', 'tap'], ['spinToss', 'flipCatch']];
 
 /** Kippung der Ruhelage um die Blickachse — quer = π/2 insgesamt. */
 const HOLD_CAM = 0.3;
@@ -55,6 +61,8 @@ const FLASH_T = 0.15;
 const SPEEDO_ON = 500;
 const SPEEDO_OFF = 440;
 const SURF_FROM = 500;
+/** Einlage im Gimbal: Schwenk zur Seite und zurück (rad). */
+const BEAT_PAN = 0.55;
 const SURF_MIN = 0.5;
 const TAU = Math.PI * 2;
 const DEG = Math.PI / 180;
@@ -77,6 +85,12 @@ export class PhoneTricks extends PropTricks<PhoneTrick> {
   private flashAge = 9;
   private shot = false;
   private surfOut = -1;
+  /** Ziel-Foto ohne Bewegung (motionFx 0): Alter wie eine Trick-Zeit (erster Frame 0), −1 = keins. */
+  private stillAge = -1;
+  private stillFresh = false;
+  private stillShot = false;
+  /** Auslöser schon vorgezogen (shootNow), bevor das Ziel-Foto starten konnte: es löst dann nicht noch einmal aus. */
+  private shotEarly = false;
   /** Gimbal-Anteil dieses Frames (afterPose gleicht damit die Hand-Neigung aus). */
   private gimbal = 0;
   private speed = 0;
@@ -94,13 +108,16 @@ export class PhoneTricks extends PropTricks<PhoneTrick> {
     this.autoSpeedo = false;
     this.splitUntil = -1;
     this.flashAge = 9;
+    this.stillAge = -1;
+    this.shotEarly = false;
     this.writeRest(this.out);
   }
 
   protected override start(id: PhoneTrick): void {
     super.start(id);
     this.surfOut = -1;
-    this.shot = false;
+    this.shot = id === 'photo' && this.shotEarly;
+    this.shotEarly = false;
     this.swipeBase = -1;
   }
 
@@ -154,16 +171,56 @@ export class PhoneTricks extends PropTricks<PhoneTrick> {
     this.start('photo');
   }
 
+  /**
+   * Ergebnis erscheint vor dem Auslöser (Enter/Esc im Ziel-Ausrollen, Tod nach dem Ziel): anstehendes
+   * Ziel-Foto jetzt auslösen. true = ausgelöst (ViewHand.takeShutterNow).
+   */
+  shootNow(): boolean {
+    // Ziel kam mitten in einem Trick, das Foto startet erst am Ende des nächsten Frames (PropTricks).
+    if (this.finishPending && !this.shotEarly) {
+      this.shotEarly = true;
+      this.fire(0);
+      return true;
+    }
+    if (this.trick === 'photo' && !this.shot) {
+      this.shot = true;
+      this.fire(0);
+      return true;
+    }
+    if (this.stillAge >= 0 && !this.stillShot) {
+      this.stillShot = true;
+      this.fire(0);
+      return true;
+    }
+    return false;
+  }
+
+  /** Auslöser: Zähler für ViewHand.takeShutter, Blitz mit Alter `age` (s seit dem Auslösen). */
+  private fire(age: number): void {
+    this.shutterCount++;
+    this.flashAge = age;
+  }
+
   /** Split zeigen auch mitten im Trick; Vibration nur ohne laufenden Trick. */
   override onEvent(e: GameEvent): void {
     if (e.type === 'checkpoint' && this.motionFx > 0 && e.split !== null) {
       this.split = e.split;
       this.splitUntil = this.now + SPLIT_SHOW;
     }
+    if (e.type === 'finish' && this.motionFx <= 0) {
+      this.stillAge = 0;
+      this.stillFresh = true;
+      this.stillShot = false;
+    }
     super.onEvent(e);
   }
 
   protected override onCheckpoint(_split: number | null): void {
+    this.start('buzz');
+  }
+
+  /** Training (KI9): Stufe und Lektion fertig = vibrieren (ohne Split) — in der Lektion gibt es kein Selfie. */
+  protected override onLesson(): void {
     this.start('buzz');
   }
 
@@ -176,7 +233,7 @@ export class PhoneTricks extends PropTricks<PhoneTrick> {
   }
 
   override update(dtRaw: number, inp: PropFrameInput): void {
-    const dt = Number.isFinite(dtRaw) ? clamp(dtRaw, 0, 0.1) : 0;
+    const dt = dtRaw - dtRaw === 0 ? clamp(dtRaw, 0, 0.1) : 0;
     this.speed = Math.max(0, fin(inp.speed));
     if (dt > 0 && this.motionFx > 0) {
       // Feed scrollt mit dem Tempo (Texturlängen/s), Tacho schaltet mit Hysterese.
@@ -186,16 +243,31 @@ export class PhoneTricks extends PropTricks<PhoneTrick> {
     }
     if (dt > 0) this.flashAge += dt;
     super.update(dtRaw, inp);
-    if (dt > 0) this.writeDisplay();
+    if (dt > 0) {
+      if (this.stillAge >= 0) this.stepStill(dt);
+      this.writeDisplay();
+    }
+  }
+
+  /** Ziel-Foto bei motionFx 0: Kamera-Anzeige, Auslöser nach SHUTTER_AT, Foto bis PHOTO_T. */
+  private stepStill(dt: number): void {
+    if (this.stillFresh) this.stillFresh = false;
+    else this.stillAge += dt;
+    if (!this.stillShot && this.stillAge >= SHUTTER_AT) {
+      this.stillShot = true;
+      this.fire(this.stillAge - SHUTTER_AT);
+    }
+    if (this.stillAge >= PHOTO_T) this.stillAge = -1;
   }
 
   private writeDisplay(): void {
     const p = this.out.param;
     const trick = this.trick;
-    if (trick === 'photo' && this.shot) {
+    const still = this.stillAge >= 0;
+    if ((trick === 'photo' && this.shot) || (still && this.stillShot)) {
       p[P.mode] = M.photo;
       p[P.value] = 0;
-    } else if (trick === 'photo' || trick === 'gimbal') {
+    } else if (trick === 'photo' || trick === 'gimbal' || still) {
       p[P.mode] = M.camera;
       p[P.value] = 0;
     } else if (this.now < this.splitUntil) {
@@ -329,15 +401,17 @@ export class PhoneTricks extends PropTricks<PhoneTrick> {
     this.rotateView(o, 0, 1, 0, -0.45 * e);
     if (t >= SHUTTER_AT && !this.shot) {
       this.shot = true;
-      this.shutterCount++;
-      this.flashAge = t - SHUTTER_AT;
+      this.fire(t - SHUTTER_AT);
     }
     if (this.mark(0, SHUTTER_AT, t)) this.kick(o, 0.08, -0.2);
     if (t > SHUTTER_AT - 0.1 && t < SHUTTER_AT + 0.12) o.pose = POSE.phoneTap;
     return false;
   }
 
-  /** Surf: quer und waagerecht (Gimbal) — filmt die Fahrt; endet mit dem Surf. */
+  /**
+   * Surf: quer und waagerecht (Gimbal) — filmt die Fahrt; endet mit dem Surf. Einlage (PropTricks.beatU): die
+   * Kamera schwenkt einmal zur Seite und zurück (filmt die Rampe), die Hand hebt sie dabei etwas an.
+   */
   private gimbalState(t: number, inp: PropFrameInput, o: PropOut): boolean {
     if (this.surfOut < 0 && !inp.surfing && t >= SURF_MIN) this.surfOut = t;
     const inE = smooth(t / 0.3);
@@ -347,6 +421,11 @@ export class PhoneTricks extends PropTricks<PhoneTrick> {
     this.offsetView(o, 0.5 * e, 1.5 * e, 1.5 * e);
     this.rotateView(o, 0, 0, 1, (Math.PI / 2 - HOLD_CAM) * e);
     this.rotateView(o, 0, 1, 0, -0.45 * e);
+    const u = this.beatU;
+    if (u < 1) {
+      this.rotateView(o, 0, 1, 0, BEAT_PAN * Math.sin(Math.PI * 2 * u) * e);
+      this.offsetView(o, 0, 1.2 * bell(u) * e, 0.6 * bell(u) * e);
+    }
     return this.surfOut >= 0 && t >= this.surfOut + 0.3;
   }
 

@@ -159,7 +159,9 @@ Der Cap hängt vom Horizontal-Tempo vor dem Schub ab (Plan 003, Plan 007 A5): bi
   Kein Impuls von Wänden, höchstens 5 u Hub, nur auf begehbare Oberkanten → **kein Walljump**.
   Reichweite ohne Ducken aus dem Stand/Lauf 57 + 5 = 62 u, **aus der Auto-Hop-Landung bis 63.5 u**: die
   Landung schwebt bis 1.5 u über dem Boden (2-u-Sonde), der nächste Sprung startet dort. Mit Crouch-Jump
-  75 + 5 = 80 u (gemessen), aus der Auto-Hop-Landung rechnerisch ~81.5 u (`npm run sim -- --section arcade`).
+  **aus dem Lauf gemessen 75 u** (T6-Raster, 320 u/s: 72 u ab 20–140 u Absprungabstand, **76 u nie** — der
+  Lip-Step hilft nur knapp unter dem Scheitel); in günstiger Phase mit Assist bis 80 u, aus der Auto-Hop-
+  Landung rechnerisch ~81.5 u (`npm run sim -- --section arcade`), am Hang bergab mehr.
 - **Luftlenkung mit W** (Plan 007 A8, `airControl` 1.6 → 0.8 rad/s zwischen 350 und 700 u/s,
   Einstellung "Luftlenkung mit W", Default an, CS2 aus): nur W, kein A/D, nicht an Surf-Flanken und
   erst 0.5 s nach dem letzten steilen Kontakt, Blick höchstens 90° neben der Flugrichtung. v_h dreht
@@ -179,7 +181,17 @@ Rutschen und Luftlenkung bitgleich (nur Cap 40 hebt ihn, s. §2).
 
 **Level-Regeln aus dem Arcade-Pass:**
 - **Crouch-Kanten ≥ 66 u** (63.5 aus der Auto-Hop-Landung + 2 Reserve). Darunter kommt man ohne Ducken
-  hoch; der Validator misst die Reichweite ("ohne Ducken 0 Erfolge", Warnung unter 2 u Reserve).
+  hoch; der Validator misst die Reichweite ("ohne Ducken 0 Erfolge", Warnung unter 2 u Reserve). Kanten, die
+  MIT Crouch-Jump sicher gehen sollen, ≤ 72 u (T6-Bonus). Von einer flachen Terrasse mit gehaltener
+  Leertaste prallen 25–38 % der Anläufe ab (Hop-Phase, Lead: bleibt so) — Absprungmarke **zweistufig**:
+  durchgehendes Band, wo ein Crouch-Jump bei jedem realen Tempo sauber ist (L4: Hull-Front 32–104 u ab 250 u/s),
+  Streifen davor für "mit Tempo" (112–208 u ab 450 u/s); die Probe beginnt beim langsamsten realen Tempo
+  (250 u/s: Wiederholer nach Anprall, Neulinge, Respawn), Kosten per Gabelung messen (fallen.md #130, #164, #165).
+- **Banden, die einen Tod verhindern, ≥ 128 u** — oder sichtbar niedrig und darüber ein unsichtbarer Clip
+  (L2-Ring, L4-Wendel/Steg: bis 256 u über der Bahn, Dach nach innen geneigt, n.y < 0.7). 80 u reichen seit dem
+  Kanten-Assist nicht mehr: Crouch-Hop + Assist bis 80 u, am Hang trifft die AABB-Hull eine Bande mit der
+  Talecke (−6 u), bergab fehlt die Hanghöhe (fallen.md #133). Probe: Flucht nach außen, 0–80° zur Wand,
+  Hop/Crouch-Hop/Ducken gehalten, bergauf/bergab — mit Gegenprobe am alten Stand.
 - **Treppen** mit Setzstufe 32–40 u: das Gedächtnis gibt nach dem Anprall Tempo zurück, das in die nächste
   Setzstufe trägt (Doppel-Anprall, systematisch +0.2 bis +1.0 s für den perfekten Bot). Auftritt ≥ Hop-Weite
   beim Zieltempo oder Stufen ≤ 18 u (laufbar). 24er und 48er Setzstufen gewinnen mit dem Assist.

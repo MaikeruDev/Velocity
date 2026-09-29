@@ -5,7 +5,7 @@
  *   uw-<szene>.png         3840×1080 (32:9) Vollbild: Hand im 16:9-Safe-Frame
  *   hud-<w>x<h>.png        Vollbild 1920×1080 / 2560×1080 / 3840×1080 mit Dose
  *   props-<item>.png       Kontaktblatt: Tricks je Gegenstand in mehreren Phasen (festgehalten)
- *   live-<item>.png        Kontaktblatt: echte Bot-Läufe, Tricks nach Tempo
+ *   live-<item>.png        Kontaktblatt: echte Bot-Läufe, Tricks nach Tempo, dazu zwei Kacheln Ziel-Reaktion ("ZIEL …")
  *   compare.png            Referenzbilder (hand screens/) NEBEN eigenen Ausschnitten
  *   menu-*.png, finish-unlock.png
  *   skins.png              Plan 007: alle 6 Hand-Skins × Posen/Griffe aller Gegenstände (dev/viewmodel.html, Spielgröße, Lupe)
@@ -368,12 +368,23 @@ async function liveSheet(item) {
     const bucket = [0, 0, 0, 0];
     let got = 0;
     const t0 = Date.now();
-    while (got < 9 && Date.now() - t0 < 70000) {
+    // Bis ins Ziel fahren (auch nach 9 Kacheln): die Ziel-Reaktion gehört ins Blatt (Review Phase 2).
+    while (Date.now() - t0 < 90000) {
       const s = await page.evaluate(() => ({ hand: window.__vel.hand(), st: window.__vel.state() }));
-      // Im Ziel/Ergebnis ist die Hand absichtlich aus — dort nicht knipsen.
-      if (s.st.menu === 'finish' || s.st.gameState === 'finished') break;
+      // Im Ergebnis ist die Hand aus; im Ausrollen davor (bis 1.1 s nach dem Ziel) nicht.
+      if (s.st.menu === 'finish') break;
+      if (s.st.gameState === 'finished') {
+        await page.waitForTimeout(200);
+        for (const wait of [0, 350]) {
+          await page.waitForTimeout(wait);
+          const z = await page.evaluate(() => ({ hand: window.__vel.hand(), st: window.__vel.state() }));
+          if (z.st.menu === 'finish') break;
+          tiles.push(await tile(page, vw, vh, `${level} ZIEL ${z.hand.trick}`, `t ${z.hand.trickTime.toFixed(2)} s`));
+        }
+        break;
+      }
       const b = s.st.speed >= 800 || s.st.surfing ? 3 : s.st.speed >= 500 ? 2 : 1;
-      if (s.hand.trick !== 'none' && s.hand.trickTime > 0.15 && bucket[b] < 3) {
+      if (got < 9 && s.hand.trick !== 'none' && s.hand.trickTime > 0.15 && bucket[b] < 3) {
         bucket[b]++;
         tiles.push(await tile(page, vw, vh, `${level} ${s.hand.trick}`, `${Math.round(s.st.speed)} u/s${s.st.surfing ? ' SURF' : ''}`));
         got++;
@@ -510,9 +521,84 @@ async function finishShot() {
   await page.evaluate(() => window.__vel.useBot('route', { sync: 1, seed: 1 }));
   await page.waitForFunction(() => window.__vel.state().menu === 'finish', null, { timeout: 90000 });
   await page.waitForTimeout(1500);
-  const st = await page.evaluate(() => ({ finish: window.__vel.state().finish, unlocks: window.__vel.unlocks() }));
+  const st = await page.evaluate(() => ({ finish: window.__vel.state().finish, photo: window.__vel.state().photo, unlocks: window.__vel.unlocks() }));
   console.log(`finish: ${st.finish?.time} s, unlocked ${JSON.stringify(st.finish?.unlocked)}, store ${st.unlocks}`);
   await page.screenshot({ path: `${OUT}/finish-unlock.png` });
+  // Plan 007 I3: ohne Handy kein Foto (kein Polaroid im Ergebnis).
+  const pol = await page.locator('.vel-polaroid').count();
+  check(st.photo === null && pol === 0, `finish ohne Handy: kein Foto (photo ${JSON.stringify(st.photo)}, Polaroids ${pol})`);
+  // Vergleichswert für das Polaroid: Überlauf des Ergebnisses ohne Foto je Fenstergröße (nur Info).
+  const base = [];
+  for (const [w, h] of [[1920, 1080], [1366, 768], [1280, 720]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.waitForTimeout(250);
+    base.push(`${w}×${h} ${await page.evaluate(() => {
+      const scr = document.querySelector('.vel-menu:not([hidden]) .vel-screen');
+      return scr ? scr.scrollHeight - scr.clientHeight : -1;
+    })} px`);
+  }
+  console.log(`finish ohne Handy, Überlauf: ${base.join(', ')}`);
+  await page.context().close();
+  await finishPhoneShot();
+}
+
+/**
+ * Plan 007 I3: Ziel mit Handy → Selfie (96×54) im Ergebnis als Polaroid mit Zeit und Medaille, dazu der
+ * HUD-Stempel "FOTO" im Ziel-Ausrollen. finish-phone-hud.png (Stempel), finish-phone.png (Ergebnis).
+ */
+async function finishPhoneShot() {
+  const page = await newPage({ width: 1920, height: 1080 }, withItem('phone'));
+  await page.evaluate(() => window.__vel.start('level2', { lockless: true }));
+  await page.waitForTimeout(500);
+  await page.evaluate(() => window.__vel.useBot('route', { sync: 1, seed: 1 }));
+  await page.waitForFunction(() => window.__vel.state().gameState === 'finished', null, { timeout: 90000 });
+  // Auslöser 0.76 s nach dem Ziel, Ergebnis nach 1.1 s: dazwischen steht der Stempel.
+  await page.waitForFunction(() => window.__vel.state().photo !== null || window.__vel.state().menu === 'finish', null, { timeout: 5000 });
+  // Der Stempel erscheint im Frame NACH dem Auslöser (Selfie läuft nach dem Bild des Frames).
+  await page.waitForFunction(() => window.__vel.hudLayout().rects.photo[2] > 0 || window.__vel.state().menu === 'finish', null, { timeout: 2000 }).catch(() => undefined);
+  const hud = await page.evaluate(() => ({ menu: window.__vel.state().menu, photoRect: window.__vel.hudLayout().rects.photo, trick: window.__vel.hand().trick }));
+  await page.screenshot({ path: `${OUT}/finish-phone-hud.png` });
+  check(hud.menu !== 'finish' && hud.photoRect[2] > 0, `finish mit Handy: HUD-Stempel FOTO im Ausrollen (Rechteck ${JSON.stringify(hud.photoRect)}, Menü ${hud.menu}, Trick ${hud.trick})`);
+  await page.waitForFunction(() => window.__vel.state().menu === 'finish', null, { timeout: 10000 });
+  await page.waitForTimeout(800);
+  const st = await page.evaluate(() => {
+    const scr = document.querySelector('.vel-menu:not([hidden]) .vel-screen');
+    const img = document.querySelector('.vel-polaroid-img');
+    const r = img?.getBoundingClientRect();
+    return {
+      photo: window.__vel.state().photo,
+      finish: window.__vel.state().finish,
+      caption: document.querySelector('.vel-polaroid-cap')?.textContent ?? null,
+      img: r ? { w: r.width, h: r.height, top: r.top, bottom: r.bottom } : null,
+      scroll: scr ? scr.scrollHeight - scr.clientHeight : -1,
+    };
+  });
+  await page.screenshot({ path: `${OUT}/finish-phone.png` });
+  console.log(`finish-phone: ${st.finish?.time} s, Foto ${JSON.stringify(st.photo)}, Polaroid ${JSON.stringify(st.img)}, Beschriftung "${st.caption}", Überlauf ${st.scroll}`);
+  check(st.photo !== null && st.photo.w === 96 && st.photo.h === 54 && st.photo.mean > 1, `finish mit Handy: Selfie 96×54, nicht leer (${JSON.stringify(st.photo)})`);
+  check(st.img !== null && st.img.w === 288 && st.img.h === 162 && st.img.bottom <= 1080, `finish mit Handy: Polaroid ×3 im Bild (${JSON.stringify(st.img)})`);
+  check(typeof st.caption === 'string' && st.caption.includes(':'), `finish mit Handy: Polaroid beschriftet mit Zeit + Medaille ("${st.caption}")`);
+  check(st.scroll <= 1, `finish mit Handy: Ergebnis ohne Scrollen bei 1920×1080 (Überlauf ${st.scroll})`);
+  // Zeit und Polaroid dürfen sich nicht überdecken — auch in kleinen Fenstern (Zeit dort 64 px).
+  for (const [w, h] of [[1920, 1080], [1366, 768], [1280, 720]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.waitForTimeout(250);
+    const o = await page.evaluate(() => {
+      const t = document.querySelector('.vel-finish-time');
+      const p = document.querySelector('.vel-polaroid');
+      const scr = document.querySelector('.vel-menu:not([hidden]) .vel-screen');
+      if (!t || !p) return null;
+      // Breite des Textes selbst (nicht der Box): über einen Range messen.
+      const range = document.createRange();
+      range.selectNodeContents(t);
+      const tr = range.getBoundingClientRect();
+      const pr = p.getBoundingClientRect();
+      return { timeRight: Math.round(tr.right), polLeft: Math.round(pr.left), scroll: scr ? scr.scrollHeight - scr.clientHeight : -1 };
+    });
+    if (w === 1280) await page.screenshot({ path: `${OUT}/finish-phone-1280x720.png` });
+    console.log(`finish mit Handy ${w}×${h}: Überlauf ${o?.scroll} px`);
+    check(o !== null && o.timeRight <= o.polLeft, `finish mit Handy ${w}×${h}: Zeit endet vor dem Polaroid (${JSON.stringify(o)})`);
+  }
   await page.context().close();
 }
 
@@ -618,6 +704,8 @@ async function snapshotShot() {
   if (s.a) writeFileSync(`${OUT}/snapshot.png`, Buffer.from(s.a.dataUrl.split(',')[1], 'base64'));
   const st = await page.evaluate(() => window.__vel.renderStats());
   console.log(`renderStats im Spiel (Gold + Spinner): ${st?.viewModelCalls} Draw Calls, ${st?.viewModelTriangles} Dreiecke`);
+  // 0 Draw Calls = Hand fehlt (z. B. Level startet nicht) — das Foto allein fiele darauf nicht herein.
+  check((st?.viewModelCalls ?? 0) > 0 && (st?.viewModelCalls ?? 0) <= 50, `snapshot: Hand im Spiel gezeichnet (${st?.viewModelCalls} Draw Calls, 1..50)`);
   await page.context().close();
 }
 
@@ -701,12 +789,13 @@ async function selfieShots() {
       continue;
     }
     writeFileSync(`${OUT}/selfie-${glove}.png`, Buffer.from(r.dataUrl.split(',')[1], 'base64'));
-    const next = r.frames[1];
+    // Frame mit dem Selfie (frames[0]: rAF des Auslösers → nächster) und der danach — beide < 25 ms.
+    const next = Math.max(r.frames[0], r.frames[1]);
     console.log(`selfie ${glove}: ${r.w}×${r.h}, Varianz ${r.variance.toFixed(1)}, Mittel ${r.mean.toFixed(1)}, ${r.ms.toFixed(2)} ms, Welt-Durchgänge ${r.worldPasses} (render-Aufrufe ${r.allPasses}, Viewmodel ${r.stats.viewModelPasses}), Frames danach ${r.frames.map((f) => f.toFixed(1)).join('/')} ms`);
     results.push(r);
     check(r.w === 96 && r.h === 54 && r.variance > 0, `selfie ${glove}: 96×54, nicht leer (Varianz ${r.variance.toFixed(1)})`);
     check(r.worldPasses === 1 && r.stats.viewModelPasses === 1, `selfie ${glove}: genau 1 Welt- und 1 Viewmodel-Durchgang (${r.worldPasses}/${r.stats.viewModelPasses})`);
-    check(next < 25, `selfie ${glove}: Frame danach ${next.toFixed(1)} ms (< 25)`);
+    check(next < 25, `selfie ${glove}: Frames danach höchstens ${next.toFixed(1)} ms (< 25)`);
   }
 }
 

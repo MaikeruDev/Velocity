@@ -100,24 +100,8 @@ export const UNLOCKS: readonly UnlockDef[] = [
   { id: 'glove.cat', name: 'Katzenpfote', requires: allLevels('velocity') },
 ];
 
-/**
- * Freischaltungen, deren Kosmetik es im Spiel noch nicht gibt (Plan 007, bis Phase 3): die
- * Ableitung (sync, grantEarnedFor) vergibt sie nicht von selbst — sonst bekäme ein Spieler mit
- * L1-Silber ein Jo-Jo angelegt, das noch niemand zeichnet. Admin/Debug (set, unlockAll) können sie
- * setzen, deriveUnlocks meldet sie normal. Phase 3 (Strang integration) leert die Menge.
- */
-export const PENDING_UNLOCKS: ReadonlySet<UnlockId> = new Set<UnlockId>([
-  'item.spinner',
-  'glove.robot',
-  'item.coin',
-  'item.yoyo',
-  'item.lighter',
-  'item.kendama',
-  'item.phone',
-  'glove.skeleton',
-  'glove.gold',
-  'glove.cat',
-]);
+// Plan 007 Phase 3: PENDING_UNLOCKS (zurückgehaltene, noch nicht gebaute Kosmetik) ist entfernt —
+// alle 14 gibt es im Spiel, die Ableitung vergibt jede.
 
 export const UNLOCKS_KEY = 'velocity.unlocks.v1';
 const VERSION = 3;
@@ -339,7 +323,7 @@ export class UnlockStore {
   sync(levels: readonly MedalSource[], best: (levelId: string) => number | null, training?: TrainingProgressView): UnlockId[] {
     const fresh: UnlockId[] = [];
     for (const id of deriveUnlocks(levels, best, training)) {
-      if (!PENDING_UNLOCKS.has(id) && !this.locked.has(id) && this.grant(id)) fresh.push(id);
+      if (!this.locked.has(id) && this.grant(id)) fresh.push(id);
     }
     return fresh;
   }
@@ -353,7 +337,7 @@ export class UnlockStore {
     const fresh: UnlockId[] = [];
     for (const id of deriveUnlocks(levels, best)) {
       // Nur Medaillen-Anforderungen hängen an einem Level; Training setzt das Admin-Menü getrennt.
-      if (PENDING_UNLOCKS.has(id) || !unlockDef(id).requires.some((r) => r.kind === 'medal' && r.levelId === levelId)) continue;
+      if (!unlockDef(id).requires.some((r) => r.kind === 'medal' && r.levelId === levelId)) continue;
       this.locked.delete(id);
       if (this.grant(id)) fresh.push(id);
     }

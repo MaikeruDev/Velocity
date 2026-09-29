@@ -15,40 +15,6 @@ import { VM_JOINT, VM_RIG } from '../../render/types';
 export type Vec3Out = Float32Array | Float64Array | [number, number, number];
 
 /**
- * Arbeits-Punkt (x, y, z) für thumbPoint (nur Ladezeit). Typed Array statt Modul-`let`: jede Zuweisung einer
- * Kommazahl an eine Modul-Variable legt in V8 eine neue HeapNumber an (alloc-probe mit Jo-Jo: 16 KiB/s).
- */
-const P = new Float64Array(3);
-
-/** P ← Rx(a)·P */
-function rotX(a: number): void {
-  const c = Math.cos(a);
-  const s = Math.sin(a);
-  const y = P[1] * c - P[2] * s;
-  const z = P[1] * s + P[2] * c;
-  P[1] = y;
-  P[2] = z;
-}
-
-function rotY(a: number): void {
-  const c = Math.cos(a);
-  const s = Math.sin(a);
-  const x = P[0] * c + P[2] * s;
-  const z = -P[0] * s + P[2] * c;
-  P[0] = x;
-  P[2] = z;
-}
-
-function rotZ(a: number): void {
-  const c = Math.cos(a);
-  const s = Math.sin(a);
-  const x = P[0] * c - P[1] * s;
-  const y = P[0] * s + P[1] * c;
-  P[0] = x;
-  P[1] = y;
-}
-
-/**
  * Punkt (lx, ly, lz) im Glied `seg` (0 Grund-, 1 Mittel-, 2 Endglied) des Fingers `finger`
  * (0 Zeige- … 3 kleiner Finger) → Handgelenk-Raum in `out`.
  */
@@ -91,27 +57,46 @@ export function fingerPoint(joints: ArrayLike<number>, finger: number, seg: numb
   return out;
 }
 
-/** Punkt im Daumenglied `seg` (0 Sattel/Grund-, 1 Mittel-, 2 Endglied) → Handgelenk-Raum. */
+/**
+ * Punkt im Daumenglied `seg` (0 Sattel/Grund-, 1 Mittel-, 2 Endglied) → Handgelenk-Raum. Wie fingerPoint
+ * verzweigungsfrei in lokalen Variablen: die Hilfsdrehungen rotX/Y/Z mit Kommazahl-Argumenten boxten im
+ * Spiel (Chrome-Zwischenstufe) 3–4 KiB/s bei der Jo-Jo-Wiege.
+ */
 export function thumbPoint(joints: ArrayLike<number>, seg: number, lx: number, ly: number, lz: number, out: Vec3Out): Vec3Out {
   const t = VM_RIG.thumb;
-  P[0] = lx;
-  P[1] = ly;
-  P[2] = lz;
-  if (seg >= 2) {
-    rotX(-joints[VM_JOINT.thumbIp]);
-    P[1] += t.len[1];
-  }
-  if (seg >= 1) {
-    rotX(-joints[VM_JOINT.thumbMcp]);
-    P[1] += t.len[0];
-  }
+  const g2 = seg >= 2 ? 1 : 0;
+  const g1 = seg >= 1 ? 1 : 0;
+  // Endglied: Rx(−ip), dann + len[1] entlang y (nur ab seg 2).
+  let c = Math.cos(-joints[VM_JOINT.thumbIp] * g2);
+  let s = Math.sin(-joints[VM_JOINT.thumbIp] * g2);
+  let x = lx;
+  let y = ly * c - lz * s + t.len[1] * g2;
+  let z = ly * s + lz * c;
+  // Mittelglied: Rx(−mcp), + len[0] (ab seg 1).
+  c = Math.cos(-joints[VM_JOINT.thumbMcp] * g1);
+  s = Math.sin(-joints[VM_JOINT.thumbMcp] * g1);
+  let u = y * c - z * s + t.len[0] * g1;
+  z = y * s + z * c;
+  y = u;
   // Wurzel: Euler ZXY (x = baseX − Opposition, y = baseY, z = baseZ + Abspreizen) → Rz·Rx·Ry.
-  rotY(t.baseY);
-  rotX(t.baseX - joints[VM_JOINT.thumbOpp]);
-  rotZ(t.baseZ + joints[VM_JOINT.thumbAbd]);
-  out[0] = t.x + P[0];
-  out[1] = t.y + P[1];
-  out[2] = t.z + P[2];
+  c = Math.cos(t.baseY);
+  s = Math.sin(t.baseY);
+  u = x * c + z * s;
+  z = -x * s + z * c;
+  x = u;
+  c = Math.cos(t.baseX - joints[VM_JOINT.thumbOpp]);
+  s = Math.sin(t.baseX - joints[VM_JOINT.thumbOpp]);
+  u = y * c - z * s;
+  z = y * s + z * c;
+  y = u;
+  c = Math.cos(t.baseZ + joints[VM_JOINT.thumbAbd]);
+  s = Math.sin(t.baseZ + joints[VM_JOINT.thumbAbd]);
+  u = x * c - y * s;
+  y = x * s + y * c;
+  x = u;
+  out[0] = t.x + x;
+  out[1] = t.y + y;
+  out[2] = t.z + z;
   return out;
 }
 

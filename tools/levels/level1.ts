@@ -6,18 +6,33 @@
  * 180°-Kurve, Rückweg nach Süden bergab ins Ziel. Absicht, Speeds und
  * Draufsicht: .docs/research/level-design.md.
  *
- * Hop-Rhythmen kommen aus der Sim (physics.SpeedCurve). Hop-Reihe und Kehre
- * liegen im Rhythmus des PERFEKTEN Strafers (Plan 007, l1l2): er landet jedes
- * Mal mitten auf der Plattform, Langsamere früher auf der (tiefen) Plattform;
- * alle Lücken bleiben mit Sprint von der Kante machbar. Zwei Stellen misst der
+ * Hop-Rhythmen kommen aus der Sim (physics.SpeedCurve). Hop-Reihe, Kehre und
+ * Slalom liegen im Rhythmus des PERFEKTEN Strafers (Plan 007, l1l2): er landet
+ * jedes Mal mitten auf der Plattform, Langsamere früher auf der (tiefen) Plattform;
+ * alle Lücken bleiben mit Sprint von der Kante machbar. Drei Stellen misst der
  * Bau mit dem perfekten Bot selbst (Median über die 49 Start-Jitter), statt sie
  * aus der Ballistik zu schätzen: den Plateau-Absprung (Anfang und Tempo der
- * Hop-Reihe) und die Landung auf H7 (Stand der Crouch-Wand). Grund: auf einer
- * nach Mitte-Band geplanten Reihe driftete er Hop für Hop über die Plattformen,
- * landete je nach Start-Phase in Gräben oder zu nah an der Wand und zerfiel in
- * zwei Zweige (≈ 22.7 / 27 s, M11).
+ * Hop-Reihe), die Landung auf H7 (Stand der Crouch-Wand) und das Tempo an CP3
+ * (Slalom). Grund: auf einer nach Mitte-Band geplanten Reihe driftete er Hop für
+ * Hop über die Plattformen, landete je nach Start-Phase in Gräben oder zu nah an
+ * der Wand und zerfiel in zwei Zweige (≈ 22.7 / 27 s, M11); ein Slalom mit festem
+ * Takt ließ ihn je nach Phase Inseln überspringen oder hart bremsen (±1 s).
+ *
+ * Kurz statt lang (Review l1l2): der perfekte Takt kostet Weg, und Weg kostet nur
+ * die Langsamen — bei einem Hop je Plattform ist die Zeit ≈ Hops × Luftzeit, egal
+ * wie schnell. Deshalb vier Reihen-Plattformen statt sechs und sechs Kehren-Pads
+ * statt sieben (perfekter Bot 21.5 → 20.3 s, 3°-Hand 38.5 → 35.6 s, Neuling
+ * W+Leertaste CP1 → H7 19.7 → 13.7 s; Median über 32 Seeds). Zweites Review: fünf
+ * Slalom-Inseln statt sechs und die Könner-Balken im selben Takt (CUT_N) — perfekter
+ * Bot 20.3 → 19.5 s, über die Balken 18.4 s. Drittes Review (Slalom für echte Hände
+ * flüssig): vier Inseln (SL_N), ein Tor vor der Rutsche sperrt die Gerade der
+ * Gegenspalte, flache Zungen an den Innenecken statt der 32°-Nase (außer an der
+ * Phasen-Insel) — Hände 1°–3° 1.1–2.6 s schneller, Tempo-Einbrüche im Slalom
+ * ~80 % weniger, perfekter Bot 19.5 → 18.8 s, über die Balken 17.7 s.
  */
-import { Vector3 } from 'three';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { Box3, Vector3 } from 'three';
 import type { LevelFile } from '../../src/world/level/LevelFormat';
 import { VELOCITY_DEFAULT } from '../../src/player/MovementConfig';
 import { PlayerMovement } from '../../src/player/PlayerMovement';
@@ -74,6 +89,41 @@ const ASCENT_W = Number(process.env.ASCENT_W ?? 256);
 const RUN3_DEPTH = 352;
 /** Plateau (CP1): der perfekte Bot landet ~150 u vor der Kante statt auf ihr (bei 384 hing die Hull über der Kante). */
 const PLATEAU_DEPTH = 512;
+/**
+ * Plattformen der Hop-Reihe vor H7. Sechs im Takt des perfekten Strafers machten die Reihe 40 % länger als
+ * im Mitte-Band-Plan (Review l1l2: Neuling W+Leertaste CP1 → H7 14.4 → 19.7 s); vier geben dem perfekten
+ * Bot denselben sauberen Takt (Plateau/H7-Streuung 6/7 u) und jedem anderen 2 Plattformen weniger Weg.
+ */
+const ROW_N = 4;
+/**
+ * Kehren-Pads im Takt des perfekten Strafers. Sieben (Radius 1593 u) kosteten die 3°-Hand in CP2 → CP3
+ * 11.1 s, sechs (Radius 1348 u, 30° je Hop) 8.7 s; der perfekte Bot bleibt in einem Zweig (4.66–4.77 s).
+ * Tiefere Pads (Lücke 48 statt 120) oder Anteile 0.84–0.91 zerfielen dagegen hinter CP3 (±1–3 s).
+ */
+const ARC_N = 6;
+/**
+ * Slalom-Inseln im Takt des perfekten Strafers. Sechs kosteten jeden außer dem perfekten Bot 1.3–3 s (Review l1l2,
+ * Hand 2° Slalom 8.5 s), fünf immer noch ~2 s: Weg kostet nur die Langsamen (fallen.md #121). Vier ließen früher einen
+ * Geradeaus-Hüpfer der Gegenspalte über die letzte Insel hinweg in die tiefe Rutsche (dichte Lenkprobe 252/7020 ab
+ * 1148 u/s) — das sperrt jetzt das Slalom-Tor vor der Rutsche, unabhängig von Tempo und Phase. Vier Inseln + Tor +
+ * Zungen (Review l1l2, drittes, 24 Seeds, Spiel-Uhr): Hände 1°/1.5°/2°/3° 25.9/29.0/29.6/33.3 → 24.8/26.4/27.7/31.4 s,
+ * sync 0.8/0.9 27.4/27.4 → 24.4/26.3 s, perfekter Bot 19.5 → 18.8 s (ein Zweig), Lenkprobe 0/7020.
+ */
+const SL_N = 4;
+/**
+ * Könner-Balken der Abkürzung im Takt des perfekten Strafers (Balkenmitten ≈ seine Hop-Weite ab Pad 1, ~950 u/s).
+ * Vier Balken lagen im Takt von ~780 u/s: er bremste auf ihnen 952 → 681 u/s, kam mit 736 statt 1087 an CP3 an
+ * und war am Ziel 1.7 s LANGSAMER als über die Kehre, in zwei Zweigen (Review l1l2). Drei: 1.1 s schneller, ein Zweig.
+ */
+const CUT_N = 3;
+/**
+ * Ende der Balken-Bahn so weit in der Wende (u ab ihrem Anfang). Es legt die Phase, mit der man über die Balken in
+ * den Slalom kommt: bei 128 landete die Hand 1° früh auf Insel 1, rutschte Insel für Insel auf die Nasen und verlor
+ * hinter CP3 2 s (Ersparnis am Ziel Ø −0.6 s). Raster 192…448 (perfekter Bot 49 Starts, Hände 24 Seeds): 256–320
+ * ein Zweig ohne Tod, ab 352 Tode des perfekten Bots, ab 416 Zweige; 288 = Mitte (Ersparnis am Ziel Hand 1° Ø 0.6 s,
+ * Hand 1.5° Ø 1.9 s).
+ */
+const CUT_END = 288;
 
 /** Farbe der Start-Markierungen (palette.KIND_COLORS.start). */
 const START_GLOW = '#46ff9e';
@@ -100,9 +150,9 @@ const H7_LEAD = 176;
  * langsamere Modelle früher auf H7 landen (weiter vor der Wand) und dort das späte Ende ihres Fensters
  * brauchen; der Plan-Knoten trägt so die 3°-Hand bis 1.2 × Plan (designProbes.crouchWindow).
  */
-const WALL_LEAD = Number(process.env.L1_WALL_LEAD ?? 0.06);
+const WALL_LEAD = 0.06;
 /** Kehre im Rhythmus des perfekten Strafers ab diesem Anteil seines H7-Tempos (Kurven-Strafen kostet Weite). */
-const KEHRE_SHARE = Number(process.env.L1_KEHRE_SHARE ?? 0.94);
+const KEHRE_SHARE = 0.94;
 /** Höhe der Crouch-Kante über H7 (u): ≥ 66 (Level-Regel Plan 007: ohne Ducken reicht es bis 63.5 u, dazu 2 u Reserve). */
 const CROUCH_H = 66;
 /** Oberkante von Plateau, Hop-Reihe und H7 (u). */
@@ -122,31 +172,89 @@ interface Landing {
   readonly spread: number;
 }
 
-/** Messwerte, aus denen der Bau die Reihe und die Crouch-Wand stellt; null = vorläufig (Messlauf). */
+/** Messwerte, aus denen der Bau die Reihe, die Crouch-Wand und den Slalom stellt; null = vorläufig (Messlauf). */
 interface Probe {
   readonly takeoff: Landing | null;
   readonly h7: Landing | null;
+  /** Perfekter Bot beim Eintritt in den CP3-Trigger (u, Tempo): Takt des Slaloms. */
+  readonly cp3: Landing | null;
 }
 
 /**
- * Drei Bauten: (1) vorläufig → Landung des perfekten Bots auf dem Plateau (dort springt er ab),
+ * Vier Bauten: (1) vorläufig → Landung des perfekten Bots auf dem Plateau (dort springt er ab),
  * (2) Hop-Reihe ab dieser Stelle und mit diesem Tempo, Wand noch weit → seine Landung auf H7,
- * (3) Wand danach. Keine Rückkopplung: die Plateau-Landung hängt nur am Aufstieg, die H7-Landung
- * nur an Plateau und Reihe — die Wand und alles dahinter ändern keine der beiden.
+ * (3) Wand danach → sein Tempo an CP3, (4) Slalom in diesem Takt. Keine Rückkopplung: jede Messung
+ * hängt nur an dem, was davor liegt — die Wand ändert Plateau und H7 nicht, der Slalom nicht CP3.
  */
 export function buildLevel1(): LevelFile {
-  const takeoff = measureLanding(layout({ takeoff: null, h7: null }, false), 'plateau');
-  const h7 = measureLanding(layout({ takeoff, h7: null }, false), 'hop7');
-  return layout({ takeoff, h7 }, true);
+  const takeoff = measureLanding(layout({ takeoff: null, h7: null, cp3: null }, false), 'plateau');
+  const h7 = measureLanding(layout({ takeoff, h7: null, cp3: null }, false), 'hop7');
+  const cp3 = measureLanding(layout({ takeoff, h7, cp3: null }, false), CP3_PROBE);
+  const def = layout({ takeoff, h7, cp3 }, true);
+  reportDrift(def);
+  return def;
 }
 
-/** Erste Landung des perfekten Bots auf dem Brush `tag`, je Start-Jitter (wie physics.timedRun); Median von u und Tempo. */
+/** Ab dieser Verschiebung (u) einer Brush-Kante meldet der Bau die Drift gegen die eingecheckte level1.json. */
+const DRIFT_WARN = 16;
+/** Brushes, an denen die gemessene Planung hängt (Reihe, Crouch-Kante, Kehre, Abkürzung, Slalom, Ziel). */
+const DRIFT_TAGS = /^(plateau|hop\d|ledgeLip|ledge|curve\d|turn|cut\d|slalom\d|finish)$/;
+
+/**
+ * Die Reihe misst sich beim Bau selbst — jedes Movement-Tuning verschiebt still Reihe, H7, Wand, Kehre,
+ * Slalom und damit Medaillen, Ghosts und die Freischalt-Leiter (Review l1l2). Deshalb gegen die
+ * eingecheckte public/levels/level1.json vergleichen und jede Kante, die sich um mehr als DRIFT_WARN
+ * bewegt, laut melden (auch neue oder verschwundene Brushes).
+ */
+function reportDrift(def: LevelFile): void {
+  let old: LevelFile;
+  try {
+    old = JSON.parse(readFileSync(fileURLToPath(new URL('../../public/levels/level1.json', import.meta.url)), 'utf8')) as LevelFile;
+  } catch {
+    return; // Erster Bau oder anderer Arbeitsbaum: nichts zu vergleichen.
+  }
+  const boundsOf = (d: LevelFile): Map<string, Box3> => {
+    const out = new Map<string, Box3>();
+    for (const b of compileLevel(d).brushes) if (b.tag !== null && DRIFT_TAGS.test(b.tag) && !out.has(b.tag)) out.set(b.tag, b.bounds);
+    return out;
+  };
+  const a = boundsOf(old);
+  const b = boundsOf(def);
+  const moved: string[] = [];
+  for (const [tag, nb] of b) {
+    const ob = a.get(tag);
+    if (!ob) {
+      moved.push(`${tag} neu`);
+      continue;
+    }
+    const d = Math.max(...(['x', 'y', 'z'] as const).flatMap((k) => [Math.abs(nb.min[k] - ob.min[k]), Math.abs(nb.max[k] - ob.max[k])]));
+    if (d > DRIFT_WARN) moved.push(`${tag} ${d.toFixed(0)} u`);
+  }
+  for (const tag of a.keys()) if (!b.has(tag)) moved.push(`${tag} entfällt`);
+  if (moved.length)
+    console.warn(
+      `  level1: Geometrie weicht von public/levels/level1.json ab (> ${DRIFT_WARN} u): ${moved.join(', ')} — gewollt? Nach Movement-Tuning Doku (level-design.md), Medaillen und Freischalt-Leiter nachziehen; alte Ghosts verfallen`,
+    );
+  else console.log(`  level1: Geometrie wie public/levels/level1.json (alle Kanten ≤ ${DRIFT_WARN} u)`);
+}
+
+/** Pseudo-Tag für measureLanding: Eintritt in den Trigger von Checkpoint 3 statt Landung auf einem Brush. */
+const CP3_PROBE = 'checkpoint:3';
+
+/**
+ * Erste Landung des perfekten Bots auf dem Brush `tag` (bzw. erster Tick im Trigger bei CP3_PROBE), je
+ * Start-Jitter (wie physics.timedRun); Median von u und Tempo. CP3 nicht als Landung: der perfekte Bot
+ * springt von Pad 6 teils über die Wende direkt auf Insel 1 — den Trigger kreuzt er immer (Streuung 8 u).
+ */
 function measureLanding(def: LevelFile, tag: string): Landing {
   const level = compileLevel(def);
   const cfg = VELOCITY_DEFAULT;
   const route = level.def.route ?? [];
   const mins = new Vector3(-PHYS.hullHalf, 0, -PHYS.hullHalf);
   const maxs = new Vector3(PHYS.hullHalf, PHYS.standHeight, PHYS.hullHalf);
+  const trig = tag === CP3_PROBE ? level.triggers.find((t) => t.kind === 'checkpoint' && t.order === 3) : undefined;
+  if (tag === CP3_PROBE && !trig) throw new Error('level1: Messbau ohne Checkpoint 3');
+  const hull = new Box3();
   const us: number[] = [];
   const vs: number[] = [];
   START_JITTERS.forEach((j, i) => {
@@ -159,6 +267,16 @@ function measureLanding(def: LevelFile, tag: string): Landing {
     for (let t = 0; t < 60 * cfg.tickRate && bot.status === 'running'; t++) {
       pm.tick(aim.apply(bot.next(pm.state, pm.surfNormal), pm.state.onGround));
       const s = pm.state;
+      if (trig) {
+        hull.min.copy(s.pos).add(pm.hullMins);
+        hull.max.copy(s.pos).add(pm.hullMaxs);
+        if (trig.bounds.intersectsBox(hull)) {
+          us.push(-s.pos.z);
+          vs.push(s.speed);
+          break;
+        }
+        continue;
+      }
       if (s.onGround && !was) {
         const p = s.pos;
         const tr = level.world.traceBox(new Vector3(p.x, p.y + 1, p.z), new Vector3(p.x, p.y - 8, p.z), mins, maxs);
@@ -282,7 +400,7 @@ function layout(m: Probe, final: boolean): LevelFile {
   const rowSpeed: number[] = [ROW_V0];
   const rowCenter: number[] = [];
   let at = TAKEOFF;
-  for (let k = 0; k < 7; k++) {
+  for (let k = 0; k <= ROW_N; k++) {
     at += hop(perfect(ROW_V0, k)) * ROW_PITCH;
     rowCenter.push(at);
     rowSpeed.push(plan(ROW_V0, k + 1));
@@ -290,7 +408,7 @@ function layout(m: Probe, final: boolean): LevelFile {
   // Tiefen: mindestens 176 (H1 192: erste Landung nach dem Plateau-Absprung),
   // sonst so tief, dass die Lücke davor ≤ ROW_GAP bleibt.
   const ROW_DEPTH: number[] = [];
-  for (let k = 0; k < 6; k++) {
+  for (let k = 0; k < ROW_N; k++) {
     const pitchIn = rowCenter[k] - (k === 0 ? PU1 - 96 : rowCenter[k - 1]);
     const prevHalf = k === 0 ? 96 : ROW_DEPTH[k - 1] / 2;
     ROW_DEPTH.push(Math.max(k === 0 ? 192 : 176, ceil16(2 * (pitchIn - prevHalf - ROW_GAP))));
@@ -317,15 +435,17 @@ function layout(m: Probe, final: boolean): LevelFile {
   // (dort springt er ab) früh im Fenster erreicht (WALL_LEAD). Der RouteFollower springt
   // nur, wenn seine Flugbahn-Vorhersage oben landet — die kennt den Kanten-Assist nicht:
   // landete er zu nah an der Wand, lief er an sie heran und sprang mit ~320 u/s (+4 s).
-  const crouchV = rowSpeed[7];
+  const crouchV = rowSpeed[ROW_N + 1];
   const [riseA] = riseWindow(CROUCH_H, true);
-  const h7c = rowCenter[6];
+  const h7c = rowCenter[ROW_N];
   // Messbau 2: Wand weit hinter jeder Landung (kein Absprung auf H7 wird gemessen, nur die Landung).
   const crouchAt = m.h7?.u ?? h7c;
-  const vCrouch = m.h7?.v ?? perfect(ROW_V0, 7);
+  const vCrouch = m.h7?.v ?? perfect(ROW_V0, ROW_N + 1);
   const LE = m.h7 ? m.h7.u + PHYS.hullHalf + (riseA + WALL_LEAD) * m.h7.v : h7c + 1200;
-  const h7: [number, number] = [Math.min(h7c - H7_LEAD, row[5].u1 + ROW_GAP), LE];
+  const h7: [number, number] = [Math.min(h7c - H7_LEAD, row[ROW_N - 1].u1 + ROW_GAP), LE];
   if (m.h7 && m.h7.u - PHYS.hullHalf < h7[0] + 32) throw new Error(`level1: H7-Landung ${m.h7.u.toFixed(0)} liegt an der Vorderkante von H7 (${h7[0].toFixed(0)})`);
+  // Tag bleibt 'hop7' ("H7", die Crouch-Insel), obwohl davor nur ROW_N Plattformen liegen: designProbes
+  // (crouchWindow) und sim/arcade.ts suchen die Insel unter diesem Namen.
   L.platform(F, h7, [-160, 160], 128, { mat: 'accent', tint: COL.orange, tag: 'hop7' });
   // Gräben statt Kill-Zone unter jeder Lücke der Hop-Reihe (Grundkurs): wer zu
   // kurz springt — typisch die ersten Strafe-Versuche, bei denen der falsche
@@ -384,11 +504,11 @@ function layout(m: Probe, final: boolean): LevelFile {
   const KEHRE_V0 = KEHRE_SHARE * vCrouch;
   const KEHRE_GAP = 120;
   /** Breite der Kehren-Pads (quer zur Fahrt). */
-  const KEHRE_W = Number(process.env.L1_KEHRE_PADW ?? 288);
+  const KEHRE_W = 288;
   /** Das letzte Pad bleibt 256 breit: innen daneben enden die Könner-Balken. */
   const padW = (k: number): number => (k === chords.length - 1 ? 256 : KEHRE_W);
   const arcSpeed: number[] = [];
-  for (let k = 0; k < 7; k++) arcSpeed.push(perfect(KEHRE_V0, k));
+  for (let k = 0; k < ARC_N; k++) arcSpeed.push(perfect(KEHRE_V0, k));
   const chords = arcSpeed.map((v) => hop(v));
   const R = solveArcRadius(chords, 180);
   const S = F.p(L0, 0, 192);
@@ -416,10 +536,12 @@ function layout(m: Probe, final: boolean): LevelFile {
   // zwischen Pad 6 und seiner Innenkante bleibt ein Keil, in den die Kurve zu eng
   // Fliegende fielen (1°-Hand, 1 von 16 Seeds). Innen an seiner vorderen Hälfte eine Leiste.
   const lastPad = arc[arc.length - 1];
-  const inW = Number(process.env.L1_IN_W ?? 96);
-  if (inW > 0) L.platform(Frame.at(lastPad.center, 180), [-arcDepth[arcDepth.length - 1] / 2, 0], [-128 - inW, -128], 192, { tag: 'curveIn', mat: 'floor' });
-  // Speed-Strecke nach der Kehre: der Rhythmus läuft weiter.
-  const SLALOM_V = Number(process.env.L1_SL_F ?? 0.95) * perfect(KEHRE_V0, arcSpeed.length);
+  const IN_W = 96;
+  L.platform(Frame.at(lastPad.center, 180), [-arcDepth[arcDepth.length - 1] / 2, 0], [-128 - IN_W, -128], 192, { tag: 'curveIn', mat: 'floor' });
+  // Speed-Strecke nach der Kehre: Takt = gemessenes Tempo des perfekten Bots an CP3 (Messbau 3). Aus der
+  // Kehren-Planung geschätzt (0.95 × Plan-Tempo) lag der Slalom je nach Kehre 5–10 % neben seinem echten
+  // Tempo; er übersprang Inseln oder bremste hart vor der letzten (Zeit ±1–3 s über den Start-Kasten).
+  const SLALOM_V = m.cp3?.v ?? perfect(KEHRE_V0, arcSpeed.length);
   arc.forEach((p, k) => L.node(p.center, { jump: true, minSpeed: Math.round(arcSpeed[k + 1] ?? SLALOM_V) }));
   // Kante (CP2) bis LEDGE_GAP vor das erste Kehren-Pad (mindestens 256 u): mit größeren
   // Sehnen rückt Pad 1 weiter weg, eine feste Länge ließ eine Lücke, vor der jeder langsame
@@ -452,23 +574,24 @@ function layout(m: Probe, final: boolean): LevelFile {
   // Nicht in der Bot-Route (designProbes: expertIslands). Eine gerade Sehne bis zur Wende
   // verlangt an Pad 1 einen Knick von ~80° (unfliegbar); die Bahn ist deshalb eine Kurve
   // (kubische Bézier), die an Pad 1 in Laufrichtung beginnt und an der Wende in
-  // Slalom-Richtung endet. Balken statt 160er-Quadrate (Plan 007, l1l2): Abstand der
-  // Balkenmitten = Sprungweite beim Kehren-Tempo, Lücken ≤ CUT_GAP — wer schnell ankommt,
-  // landet mitten auf dem nächsten Balken, wer an der Crouch-Kante abgeprallt ist, kommt per
-  // Stop-and-Go hinüber. Mit den Quadraten (Sprünge für 620 u/s) war die Abkürzung für
-  // Schnelle zu eng (bremsen) und für Langsame zu weit (Tod): Hand 1° sparte nichts.
+  // Slalom-Richtung endet. CUT_N tiefe Balken in gleichem Abstand entlang der Bahn (Pad 1 →
+  // Balken → Wende: CUT_N + 1 gleich lange Hops ≈ Sprungweite des perfekten Strafers ab Pad 1),
+  // Lücken nur CUT_GAP: wer etwas langsamer ankommt, landet früher auf dem tiefen Balken statt
+  // zu bremsen. Gemessen (Ziel-Zeit, perfekter Bot über 49 Starts, Hände 24 Seeds): perfekter Bot
+  // 1.1 s schneller als über die Kehre, Hand 1° Ø 0.6 s, Hand 1.5° Ø 1.9 s; Abschnitt CP2 → CP3
+  // Hand 1° Ø 1.35 s. Mit festen 176er-Lücken (Mitten 567 u) bremste der perfekte Bot vor jedem
+  // zweiten Balken (Ersparnis Hand 1° 0.84 s).
   const CUT_W = 160;
-  const CUT_GAP = Number(process.env.L1_CUT_GAP ?? 176);
-  const CUT_V = Number(process.env.L1_CUT_V ?? 0.85 * vCrouch);
+  const CUT_GAP = 96;
   const cutA = arc[0].center;
-  const cutB = cp3.on(cp3.u0 + 128);
+  const cutB = cp3.on(cp3.u0 + CUT_END);
   const tA = [arc[1].center[0] - cutA[0], arc[1].center[2] - cutA[2]];
   const tB = G.xz(1, 0);
   const tBx = tB[0] - G.x;
   const tBz = tB[1] - G.z;
   const tAl = Math.hypot(tA[0], tA[1]);
   // Griff × Sehne: kürzer knickt die Bahn an Pad 1, länger schneidet sie die Pads 2 und 7.
-  const handle = Number(process.env.L1_CUT_HANDLE ?? 0.1) * dist2(cutA, cutB);
+  const handle = 0.1 * dist2(cutA, cutB);
   const P1: V2 = [cutA[0] + (tA[0] / tAl) * handle, cutA[2] + (tA[1] / tAl) * handle];
   const P2: V2 = [cutB[0] - tBx * handle, cutB[2] - tBz * handle];
   const bez = (t: number): V2 => {
@@ -488,67 +611,102 @@ function layout(m: Probe, final: boolean): LevelFile {
     const i = Math.max(1, acc.findIndex((x) => x >= len));
     return (i - 1 + (len - acc[i - 1]) / Math.max(1e-6, acc[i] - acc[i - 1])) / SAMPLES;
   };
-  // Freie Strecke zwischen Pad-1-Vorderkante und Wende-Hinterkante: n Balken, n + 1 Lücken.
-  const cutFree = cutLen - arcDepth[0] / 2 - 128;
-  const cutStepPlan = hop(CUT_V);
-  const cutN = Math.max(1, Math.round((cutFree - CUT_GAP) / cutStepPlan));
-  const cutDepth = (cutFree - (cutN + 1) * CUT_GAP) / cutN;
-  const cutStep = cutDepth + CUT_GAP;
+  // Balkenmitten gleichmäßig zwischen Pad-1-Mitte und Wende-Knoten; Tiefe = Abstand − CUT_GAP,
+  // in 16er-Schritten gekürzt, falls ein Balken einem Kehren-Pad näher als 32 u käme.
+  const cutStep = cutLen / (CUT_N + 1);
   const cutPads: V2[] = [];
-  for (let k = 0; k < cutN; k++) cutPads.push(bez(atLen(arcDepth[0] / 2 + CUT_GAP + cutDepth / 2 + k * cutStep)));
+  for (let k = 0; k < CUT_N; k++) cutPads.push(bez(atLen((k + 1) * cutStep)));
   const kehreRects: Rect[] = [...arc.map((p, k) => rectOf(p.center, k === arc.length - 1 ? 180 : arcPhi[k], arcDepth[k], padW(k))), rectOf(cp3.center, G.yaw, cp3.u1 - cp3.u0, 384)];
+  const cutDepths: number[] = [];
   cutPads.forEach((c, i) => {
     const prev = i === 0 ? xzOf(cutA) : cutPads[i - 1];
     const next = i === cutPads.length - 1 ? xzOf(cutB) : cutPads[i + 1];
     const yaw = yawTo(prev, next);
-    const hit = kehreRects.findIndex((r) => rectsOverlap(rectOf([c[0], 0, c[1]], yaw, cutDepth, CUT_W), r, 32));
+    const hitAt = (d: number): number => kehreRects.findIndex((r) => rectsOverlap(rectOf([c[0], 0, c[1]], yaw, d, CUT_W), r, 32));
+    let depth = cutStep - CUT_GAP;
+    while (depth > CUT_W && hitAt(depth) >= 0) depth -= 16;
+    const hit = hitAt(depth);
     if (final && hit >= 0) throw new Error(`level1: Könner-Balken ${i + 1} überlappt ${hit < arc.length ? `Kehren-Pad ${hit + 1}` : 'die Wende'} (Griff/Tempo ändern)`);
-    L.pad([c[0], 192, c[1]], cutDepth, CUT_W, yaw, { mat: 'accent', tint: COL.gold, tag: `cut${i + 1}` });
+    cutDepths.push(depth);
+    L.pad([c[0], 192, c[1]], depth, CUT_W, yaw, { mat: 'accent', tint: COL.gold, tag: `cut${i + 1}` });
   });
 
-  // Slalom: versetzte Langinseln in zwei Spalten (±112, 176 breit, 48 u
+  // Slalom: versetzte Langinseln in zwei Spalten (±160, 272 breit, 48 u
   // Spaltenabstand > Hull 32). Jede Insel beginnt, wo die vorige (andere
   // Spalte) endet, und ist so lang wie die Vorwärtsweite eines schrägen Hops
-  // beim Plan-Tempo — die Vorwärtsweite pro Hop ist frei, aber jeder Hop muss
-  // die Spalte wechseln: Lenken nur in der Luft, A/D im Wechsel. Eine gerade
-  // Linie trifft nur jede zweite Insel. Langsame laufen auf der Insel vor und
-  // springen schräg über die Ecke (Stop-and-Go).
-  const SL_W = Number(process.env.L1_SL_W ?? 272);
+  // im Takt des perfekten Strafers ab seinem CP3-Tempo (wächst Hop für Hop wie
+  // in der Reihe; mit festem Takt überholte er die Inseln) — die Vorwärtsweite
+  // pro Hop ist frei, aber jeder Hop muss die Spalte wechseln: Lenken nur in der
+  // Luft, A/D im Wechsel. Eine gerade Linie trifft nur jede zweite Insel.
+  // Langsame laufen auf der Insel vor und springen schräg über die Ecke.
+  const SL_W = 272;
   /** Spalten-Mitte: 48 u Spaltenabstand (> Hull 32 — eine Gerade über der Fuge trüge sonst auf beiden Spalten). */
   const SL_SHIFT = SL_W / 2 + 24;
   const SL_GAP = 48;
   /** Höhe der schrägen Nase vor jeder Insel (= Inseldicke). */
   const SL_NOSE_H = 64;
-  /** Vorwärtsweite eines schrägen Hops beim Slalom-Tempo = Abstand der Inselanfänge. */
-  const SL_PITCH = Math.sqrt(hop(SLALOM_V) ** 2 - (2 * SL_SHIFT) ** 2);
-  const SL_LEN = Math.min(Number(process.env.L1_SL_MAX ?? 1e9), ceil16(SL_PITCH - SL_GAP));
-  const slGap = SL_PITCH - SL_LEN;
+  /** Neigung der Nase (Grad, begehbar < 45.6°). */
+  const SL_NOSE_DEG = 32;
+  /**
+   * Zunge vor der Innenecke (ab Insel 2, außer an der Phasen-Insel): flache Schräge (SL_TONGUE_DEG) von
+   * SL_TONGUE_D unter der Oberkante bis an den Inselanfang, SL_TONGUE_W breit ab der Innenkante. Knapp zu
+   * kurze Querhops treffen genau dort auf (Nasen-Treffer aller Hände: 88 % ≤ 40 u, alle ≤ 80 u neben der
+   * Innenkante, 0–40 u unter der Oberkante) — an der 32°-Nase sprangen sie ab und verloren ~45 % Tempo
+   * (Hände 1.5°–3° ~400 u/s je Slalom), auf der flachen Zunge landen sie (Hang-Landung: bergauf kein Verlust).
+   * Gemessen (24 Seeds): Einbrüche je Lauf Hand 1.5°/2°/3° 473/476/413 → 103/86/138 u/s, an Zungen-Inseln 0.
+   * Die Zunge verlängert die Landefläche auch für Geradeaus-Hüpfer — deshalb nie an der Phasen-Insel; Nachbarschaft
+   * (W 64/96/128 × D 16/24/32 × 7/9/11°): 24/27 Varianten 0/7020 in der Lenkprobe, nur D 32 bei 7° (Zunge 261 u
+   * lang) ließ 52–84 Läufe ab 1213 u/s durch. 5 Inseln mit Zungen überall: 86–660/7020 ab 1073 u/s (chaotisch).
+   */
+  const SL_TONGUE_W = 96;
+  const SL_TONGUE_D = 24;
+  const SL_TONGUE_DEG = 9;
+  /** Spalte der Insel k (−1 / +1 in v). */
+  const colOf = (k: number): 1 | -1 => (k % 2 === 0 ? -1 : 1);
+  const lastCol = colOf(SL_N - 1);
+  /**
+   * Phasen-Insel: die erste Insel (ab Insel 2) in der Spalte der letzten Insel behält die volle 32°-Nase.
+   * In dieser Spalte führt die Gerade legal in die Rutsche; Wende → Phasen-Insel → letzte Insel verlangt bei
+   * EINEM Tempo zwei unvereinbare Weiten (die Wende legt fest, wo man auf der Phasen-Insel landet), und wer die
+   * Nase trifft, springt mit ~55 % Tempo ab — die Gerade reißt. Die andere Spalte sperrt das Tor vor der Rutsche.
+   */
+  let phaseIsland = 1;
+  while (colOf(phaseIsland) !== lastCol) phaseIsland++;
+  /** Vorwärtsweite des schrägen Hops Nr. k (perfekter Strafer ab CP3) = Abstand der Inselanfänge. */
+  const slPitch = (k: number): number => Math.sqrt(hop(perfect(SLALOM_V, k)) ** 2 - (2 * SL_SHIFT) ** 2);
+  const slLens: number[] = [];
   let su = cp3.u1 + SL_GAP;
   const slalom: PlacedPlatform[] = [];
-  for (let k = 0; k < 6; k++) {
-    const sv = k % 2 === 0 ? -SL_SHIFT : SL_SHIFT;
-    slalom.push(
-      L.platform(G, [su, su + SL_LEN], [sv - SL_W / 2, sv + SL_W / 2], 192, {
-        tag: `slalom${k + 1}`,
-        mat: k % 2 === 0 ? 'accent' : 'floor',
-        tint: k % 2 === 0 ? COL.pink : undefined,
-      }),
-    );
-    // Nase vor jeder Insel (ab Insel 2): 40°-Schräge (begehbar) statt senkrechter Stirn.
+  for (let k = 0; k < SL_N; k++) {
+    const sv = colOf(k) * SL_SHIFT;
+    const len = ceil16(slPitch(k) - SL_GAP);
+    slLens.push(len);
+    const style = { mat: k % 2 === 0 ? 'accent' : 'floor', tint: k % 2 === 0 ? COL.pink : undefined } as const;
+    slalom.push(L.platform(G, [su, su + len], [sv - SL_W / 2, sv + SL_W / 2], 192, { ...style, tag: `slalom${k + 1}` }));
+    // Nase vor jeder Insel (ab Insel 2): Schräge (begehbar) statt senkrechter Stirn.
     // Wer langsamer als geplant ist, springt mit Auto-Hop am Inselanfang ab und kam
     // bis 20 u zu kurz an: Stirnwand, vel → 0, Tod (Hand 2°: 3 von 8 Seeds). Mit der
-    // Nase landet er auf der Schräge. Lenken bleibt Pflicht (die Spalten liegen 224 u
-    // auseinander — designProbes: slalomNeedsSteering).
+    // Nase landet er auf der Schräge. Lenken bleibt Pflicht (die Spalten liegen 320 u
+    // auseinander — designProbes: slalomNeedsSteering). 32° statt 40° (l1l2): auf den
+    // längeren Inseln im Takt des perfekten Strafers landet ein Stand-Start an CP3 auf den
+    // Nasen — mit 40° kippte das Tempo dort auf ~190 u/s (perfekter Bot CP3 → Ziel 16.7 s;
+    // 25/28/30/32/33/35°: 14.4/12.7/12.7/12.7/17.6/18.6 s). Slalom-Probe und Jitter-Median
+    // gleich. Achtung, chaotisch: ob einer der 8 Validator-Seeds vom Slalom fällt, wechselt
+    // von Grad zu Grad (28–31° je 1–2 Warnungen); über 32 Seeds fallen je Modell 0–2 Läufe, wie vorher.
     if (k > 0) {
-      const nose = SL_NOSE_H / Math.tan((Number(process.env.L1_SL_NOSE ?? 40) * Math.PI) / 180);
-      L.ramp(G, [su - nose, su], [sv - SL_W / 2, sv + SL_W / 2], 192 - SL_NOSE_H, 192, {
-        tag: `slalom${k + 1}Nose`,
-        mat: k % 2 === 0 ? 'accent' : 'floor',
-        tint: k % 2 === 0 ? COL.pink : undefined,
-        thick: 0,
-      });
+      const nose = SL_NOSE_H / Math.tan((SL_NOSE_DEG * Math.PI) / 180);
+      const inner = sv - colOf(k) * (SL_W / 2);
+      const outer = sv + colOf(k) * (SL_W / 2);
+      const tongue = k !== phaseIsland ? SL_TONGUE_W : 0;
+      const split = inner + colOf(k) * tongue;
+      const span = (a: number, b: number): V2 => (a < b ? [a, b] : [b, a]);
+      L.ramp(G, [su - nose, su], span(split, outer), 192 - SL_NOSE_H, 192, { ...style, tag: `slalom${k + 1}Nose`, thick: 0 });
+      if (tongue > 0) {
+        const tl = SL_TONGUE_D / Math.tan((SL_TONGUE_DEG * Math.PI) / 180);
+        L.ramp(G, [su - tl, su], span(inner, split), 192 - SL_TONGUE_D, 192, { ...style, tag: `slalom${k + 1}Tongue`, thick: SL_NOSE_H - SL_TONGUE_D });
+      }
     }
-    su += SL_LEN + slGap;
+    su += slPitch(k);
   }
   slalom.forEach((p) => L.node(p.center, { jump: true, minSpeed: Math.round(SLALOM_V) }));
   const slEnd = slalom[slalom.length - 1];
@@ -567,8 +725,7 @@ function layout(m: Probe, final: boolean): LevelFile {
     const SL_PYLON_W = 24;
     const SL_PYLON_LEN = 128;
     slalom.forEach((p, k) => {
-      const side = k % 2 === 0 ? -1 : 1;
-      const v = side * (SL_SHIFT + SL_W / 2 + SL_PYLON_GAP + SL_PYLON_W / 2);
+      const v = colOf(k) * (SL_SHIFT + SL_W / 2 + SL_PYLON_GAP + SL_PYLON_W / 2);
       const u = (p.u0 + p.u1) / 2;
       L.add(orientedBox(G, [u - SL_PYLON_LEN / 2, u + SL_PYLON_LEN / 2], [v - SL_PYLON_W / 2, v + SL_PYLON_W / 2], [-600, 440], { mat: 'dark', tag: 'slalomPylon' }));
       L.add(orientedBox(G, [u - SL_PYLON_LEN / 2 - 8, u + SL_PYLON_LEN / 2 + 8], [v - SL_PYLON_W, v + SL_PYLON_W], [440, 488], { mat: 'accent', tint: k % 2 ? COL.cyan : COL.pink, collide: false, tag: 'slalomPylonHead' }));
@@ -579,7 +736,7 @@ function layout(m: Probe, final: boolean): LevelFile {
   // Der erste Surf des Spiels, verzeihend (früher fünf Terrassen: 5.8 s ohne
   // Risiko und ohne Entscheidung, L1 kam nie über 886 u/s; L2 verlangte Surfen,
   // das nirgends eingeführt war). Eine fallende Rampe (Querschnitt wie S1 in
-  // Level 2) beginnt unter der letzten Slalom-Insel — keine Stirnfläche im Weg —,
+  // Level 2) beginnt unter dem Ende der letzten Slalom-Insel — keine Stirnfläche im Weg —,
   // fällt 10°, endet mit einem kleinen Kicker und schickt einen über 1000 u/s ins
   // Ziel. Länge gemessen (tools/levels/sweepChute.ts, perfekter Bot): 1600 u hinter
   // der Insel → Launch 926 u/s; 1900 u → 1004 u/s. Ein 20°-Knick (Speed aus Höhe)
@@ -596,7 +753,12 @@ function layout(m: Probe, final: boolean): LevelFile {
         { length: 256, slopeDeg: 3 },
         { length: 256, slopeDeg: -8 },
       ];
-  /** Rampe beginnt so weit hinter dem Anfang der letzten Insel (dort ist die Hull noch auf der Insel). */
+  /**
+   * Rampe beginnt so weit VOR dem Ende der letzten Insel (die Südkappe liegt unter ihr). Früher unter dem
+   * Insel-Anfang: dann fing die Rampe auch, wer in der Spalten-Lücke VOR der letzten Insel fiel — mit fünf
+   * Inseln kam so ein Geradeaus-Hüpfer ab 1183 u/s ohne Lenken bis in die Rutsche (dichte Lenkprobe 61/7020).
+   * Wer die letzte Insel verfehlt, fällt jetzt wie bei jeder anderen (kill-slalom).
+   */
   const CHUTE_UNDER = 64;
   /** First am Rampenbeginn: so tief unter der Insel, dass die Flanke die Insel (v ≥ 24) nicht schneidet. */
   const CHUTE_APEX = 192 - 40;
@@ -606,16 +768,34 @@ function layout(m: Probe, final: boolean): LevelFile {
   const CATCH_HALF = CHUTE_W / 2 + CATCH_SIDE;
   const CATCH_TAN = Math.tan((10 * Math.PI) / 180);
   /**
-   * Route-Knoten an der +v-Flanke (Seite der letzten Insel): CHUTE_LINE unter dem
-   * First am Einstieg, bis CHUTE_DIVE am Launch — die Ideallinie taucht die Flanke
-   * hinunter und macht Höhe zu Tempo.
+   * Route-Knoten an der Flanke auf der Seite der letzten Insel (bei ungerader Inselzahl −v):
+   * CHUTE_LINE unter dem First am Einstieg, bis CHUTE_DIVE am Launch — die Ideallinie taucht
+   * die Flanke hinunter und macht Höhe zu Tempo.
    */
   const CHUTE_LINE = Number(process.env.CHUTE_LINE ?? 240);
   const CHUTE_DIVE = Number(process.env.CHUTE_DIVE ?? 440);
-  const chuteU0 = slEnd.u0 + CHUTE_UNDER;
+  const chuteSide = lastCol;
+  const chuteU0 = slEnd.u1 - CHUTE_UNDER;
   const pieces = CHUTE_PIECES.map((p, i) => (i === 0 ? { ...p, length: slEnd.u1 - chuteU0 + p.length } : p));
   const mainLen = pieces[0].length;
   const chute = L.surfChain({ start: G.xz(chuteU0), yaw: G.yaw, apex: CHUTE_APEX, width: CHUTE_W, tag: 'chute', pieces });
+  // Slalom-Tor: eine Finne in der Spalte OHNE letzte Insel, direkt vor der Rutsche (von der Innenkante bis zur
+  // Pylonen-Linie, vom Kill-Bereich bis über jeden Sprung). Mit vier Inseln erreichte ein Geradeaus-Hüpfer dieser
+  // Spalte die tiefe Rutschen-Flanke über die letzte Insel hinweg (dichte Lenkprobe 252/7020 ab 1148 u/s) — das Tor
+  // sperrt diese Gerade unabhängig von Tempo und Phase. Keine Lauflinie führt hierher: der letzte Querhop endet auf
+  // der letzten Insel, 48 u neben dem Tor (Vorbeizieh-Whoosh). 16 u vor dem Rutschen-Anfang (keine koplanare Stirn,
+  // wer abprallt, fällt vor der Rutsche).
+  {
+    const GATE_GAP = 16;
+    const GATE_T = 24;
+    const side = -lastCol;
+    const v0 = side * (SL_SHIFT - SL_W / 2);
+    const v1 = side * (SL_SHIFT + SL_W / 2 + 52);
+    const gv: V2 = v0 < v1 ? [v0, v1] : [v1, v0];
+    const gu: V2 = [chuteU0 - GATE_GAP - GATE_T, chuteU0 - GATE_GAP];
+    L.add(orientedBox(G, gu, gv, [-600, 440], { mat: 'dark', tag: 'slalomGate' }));
+    L.add(orientedBox(G, [gu[0] - 8, gu[1] + 8], [gv[0] - 8, gv[1] + 8], [440, 488], { mat: 'accent', tint: COL.cyan, collide: false, tag: 'slalomGateHead' }));
+  }
   const kick = chute[chute.length - 1];
   const kickEndU = chuteU0 + chute.reduce((sum, r) => sum + r.o.length, 0);
   const foot = (r: SurfRamp, s: number): number => r.apexAt(s) - r.height;
@@ -653,7 +833,10 @@ function layout(m: Probe, final: boolean): LevelFile {
   // 60°-Flanke rutscht, landet mit ~400 u/s nach außen und hüpft mit Auto-Hop
   // weiter nach außen — ohne Bande flog jeder dritte Geradeaus-Läufer seitlich
   // von der Auffangfläche. Oberkante leuchtet (Trim) und rahmt die Rutsche.
-  const RAIL_H = 128;
+  // 192 statt 128 (Review l1l2): W+Leertaste-Halter mit Blick 15–30° neben der Route
+  // (Luftlenkung dreht sie mit) oder gehaltenem C (Crouch-Hop +18 u) kamen nach dem
+  // Flanken-Kontakt mit Auto-Hop bis 20 u über die 128er-Bande: 236/7000 tot, mit 192 0/6000.
+  const RAIL_H = 192;
   const railV = (side: number): V2 => (side < 0 ? [-CATCH_HALF - 32, -CATCH_HALF] : [CATCH_HALF, CATCH_HALF + 32]);
   for (let k = 1; k < knots.length; k++) {
     const [u0, y0] = knots[k - 1];
@@ -679,12 +862,14 @@ function layout(m: Probe, final: boolean): LevelFile {
   L.platform(G, [fin.u1, fin.u1 + 64], [-CATCH_HALF, CATCH_HALF], finishTop + 480, { mat: 'wall', thick: 576, trim: false, tag: 'backstop' });
   {
     // Niedrig: der Lauf endet mit der Landung, nicht beim Überfliegen der Zielkante.
-    // Mit den Banden (wer oben auf der Bande läuft, ist auch im Ziel).
-    const [a, b] = aabbOf(G, [fin.u0, fin.u1], [-CATCH_HALF - 32, CATCH_HALF + 32], [finishTop, finishTop + RAIL_H + 112]);
+    // Mit den Banden (wer oben auf der Bande läuft, ist auch im Ziel: Füße auf 192 < 240).
+    // 240 wie vor der höheren Bande — höher würde hohe Flüge früher stoppen (Medaillen).
+    const FINISH_ZONE_H = 240;
+    const [a, b] = aabbOf(G, [fin.u0, fin.u1], [-CATCH_HALF - 32, CATCH_HALF + 32], [finishTop, finishTop + FINISH_ZONE_H]);
     L.finishZone(a, b);
   }
 
-  // Route: Surf-Knoten an der +v-Flanke; minSpeed wird unten gemessen.
+  // Route: Surf-Knoten an der Flanke der letzten Insel (chuteSide); minSpeed wird unten gemessen.
   const surfNodes: number[] = [];
   const land0 = (slEnd.u0 + slEnd.u1) / 2 + 0.8 * hop(SLALOM_V) - chuteU0;
   const chuteLen = kickEndU - chuteU0;
@@ -695,7 +880,7 @@ function layout(m: Probe, final: boolean): LevelFile {
     while (k < chute.length - 1 && g > off + chute[k].o.length) off += chute[k++].o.length;
     const depth = CHUTE_LINE + ((CHUTE_DIVE - CHUTE_LINE) * Math.max(0, g - land0)) / (chuteLen - 8 - land0);
     surfNodes.push(L.route.length);
-    L.node(chute[k].riderPos(g - off, 1, depth), { surf: true, note });
+    L.node(chute[k].riderPos(g - off, chuteSide, depth), { surf: true, note });
   };
   surfNode(land0, 'Rutsche');
   for (const g of [land0 + 480, land0 + 960]) if (g < mainLen - 160) surfNode(g);
@@ -713,7 +898,7 @@ function layout(m: Probe, final: boolean): LevelFile {
   // Ziel-Knoten geradeaus hinter dem Launch (gleiches v wie der Launch-Knoten) und weit
   // hinten: der Bot beendet seine Route beim Passieren des Knotens — auch im Flug hoch
   // über dem (niedrigen) Ziel-Trigger; so landet er vorher.
-  L.node(fin.on(fin.u0 + 1700, CHUTE_DIVE / Math.tan((60 * Math.PI) / 180) + 16), { minSpeed: 250, note: 'Ziel' });
+  L.node(fin.on(fin.u0 + 1700, chuteSide * (CHUTE_DIVE / Math.tan((60 * Math.PI) / 180) + 16)), { minSpeed: 250, note: 'Ziel' });
 
   // ── KILL-ZONEN: ~300–450 u unter jedem Abschnitt statt 1000 u Void ─────
   // Hinweg (Start … Kante, x um 0) und Rückweg (Kehre-Ende … Ziel, x um −2R)
@@ -751,7 +936,7 @@ function layout(m: Probe, final: boolean): LevelFile {
   // Tore über der Strecke: fliegen vorbei und machen Tempo lesbar.
   L.arch(F, START_U[1] - 40, [-256, 256], 0, 320, COL.magenta);
   L.arch(F, (row[1].u1 + row[2].u0) / 2, [-160, 160], 128, 288, COL.cyan);
-  L.arch(F, (row[4].u1 + row[5].u0) / 2, [-192, 192], 128, 320, COL.magenta);
+  L.arch(F, (row[ROW_N - 2].u1 + row[ROW_N - 1].u0) / 2, [-192, 192], 128, 320, COL.magenta);
   // Tore über der Rutsche (Pfosten außerhalb der Auffangfläche, Balken hoch über dem Grat)
   // und ein Ziel-Tor weit hinten, das die Landung rahmt statt im Flug zu liegen. Gezählt ab
   // dem Ende der letzten Slalom-Insel: darüber springt man noch ab (sonst Balken im Flug).
@@ -813,7 +998,7 @@ function layout(m: Probe, final: boolean): LevelFile {
     L.tower(mono, 160, -900, 1400, { crown: COL.gold });
   }
 
-  const gaps = [row[0].u0 - PU1, ...row.slice(1).map((p, k) => p.u0 - row[k].u1), h7[0] - row[5].u1];
+  const gaps = [row[0].u0 - PU1, ...row.slice(1).map((p, k) => p.u0 - row[k].u1), h7[0] - row[ROW_N - 1].u1];
   if (final && !(L0 > LE + PHYS.hullHalf && L0 < LEDGE_END - PHYS.hullHalf)) throw new Error(`level1: Crouch-Landepunkt ${L0.toFixed(0)} liegt nicht auf der Kante`);
   if (Math.max(...gaps) > SPRINT_GAP) throw new Error(`level1: Hop-Reihe hat eine Lücke > ${SPRINT_GAP.toFixed(0)} u (Sprint von der Kante)`);
   if (!final || !m.takeoff || !m.h7) return L.build();
@@ -823,16 +1008,16 @@ function layout(m: Probe, final: boolean): LevelFile {
     wall: LE - m.h7.u,
     rowSpeed,
     gaps,
-    rowNeed: row.slice(0, 5).map((p, k) => speedFor(row[k + 1].u0 - (p.u0 + p.u1) / 2 - 16, 0, false, RESERVE)),
+    rowNeed: row.slice(0, ROW_N - 1).map((p, k) => speedFor(row[k + 1].u0 - (p.u0 + p.u1) / 2 - 16, 0, false, RESERVE)),
     arcRadius: R,
     arcSpeed,
-    cut: { step: cutStep, n: cutN, depth: cutDepth },
+    cut: { step: cutStep, n: CUT_N, depth: Math.min(...cutDepths), perfectHop: hop(perfect(m.h7.v, 2)) },
     slalomV: SLALOM_V,
     chuteLen: kickEndU - chuteU0,
     chuteDrop: CHUTE_APEX - Math.min(...chute.map((r) => r.apexAt(r.o.length))),
     launchMin: launch.minSpeed ?? 0,
     finishTop,
-    slalomLen: SL_LEN,
+    slalomLen: slLens,
     rowDepth: ROW_DEPTH,
   });
 
@@ -848,13 +1033,13 @@ interface DesignNumbers {
   readonly rowNeed: readonly number[];
   readonly arcRadius: number;
   readonly arcSpeed: readonly number[];
-  readonly cut: { readonly step: number; readonly n: number; readonly depth: number };
+  readonly cut: { readonly step: number; readonly n: number; readonly depth: number; readonly perfectHop: number };
   readonly slalomV: number;
   readonly chuteLen: number;
   readonly chuteDrop: number;
   readonly launchMin: number;
   readonly finishTop: number;
-  readonly slalomLen: number;
+  readonly slalomLen: readonly number[];
   readonly rowDepth: readonly number[];
 }
 
@@ -867,8 +1052,8 @@ function reportDesign(d: DesignNumbers): void {
   );
   console.log(`    Hop-Reihe: Plan-Tempo ${d.rowSpeed.map(f).join(' → ')} u/s; Lücken ${d.gaps.map(f).join(' / ')} u; Tiefen ${d.rowDepth.map(f).join(' / ')} u`);
   console.log(`    Hop-Reihe braucht ab Plattformmitte (mit Reserve): ${d.rowNeed.map(f).join(' / ')} u/s`);
-  console.log(`    Kehre: Radius ${f(d.arcRadius)} u, Plan-Tempo ${d.arcSpeed.map(f).join(' / ')}; Slalom ${f(d.slalomV)} u/s (Inseln ${f(d.slalomLen)} u)`);
-  console.log(`    Abkürzung: ${d.cut.n} Balken à ${f(d.cut.depth)} u, Mitten ${f(d.cut.step)} u auseinander`);
+  console.log(`    Kehre: Radius ${f(d.arcRadius)} u, Plan-Tempo ${d.arcSpeed.map(f).join(' / ')}; Slalom ab ${f(d.slalomV)} u/s (CP3 gemessen, Inseln ${d.slalomLen.map(f).join(' / ')} u)`);
+  console.log(`    Abkürzung: ${d.cut.n} Balken ≥ ${f(d.cut.depth)} u tief, Mitten ${f(d.cut.step)} u auseinander (Hop des perfekten Strafers ab Pad 1 ≈ ${f(d.cut.perfectHop)} u)`);
   console.log(
     `    Rutsche: ${f(d.chuteLen)} u, ${f(d.chuteDrop)} u Gefälle bis zum Kicker; Launch (unteres Band) ${f(d.launchMin)} u/s; Ziel auf y=${f(d.finishTop)}`,
   );

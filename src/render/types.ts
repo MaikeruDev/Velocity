@@ -292,36 +292,52 @@ export interface ViewModelFrame {
 }
 
 export function createViewModelFrame(): ViewModelFrame {
-  return {
+  // Kommazahl-Felder mit Double-Startwert anlegen und danach neutral setzen: mit Smi-Start (0, 1, -1) boxte
+  // Chrome jede spätere Zuweisung einer Kommazahl (alloc-probe --warmup 150: ViewHand.writeFrame 0.5–0.7 KiB/s).
+  const f: ViewModelFrame = {
     visible: false,
     glove: 'classic',
     x: 0.3,
     y: 0.35,
-    z: 0,
-    pitch: 0,
-    yaw: 0,
-    roll: 0,
-    squash: 1,
+    z: 0.5,
+    pitch: 0.5,
+    yaw: 0.5,
+    roll: 0.5,
+    squash: 0.5,
     joints: new Float32Array(VM_JOINT_COUNT),
     item: 'none',
     propPos: new Float32Array(3),
     propRot: new Float32Array(3),
-    propSpin: 0,
-    propVisible: 1,
-    propScale: 1,
-    canTab: 0,
+    propSpin: 0.5,
+    propVisible: 0.5,
+    propScale: 0.5,
+    canTab: 0.5,
     canOpen: false,
     knifeBlade: Math.PI,
     knifeBite: -Math.PI,
-    poof: -1,
+    poof: -0.5,
     poofPos: new Float32Array(3),
     subPos: new Float32Array(3),
     subRot: new Float32Array(3),
-    subSpin: 0,
-    subVisible: 0,
+    subSpin: 0.5,
+    subVisible: 0.5,
     stringPts: new Float32Array(VM_STRING_POINTS * 3),
     stringCount: 0,
     propParam: new Float32Array(4),
-    skinFx: 0,
+    skinFx: 0.5,
   };
+  f.z = 0;
+  f.pitch = 0;
+  f.yaw = 0;
+  f.roll = 0;
+  f.squash = 1;
+  f.propSpin = 0;
+  f.propVisible = 1;
+  f.propScale = 1;
+  f.canTab = 0;
+  f.poof = -1;
+  f.subSpin = 0;
+  f.subVisible = 0;
+  f.skinFx = 0;
+  return f;
 }
