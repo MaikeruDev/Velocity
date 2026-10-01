@@ -26,6 +26,11 @@ interface LiveSpec {
   readonly events?: readonly GameEvent[];
   /** Einschwing-Frames (Standard 60). */
   readonly frames?: number;
+  /**
+   * Plan 008: Trick NICHT festhalten, sondern ab Trick-Zeit 0 mit dieser Framerate bis `at` laufen lassen
+   * (Physik-Tricks hängen an ihrer Vorgeschichte; Zeitlupe = dichte `at`-Folge).
+   */
+  readonly play?: number;
 }
 
 /**
@@ -56,6 +61,8 @@ interface CellSpec {
   readonly kick?: number;
   /** Arm-Grundhaltung [pitch, twist, roll] (rad). */
   readonly arm?: readonly [number, number, number];
+  /** Plan 008: Kamera kreist um Gegenstand/Hand (Grad, Hand-Einheiten) — Seiten-/Unteransicht im Griff-Audit. */
+  readonly view?: { readonly yaw: number; readonly pitch: number; readonly dist?: number; readonly target?: 'item' | 'hand' };
   readonly live?: LiveSpec;
 }
 
@@ -97,6 +104,14 @@ function liveFrame(l: LiveSpec, glove: ViewModelGlove): ViewModelFrame {
   inp.surfing = l.surfing ?? false;
   inp.surfSide = l.surfSide ?? 0;
   for (const e of l.events ?? []) h.onEvent(e);
+  if (l.trick && l.play) {
+    // Einschwingen ohne Trick (kein Leerlauf-Trick: 1 s < erste Leerlauf-Pause), dann frei laufen bis `at`.
+    for (let i = 0; i < 60; i++) h.update(1 / 60, inp);
+    h.forceTrick(l.trick, -1);
+    const steps = Math.round((l.at ?? 0) * l.play);
+    for (let i = 0; i <= steps; i++) h.update(1 / l.play, inp);
+    return h.output(true);
+  }
   if (l.trick) h.forceTrick(l.trick, l.at ?? 0);
   // 1 s einschwingen (Posen-Überblendung, Federn), Trick bleibt bei `at` stehen.
   const n = l.frames ?? 60;
@@ -149,6 +164,8 @@ function draw(p: ViewModelPreview, c: CellSpec): void {
   if (c.bg) p.setBackground(c.bg[0], c.bg[1], c.bg[2], c.bg[3], c.bg[4]);
   else p.setBackground('#141030', '#3a2458', '#1a2340', '#33f0ff', 0.28);
   if (c.arm) p.vm.setArmBase(c.arm[0], c.arm[1], c.arm[2]);
+  const D = Math.PI / 180;
+  p.vm.debugOrbit = c.view ? { yaw: c.view.yaw * D, pitch: c.view.pitch * D, dist: c.view.dist ?? 34, target: c.view.target ?? 'item' } : null;
   const f = frameFor(c);
   p.prewarm(f.item, f.glove);
   p.render(f, c.time ?? 1, c.kick ?? 0);
@@ -197,3 +214,150 @@ declare global {
   }
 }
 window.__vm = { render, stats, poses: HAND_POSES };
+
+// ------------------------------------------------------------------ Live-Modus: Zeitlupe und Scrubbing (Plan 008)
+
+/**
+ * dev/viewmodel.html?live — ein Gegenstand live, Trick per Klick, Tempo 1× … 0.1× (alles in der Hand ist dt-
+ * unabhängig, also zeigt die Zeitlupe dieselbe Bahn), Schieber = Trick-Zeit (rechnet frei ab 0 mit 240 Hz bis
+ * dorthin, wie `play` in den Kontaktblättern), Kamera Spiel/Seite/unten/oben/hinten, Skin.
+ */
+function liveMode(): void {
+  const q = new URLSearchParams(location.search);
+  const W = 480;
+  const H = 270;
+  const items: HeldItemId[] = ['knife', 'card', 'can', 'yoyo', 'spinner', 'coin', 'lighter', 'kendama', 'phone', 'none'];
+  const gloves: ViewModelGlove[] = ['classic', 'neon', 'gold', 'robot', 'skeleton', 'cat'];
+  const views: Record<string, { yaw: number; pitch: number } | null> = { Spiel: null, vorn: { yaw: 0, pitch: 0 }, rechts: { yaw: 70, pitch: 10 }, links: { yaw: -70, pitch: 10 }, unten: { yaw: 0, pitch: -70 }, oben: { yaw: 0, pitch: 70 }, hinten: { yaw: 160, pitch: 10 } };
+  const st = {
+    item: (q.get('item') as HeldItemId) ?? 'knife',
+    glove: (q.get('glove') as ViewModelGlove) ?? 'classic',
+    trick: q.get('trick') ?? 'open',
+    speed: Number(q.get('speed') ?? 0.25),
+    view: q.get('view') ?? 'Spiel',
+    playing: true,
+    t: 0,
+  };
+  const cv = document.createElement('canvas');
+  const p = new ViewModelPreview(cv, W, H);
+  p.vm.depth = 40;
+  const out = document.createElement('canvas');
+  out.width = W * 2;
+  out.height = H * 2;
+  out.style.width = `${W * 2}px`;
+  const ui = document.createElement('div');
+  ui.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:6px';
+  sheet.append(out, ui);
+  const sel = (label: string, opts: readonly string[], value: string, on: (v: string) => void): void => {
+    const s = document.createElement('select');
+    for (const o of opts) s.append(new Option(o, o, false, o === value));
+    s.onchange = (): void => on(s.value);
+    const l = document.createElement('label');
+    l.textContent = `${label} `;
+    l.append(s);
+    ui.append(l);
+  };
+  let hand = new ViewHand();
+  const inp = makeHandInput();
+  const reset = (): void => {
+    hand = new ViewHand();
+    hand.setAspect(16 / 9);
+    hand.setGlove(st.glove);
+    hand.setItem(st.item);
+    for (let i = 0; i < 60; i++) hand.update(1 / 60, inp);
+    hand.forceTrick(st.trick, -1);
+    st.t = 0;
+  };
+  const trickSel = document.createElement('select');
+  const fillTricks = (): void => {
+    const h = new ViewHand();
+    h.setItem(st.item);
+    trickSel.textContent = '';
+    for (const n of h.activeProp?.trickNames ?? []) trickSel.append(new Option(n, n, false, n === st.trick));
+    if (!h.activeProp?.trickNames.includes(st.trick)) st.trick = h.activeProp?.trickNames[0] ?? 'none';
+  };
+  sel('Gegenstand', items, st.item, (v) => {
+    st.item = v as HeldItemId;
+    fillTricks();
+    reset();
+  });
+  const tl = document.createElement('label');
+  tl.textContent = 'Trick ';
+  tl.append(trickSel);
+  trickSel.onchange = (): void => {
+    st.trick = trickSel.value;
+    reset();
+  };
+  ui.append(tl);
+  sel('Tempo', ['1', '0.5', '0.25', '0.1'], String(st.speed), (v) => (st.speed = Number(v)));
+  sel('Kamera', Object.keys(views), st.view, (v) => (st.view = v));
+  sel('Skin', gloves, st.glove, (v) => {
+    st.glove = v as ViewModelGlove;
+    reset();
+  });
+  const play = document.createElement('button');
+  play.textContent = 'Pause';
+  play.onclick = (): void => {
+    st.playing = !st.playing;
+    play.textContent = st.playing ? 'Pause' : 'Weiter';
+  };
+  ui.append(play);
+  const scrub = document.createElement('input');
+  scrub.type = 'range';
+  scrub.min = '0';
+  scrub.max = '1.5';
+  scrub.step = String(1 / 240);
+  scrub.style.width = '320px';
+  const tlab = document.createElement('span');
+  scrub.oninput = (): void => {
+    // Scrubben: frei ab Trick-Zeit 0 bis zum Schieber rechnen (240 Hz), angehalten.
+    st.playing = false;
+    play.textContent = 'Weiter';
+    reset();
+    const target = Number(scrub.value);
+    for (let i = 0; i < Math.round(target * 240); i++) hand.update(1 / 240, inp);
+    st.t = target;
+  };
+  ui.append(scrub, tlab);
+  fillTricks();
+  reset();
+  let last = performance.now();
+  let rest = 0;
+  let warmed = '';
+  const loop = (now: number): void => {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    if (st.playing) {
+      const sdt = dt * st.speed;
+      hand.update(sdt, inp);
+      st.t += sdt;
+      if (hand.activeProp?.trick === 'none' || st.item === 'none') {
+        rest += dt;
+        if (rest > 0.8) {
+          rest = 0;
+          reset();
+        }
+      }
+      scrub.value = String(st.t);
+    }
+    tlab.textContent = `t ${st.t.toFixed(3)} s · ${hand.activeProp?.trick ?? '-'}`;
+    const f = hand.output(true);
+    const v = views[st.view];
+    p.vm.debugOrbit = v ? { yaw: (v.yaw * Math.PI) / 180, pitch: (v.pitch * Math.PI) / 180, dist: 34, target: 'hand' } : null;
+    const key = `${f.item}/${f.glove}`;
+    if (key !== warmed) {
+      warmed = key;
+      p.prewarm(f.item, f.glove);
+    }
+    p.render(f, now / 1000, 0);
+    const ctx = out.getContext('2d');
+    if (ctx) {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(p.canvas, 0, 0, out.width, out.height);
+    }
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+}
+
+if (new URLSearchParams(location.search).has('live')) liveMode();

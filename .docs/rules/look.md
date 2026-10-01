@@ -76,6 +76,22 @@ pummelige Finger, Stulpe mit schwarzem Band). Bei Zweifeln gegen diese Bilder pr
 - **Bewegung** wie Plan 004 (geklemmt, × `motionFx`, Bhop leicht), zusätzlich 3D-Sway (yaw/pitch
   ≤ 0.16 rad) und Sprung-/Landungs-Nicken. Posen als Gelenkwinkel, exponentiell überblendet.
 
+## Griffe und Hand-Animation (Plan 008)
+
+- **Griffe sind physisch**: jeder Gegenstand liegt mit Fingern/Daumen/Handfläche an, keiner steckt in der Hand
+  (> 0.35 Einheiten) oder schwebt — Ruhe-Posen mit Finger-Kontakt gebacken (`tools/hand-grips.ts`), geprüft gegen das
+  echte Mesh (`tools/hand-contact.ts`, `tests/handFoundation`). Griffregeln je Gegenstand: `.docs/plans/008`.
+- **Echte Größen** (relativ zur 19-cm-Hand): Karte 63 × 88, Dose ~7 × 16, Messer zu 10.6 cm (Cartoon-Hand), Handy
+  67 × 125, Kendama 1.5×; Münze bleibt für die Lesbarkeit groß (#114).
+- **Tricks entstehen aus der Hand**: Handgelenk-Flicks (`PropOut.jointAdd`), Arm, Würfe als echte Parabeln
+  (`rigid.Toss`), Mechanik als Physik (`chain`, Butterfly `knifeRig`) — keine frei schwebenden Item-Drehungen. Phasen
+  als stetige Spuren (`curves.Track`), Nachfedern geschlossen (`secondary`, `rigid.settle`).
+- **Butterfly**: zwei Stifte am Tang, Kicker-Anschlag, Riegel; Basic Opening/Closing, Rollover über den Zeigefinger,
+  Aerials — die ausgeklappte Klinge berührt in keinem Frame den Handschuh (Test). Während Messer-Tricks rückt die Hand
+  nach rechts unten ("Bühne"), damit das 19-cm-Messer nicht ins Blickzentrum schwingt.
+- **Prüfen**: Kontaktblätter aus mehreren Winkeln (`tools/hand-audit.mjs`, Orbit im Dev-Viewer), Zeitlupe/Scrubbing
+  live (`dev/viewmodel.html?live&item=…&trick=…&speed=0.25`).
+
 ## Kosmetik (Plan 005/006)
 
 - **Neon-Handschuh**: nur Materialvariante (dunkler Handschuh, Cyan-Kontur + Cyan-Tinte, Magenta-
@@ -107,7 +123,8 @@ pummelige Finger, Stulpe mit schwarzem Band). Bei Zweifeln gegen diese Bilder pr
 - **Schnur** (Jo-Jo, Kendama, ab Phase 2): `Line`, 1 Low-Res-Pixel, rohe Farbe, 9 Punkte.
 - **Bild-Hülle der Tricks** (gemessen, `npx tsx tools/cosmetics/envelope.ts`): kein Trick eines neuen
   Gegenstands höher als −0.314 oder weiter links als 0.055 Bildhöhen ab Bildmitte (16:9) — das ist die
-  Hülle der abgenommenen Dose/Karte/Messer. Ausnahme: ruhige Momente nach dem Ziel (Foto).
+  Hülle der abgenommenen Dose/Karte/Messer. Ausnahme: ruhige Momente nach dem Ziel (Foto). Seit Plan 008 reicht der
+  Butterfly-Doppel-Aerial bis −0.338 (physikalischer Wurf); die Grenze für andere Gegenstände bleibt −0.314 / 0.055.
 - **Budget** je Kombination Skin × Gegenstand: ≤ 50 Draw Calls, ≤ 12 000 Dreiecke
   (`node tools/viewmodel-shots.mjs budget`).
 - **Umbauten an Bestehendem** (Hand, Dose, Karte, Messer) bleiben pixelgleich — Beweis deterministisch

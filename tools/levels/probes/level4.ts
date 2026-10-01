@@ -14,6 +14,7 @@
  * - Drop-In: Grundtechnik-Surfer vom Sprungbrett erreichen CP5 — ruhig vom Spawn und mit Anlauf vom Steg (Kursfehler).
  * - Finale aus dem CP5-Respawn mit ≥ 10 % Weitenreserve; Launch-Tempo und Skill-Spreizung.
  * - Medaillen: perfekt strafen + einfach surfen darf die Autor-Zeit um höchstens 10 % der Abfahrt unterbieten.
+ * - Blickfehler: die Bronze-Hand (3°) holt Bronze auch mit festem Blickversatz ±2° auf der Abfahrt (E2E-Review v2final).
  *
  * Die Geometrie kommt aus level4Layout() (dieselben Zahlen wie der Builder); ein Abgleich mit dem
  * kompilierten Level meldet einen Fehler, falls JSON und Builder auseinanderlaufen.
@@ -28,6 +29,7 @@ import type { MutablePlayerInput, PlayerInput } from '../../../src/player/types'
 import type { CompiledLevel, CompiledTrigger } from '../../../src/world/level/compileLevel';
 import type { RouteNode } from '../../../src/world/level/LevelFormat';
 import { finaleReserve, helixBoardProbe, type DesignReport } from '../designProbes';
+import { HumanSurfer } from './level3';
 import { CLIP_H, R_E2_IN, R_E2_OUT, R_LINE, R_OUT, R_SPLIT, level4Layout, type Level4Layout } from '../level4';
 import {
   START_JITTERS,
@@ -35,6 +37,7 @@ import {
   SurfRider,
   jitterStart,
   resumeIndex,
+  surfSigma,
   timedMedian,
   type MedalReference,
   type ReferenceRuns,
@@ -57,6 +60,7 @@ export function level4Probes(level: CompiledLevel, cfg: MovementConfig, r: Desig
   finaleReserve(level, cfg, r, 90);
   tempoProbe(level, cfg, r);
   surfMedalProbe(level, lay, cfg, r);
+  lookBiasProbe(level, lay, cfg, r);
 }
 
 /** JSON und Builder-Geometrie müssen zusammenpassen (sonst messen die Proben ein anderes Level). */
@@ -1085,7 +1089,17 @@ interface HybridRace {
  * an den Grundtechnik-Surfer ('contact' = beim ersten Boden-/Flankenkontakt nach CP4 in DIESEM Lauf, null = nur Bot).
  * Deterministisch: 'contact' fährt bis zur Übergabe exakt wie der Bot allein.
  */
-function hybridRace(level: CompiledLevel, lay: Level4Layout, cfg: MovementConfig, model: StrafeModel, seed: number, jitter: StartJitter | null, handAt: number | 'contact' | null): HybridRace {
+export function hybridRace(
+  level: CompiledLevel,
+  lay: Level4Layout,
+  cfg: MovementConfig,
+  model: StrafeModel,
+  seed: number,
+  jitter: StartJitter | null,
+  handAt: number | 'contact' | null,
+  riderSigma = 0,
+  riderLook = 0,
+): HybridRace {
   const route = level.def.route ?? [];
   const cps = level.triggers.filter((t) => t.kind === 'checkpoint').sort((a, b) => a.order - b.order);
   const launchX = route.find((n) => n.note === 'Launch')?.pos[0] ?? Number.NEGATIVE_INFINITY;
@@ -1106,7 +1120,12 @@ function hybridRace(level: CompiledLevel, lay: Level4Layout, cfg: MovementConfig
     });
   let bot = mk(0, start);
   const aim = new StartAim(jitter?.yawDeg ?? 0);
-  const rider = new SurfRider(cfg, level.world, descentAxis(lay), 0);
+  // Surfer mit dem Zielrauschen der Hand (σ in Grad, AR(1) τ 0.15 s wie StrafeController) — dieselbe Hand wie beim Klettern;
+  // σ 0 = der rauschfreie SurfRider (surfMedal-Wächter).
+  const rider =
+    riderSigma > 0 || riderLook !== 0
+      ? new HumanSurfer(cfg, level.world, descentAxis(lay), { look: riderLook, lag: 0, sigma: riderSigma, seed }, null)
+      : new SurfRider(cfg, level.world, descentAxis(lay), 0);
   const run = new RunState(level);
   run.reset(null);
   const ev: RunEvent[] = [];
@@ -1142,19 +1161,24 @@ function hybridRace(level: CompiledLevel, lay: Level4Layout, cfg: MovementConfig
  * Medaillen-Referenz L4 (build.ts, Freischalt-Leiter): jedes Medaillen-Modell klettert als RouteFollower und surft die
  * Abfahrt ab dem ersten Kontakt nach CP4 mit der Grundtechnik (`hybridRace`). Der RouteFollower allein surft die Abfahrt
  * ~2–3 s langsamer (drückt entlang −n_h, auf fallenden Rampen etwas gegen die Fahrt) — ohne Referenz unterbot "Hand 3° +
- * einfach surfen" Gold und VELOCITY. Gilt für alle Medaillen: auch Bronze/Silber-Hände surfen, was T7/T8 lehren.
+ * einfach surfen" Gold und VELOCITY. Gilt für alle Medaillen: auch Bronze/Silber-Hände surfen, was T7/T8 lehren — und
+ * zwar mit ihrem Zielrauschen (`surfSigma`; bis zur Medaillen-Runde surfte jede Hand rauschfrei: Bronze 28.7 statt 29.2 s).
  */
 export function level4Reference(): MedalReference {
   const lay = level4Layout();
   return {
     name: 'L4-Hybrid (RouteFollower bis zur Krone, dann Grundtechnik-Surfer)',
     // L4 hat keine Gabel: route und safeRoute sind dieselbe Linie.
-    runs(level, model, _line, jitter, seeds, cfg = VELOCITY_DEFAULT): ReferenceRuns | null {
+    // Blick immer 0° (die Abfahrt hat keinen Blick-Sweep): 'lesson' und 'best' fahren gleich.
+    runs(level, model, _line, jitter, seeds, opts): ReferenceRuns | null {
+      const cfg = opts?.cfg ?? VELOCITY_DEFAULT;
+      // Surfer mit derselben Hand wie der Kletterer (physics.surfSigma).
+      const sigma = surfSigma(model);
       const toRun = (r: HybridRace): TimedRun => ({ time: r.time, deaths: r.deaths, reason: r.time === null ? 'hybrid' : null, splits: r.splits });
       const runs = jitter
-        ? START_JITTERS.map((j, i) => toRun(hybridRace(level, lay, cfg, model, i + 1, j, 'contact')))
-        : seeds.map((seed) => toRun(hybridRace(level, lay, cfg, model, seed, null, 'contact')));
-      return { runs, detail: `${runs.filter((x) => x.time !== null).length}/${runs.length} im Ziel, Übergabe nach CP4`, overJitter: jitter };
+        ? START_JITTERS.map((j, i) => toRun(hybridRace(level, lay, cfg, model, i + 1, j, 'contact', sigma)))
+        : seeds.map((seed) => toRun(hybridRace(level, lay, cfg, model, seed, null, 'contact', sigma)));
+      return { runs, detail: `${runs.filter((x) => x.time !== null).length}/${runs.length} im Ziel, Übergabe nach CP4, Surfer σ ${sigma}°`, overJitter: jitter };
     },
   };
 }
@@ -1211,5 +1235,34 @@ function surfMedalProbe(level: CompiledLevel, lay: Level4Layout, cfg: MovementCo
       `Design: ${line} — Autor liegt ${(author - s.hybrid).toFixed(2)} s über "perfekt strafen + einfach surfen" (Soll ≤ 10 % der Abfahrt = ${(0.1 * s.riderSection).toFixed(2)} s): ` +
         `Gold/VELOCITY/Autor zu lasch. Ursache RouteFollower.pushInto (src/player/bots) bzw. Medaillen-Modell (build.ts)`,
     );
+  else r.info.push(`Design: ${line}`);
+}
+
+/** Blickversätze der Blickfehler-Probe (Grad, + = in die Rampe) und Seeds je Versatz. */
+export const LOOK_BIAS_L4 = [-4, -2, 0, 2, 4] as const;
+const LOOK_BIAS_SEEDS = [1, 2, 3, 4, 5, 6];
+
+/**
+ * Blickfehler (E2E-Review v2final: "L4-Bronze nur aus der Surf-Referenz mit Werkzeug-Achse"): die Bronze-Hand (3°,
+ * RouteFollower bis zur Krone, dann Grundtechnik-Surfer mit σ 3°) mit festem Blickversatz auf der Abfahrt. Ein Mensch
+ * sieht die Rampe, trifft ihre Achse aber nicht genau. Warnung, wenn sie im Band ±2° Bronze im Median verfehlt —
+ * dann hinge Bronze an einer Präzision, die die 3°-Hand nicht hat. Gemessen (01.10., 6 Seeds): −2° 26.4, 0° 27.0, +2° 27.7,
+ * +4° 29.2 s gegen Bronze 29.2.
+ */
+function lookBiasProbe(level: CompiledLevel, lay: Level4Layout, cfg: MovementConfig, r: DesignReport): void {
+  const bronze = level.def.medals?.bronze;
+  if (bronze === undefined) return;
+  const parts: string[] = [];
+  const miss: string[] = [];
+  for (const look of LOOK_BIAS_L4) {
+    const ts = LOOK_BIAS_SEEDS.map((seed) => hybridRace(level, lay, cfg, { aimNoiseDeg: 3 }, seed, null, 'contact', 3, look).time ?? Infinity);
+    // Ohne Ziel = ∞ (zählt mit, anders als medianOf hier, das Tode verwirft).
+    const med = [...ts].sort((a, b) => a - b)[Math.floor((ts.length - 1) / 2)];
+    const ok = ts.filter((t) => t <= bronze).length;
+    parts.push(`${look > 0 ? '+' : ''}${look}° ${Number.isFinite(med) ? med.toFixed(2) : '–'} s (${ok}/${ts.length} ≤ Bronze)`);
+    if (Math.abs(look) <= 2 && !(med <= bronze)) miss.push(`${look}°`);
+  }
+  const line = `Blickfehler — Bronze-Hand (3°, Surfer σ 3°) mit festem Blickversatz auf der Abfahrt, ${LOOK_BIAS_SEEDS.length} Seeds: ${parts.join(', ')}; Bronze ${bronze} s`;
+  if (miss.length) r.warnings.push(`Design: ${line} — verfehlt Bronze im Band ±2° (${miss.join(', ')})`);
   else r.info.push(`Design: ${line}`);
 }

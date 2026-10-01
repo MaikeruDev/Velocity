@@ -34,9 +34,13 @@ function setRgb(c: [number, number, number], v: readonly [number, number, number
   c[2] = v[2];
 }
 
-/** Kamin-Oberkante (Flammenfuß) und Scharnier im Gegenstands-Raum. */
+/**
+ * Kamin-Oberkante (Flammenfuß) und Scharnier im Gegenstands-Raum. Plan 008: Scharnier auf der Rad-Seite (−x) wie beim
+ * echten Sturmfeuerzeug — der Deckel klappt zur Handwurzel hin auf; auf der +x-Seite schlug er offen 1.35 cm in den
+ * Zeigefinger. Der Daumen schnippt die freie Ecke (+x).
+ */
 export const LIGHTER_FLAME_BASE: readonly [number, number, number] = [0.35, 1.75, 0];
-const HINGE_X = 1.85;
+const HINGE_X = -1.85;
 const HINGE_Y = 0.4;
 /** Deckel voll offen (rad) — 1 im Kanal. */
 const LID_OPEN = 2.95;
@@ -44,12 +48,21 @@ const LID_OPEN = 2.95;
 const FLAME_VERT = /* glsl */ `
 uniform float uScale;
 uniform float uSize;
+uniform float uLean;
+uniform float uTime;
 out vec2 vUv;
 void main() {
   vUv = uv;
   // Billboard: Fuß im View-Raum, Ecken in der Bildebene (y von 0 = Fuß nach oben); Größe = Flamme.
   vec4 mv = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-  mv.xy += vec2(position.x * (0.75 + 0.25 * uSize), position.y * uSize) * uScale;
+  // Flackern: die Höhe zuckt unregelmäßig (zwei Sinus, kein Rauschen-Texture-Lookup).
+  float jit = 1.0 + 0.07 * sin(uTime * 17.0) + 0.05 * sin(uTime * 29.0 + 1.3) + 0.03 * sin(uTime * 53.0 + 0.4);
+  float h = position.y * uSize * jit;
+  // Wind/Nachlauf (Plan 008): die Spitze wird geschert statt im Quad verschoben (dort schnitt der Rand sie ab) —
+  // + = nach rechts unten (Fahrtwind "nach hinten"), und die Flamme duckt sich (kürzer).
+  float lean = clamp(uLean, -1.0, 1.0);
+  mv.x += (position.x * (0.75 + 0.25 * uSize) + h * 0.62 * lean) * uScale;
+  mv.y += h * (1.0 - 0.32 * abs(lean)) * uScale;
   gl_Position = projectionMatrix * mv;
 }
 `;
@@ -64,7 +77,8 @@ out vec4 fragColor;
 void main() {
   float y = vUv.y;
   if (y > 0.98) discard;
-  float x = vUv.x - 0.5 - uLean * 0.45 * y * y;
+  // Leichte Krümmung zusätzlich zur Scherung im Vertex-Shader (Spitze biegt stärker als der Fuß).
+  float x = vUv.x - 0.5 - uLean * 0.12 * y * y;
   float flick = 0.08 * sin(uTime * 23.0 + y * 9.0) + 0.05 * sin(uTime * 37.0 + y * 17.0);
   float w = 0.42 * pow(max(0.0, 1.0 - y), 0.55) * sqrt(max(0.0, y * 3.0));
   float d = abs(x + flick * y) / max(0.001, w);
@@ -253,7 +267,7 @@ export function buildLighter(ctx: VmBuildCtx): ItemView {
     ownPoof: true,
     apply(f: ViewModelFrame): void {
       const p = f.propParam;
-      lid.rotation.z = -p[P.lid] * LID_OPEN;
+      lid.rotation.z = p[P.lid] * LID_OPEN;
       const fl = p[P.flame];
       const w = p[P.wind];
       lean.value = w > -1 ? (w < 1 ? w : 1) : -1;

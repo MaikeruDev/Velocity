@@ -1,0 +1,96 @@
+{
+ "levels": {
+  "level1": {
+   "sceneCallsMax": 15,
+   "sceneCallsMin": 9,
+   "vmCalls": 36,
+   "sceneTrisMax": 72746,
+   "frameMsP50": 16.7,
+   "frameMsP99": 16.8,
+   "frameMsMax": 16.8,
+   "cpuFrameMs": {
+    "ms": 0.8987134503865103,
+    "lessonMs": 0,
+    "lessonTickMs": 0,
+    "frames": 855
+   }
+  },
+  "level2": {
+   "sceneCallsMax": 13,
+   "sceneCallsMin": 12,
+   "vmCalls": 36,
+   "sceneTrisMax": 116351,
+   "frameMsP50": 16.7,
+   "frameMsP99": 16.8,
+   "frameMsMax": 16.8,
+   "cpuFrameMs": {
+    "ms": 0.9070175434413709,
+    "lessonMs": 0,
+    "lessonTickMs": 0,
+    "frames": 855
+   }
+  },
+  "level3": {
+   "sceneCallsMax": 14,
+   "sceneCallsMin": 13,
+   "vmCalls": 36,
+   "sceneTrisMax": 200550,
+   "frameMsP50": 16.7,
+   "frameMsP99": 16.8,
+   "frameMsMax": 16.8,
+   "cpuFrameMs": {
+    "ms": 0.8900584793230246,
+    "lessonMs": 0,
+    "lessonTickMs": 0,
+    "frames": 855
+   }
+  },
+  "level4": {
+   "sceneCallsMax": 17,
+   "sceneCallsMin": 14,
+   "vmCalls": 36,
+   "sceneTrisMax": 174757,
+   "frameMsP50": 16.7,
+   "frameMsP99": 16.8,
+   "frameMsMax": 16.8,
+   "cpuFrameMs": {
+    "ms": 0.8883177572426116,
+    "lessonMs": 0,
+    "lessonTickMs": 0,
+    "frames": 856
+   }
+  },
+  "t3": {
+   "sceneCallsMax": 8,
+   "sceneCallsMin": 8,
+   "vmCalls": 36,
+   "sceneTrisMax": 69327,
+   "frameMsP50": 16.7,
+   "frameMsP99": 16.8,
+   "frameMsMax": 16.8,
+   "cpuFrameMs": {
+    "ms": 0.5319298245927744,
+    "lessonMs": 0.0038596491367496244,
+    "lessonTickMs": 0.004912280635527003,
+    "frames": 855
+   }
+  },
+  "t8": {
+   "sceneCallsMax": 12,
+   "sceneCallsMin": 12,
+   "vmCalls": 36,
+   "sceneTrisMax": 118549,
+   "frameMsP50": 16.7,
+   "frameMsP99": 16.8,
+   "frameMsMax": 16.8,
+   "cpuFrameMs": {
+    "ms": 0.40327102819753585,
+    "lessonMs": 0.002570093461425505,
+    "lessonTickMs": 0.006658878455930781,
+    "frames": 856
+   }
+  }
+ },
+ "combos": [],
+ "errors": []
+}

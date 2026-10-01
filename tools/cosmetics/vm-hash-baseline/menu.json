@@ -17,11 +17,11 @@
  },
  {
   "label": "classic grip",
-  "hash": "18800bc9"
+  "hash": "6c5944fd"
  },
  {
   "label": "classic pinch",
-  "hash": "6afc6115"
+  "hash": "5b44db8d"
  },
  {
   "label": "classic knife",
@@ -41,7 +41,7 @@
  },
  {
   "label": "classic crack",
-  "hash": "d3c7aeda"
+  "hash": "3729fdf"
  },
  {
   "label": "classic none - 0",
@@ -49,195 +49,195 @@
  },
  {
   "label": "classic can - 0",
-  "hash": "41726031"
+  "hash": "365b0da5"
  },
  {
   "label": "classic can crack 0.15",
-  "hash": "7d7ad8d3"
+  "hash": "59982073"
  },
  {
   "label": "classic can crack 0.35",
-  "hash": "e81cf6ed"
+  "hash": "bea3b5a3"
  },
  {
   "label": "classic can crack 0.5",
-  "hash": "2476b5d"
+  "hash": "14953dc1"
  },
  {
   "label": "classic can crack 0.8",
-  "hash": "4dc640a9"
+  "hash": "8ec2860a"
  },
  {
   "label": "classic can sip 0.3",
-  "hash": "dfc4c6bc"
+  "hash": "c4c0260b"
  },
  {
   "label": "classic can sip 0.7",
-  "hash": "7e55a0a7"
+  "hash": "993b283e"
  },
  {
   "label": "classic can sip 1",
-  "hash": "7e55a0a7"
+  "hash": "801f53b5"
  },
  {
   "label": "classic can tilt 0.3",
-  "hash": "88c96285"
+  "hash": "f365ec00"
  },
  {
   "label": "classic can flip 0.05",
-  "hash": "33de7921"
+  "hash": "8b66464b"
  },
  {
   "label": "classic can flip 0.2",
-  "hash": "59740ae9"
+  "hash": "7f0f000a"
  },
  {
   "label": "classic can flip 0.33",
-  "hash": "b6c8f92e"
+  "hash": "9c192b73"
  },
  {
   "label": "classic can flip 0.5",
-  "hash": "603e1916"
+  "hash": "5d4b7ed"
  },
  {
   "label": "classic can highFlip 0.3",
-  "hash": "9550e51b"
+  "hash": "83c28d06"
  },
  {
   "label": "classic can twirl 0.25",
-  "hash": "d50f6f33"
+  "hash": "68baebc2"
  },
  {
   "label": "classic can twirl 0.4",
-  "hash": "afa76a0a"
+  "hash": "84685939"
  },
  {
   "label": "classic can doubleFlip 0.3",
-  "hash": "2a8c369c"
+  "hash": "c4185294"
  },
  {
   "label": "classic can doubleFlip 0.55",
-  "hash": "f385cb0d"
+  "hash": "b51b40c5"
  },
  {
   "label": "classic can behindThrow 0.35",
-  "hash": "6eec7a67"
+  "hash": "277bd6b2"
  },
  {
   "label": "classic can behindThrow 0.6",
-  "hash": "355be104"
+  "hash": "50c6005d"
  },
  {
   "label": "classic can behindThrow 0.85",
-  "hash": "45b545fb"
+  "hash": "4304eed9"
  },
  {
   "label": "classic card - 0",
-  "hash": "272e0508"
+  "hash": "d657f686"
  },
  {
   "label": "classic card spin 0.15",
-  "hash": "c2417a6a"
+  "hash": "e00f5adf"
  },
  {
   "label": "classic card spin 0.3",
-  "hash": "2abd04ba"
+  "hash": "6b993d41"
  },
  {
   "label": "classic card spin 0.45",
-  "hash": "faee7305"
+  "hash": "9d29e9ee"
  },
  {
   "label": "classic card spin 0.6",
-  "hash": "2cd53ed3"
+  "hash": "17b98d02"
  },
  {
   "label": "classic card spin 0.75",
-  "hash": "1f7e2182"
+  "hash": "4877ee2f"
  },
  {
   "label": "classic card turn 0.35",
-  "hash": "ad4d61da"
+  "hash": "875b3795"
  },
  {
   "label": "classic card tossSpin 0.3",
-  "hash": "d2f9841f"
+  "hash": "9b102e20"
  },
  {
   "label": "classic card tossSpin 0.5",
-  "hash": "3ca33c5"
+  "hash": "bfc4db67"
  },
  {
   "label": "classic card vanish 0.1",
-  "hash": "499c4ef2"
+  "hash": "39ad6535"
  },
  {
   "label": "classic card vanish 0.25",
-  "hash": "d580dcaa"
+  "hash": "9292b8cd"
  },
  {
   "label": "classic card vanish 0.35",
-  "hash": "ba84a245"
+  "hash": "7d5aa28d"
  },
  {
   "label": "classic card vanish 0.8",
-  "hash": "b64dc422"
+  "hash": "83ec9f1f"
  },
  {
   "label": "classic card vanish 1.35",
-  "hash": "ab9147df"
+  "hash": "ca4253b5"
  },
  {
   "label": "classic card vanish 1.52",
-  "hash": "38b2b70f"
+  "hash": "11333e59"
  },
  {
   "label": "classic card vanish 1.62",
-  "hash": "2f3413ec"
+  "hash": "912cf628"
  },
  {
   "label": "classic knife - 0",
-  "hash": "b57a9a5c"
+  "hash": "a2f0f764"
  },
  {
   "label": "classic knife open 0.15",
-  "hash": "4ec2fe9c"
+  "hash": "f4681b"
  },
  {
   "label": "classic knife open 0.3",
-  "hash": "26a31e0f"
+  "hash": "2b2ad782"
  },
  {
   "label": "classic knife open 0.45",
-  "hash": "a0f76fe1"
+  "hash": "907ce993"
  },
  {
   "label": "classic knife close 0.2",
-  "hash": "5868b9f1"
+  "hash": "83ded9e7"
  },
  {
   "label": "classic knife rollover 0.25",
-  "hash": "15ecac94"
+  "hash": "cde432d3"
  },
  {
   "label": "classic knife rollover 0.5",
-  "hash": "39874223"
+  "hash": "34f55e09"
  },
  {
   "label": "classic knife aerial 0.25",
-  "hash": "6035e3f3"
+  "hash": "c625d6f3"
  },
  {
   "label": "classic knife aerial 0.45",
-  "hash": "a789d414"
+  "hash": "fc56d0f9"
  },
  {
   "label": "classic knife aerial 0.65",
-  "hash": "1cb0bba"
+  "hash": "8a7ca35d"
  },
  {
   "label": "classic knife doubleAerial 0.45",
-  "hash": "d2fb592a"
+  "hash": "b300cee7"
  },
  {
   "label": "classic run 420",
@@ -245,11 +245,11 @@
  },
  {
   "label": "classic knife open rest",
-  "hash": "bcd0ba08"
+  "hash": "ca314933"
  },
  {
   "label": "classic card flipped rest",
-  "hash": "bb56f29c"
+  "hash": "460c7cfb"
  },
  {
   "label": "neon relaxed",
@@ -269,11 +269,11 @@
  },
  {
   "label": "neon grip",
-  "hash": "214edf8b"
+  "hash": "30a7090e"
  },
  {
   "label": "neon pinch",
-  "hash": "70a9857e"
+  "hash": "796054cf"
  },
  {
   "label": "neon knife",
@@ -293,7 +293,7 @@
  },
  {
   "label": "neon crack",
-  "hash": "41c20d3c"
+  "hash": "df1ffaf0"
  },
  {
   "label": "neon none - 0",
@@ -301,195 +301,195 @@
  },
  {
   "label": "neon can - 0",
-  "hash": "48edaa3f"
+  "hash": "381c7635"
  },
  {
   "label": "neon can crack 0.15",
-  "hash": "30942292"
+  "hash": "878cac3b"
  },
  {
   "label": "neon can crack 0.35",
-  "hash": "27822f2"
+  "hash": "e12f5e9a"
  },
  {
   "label": "neon can crack 0.5",
-  "hash": "4148b225"
+  "hash": "1f8e5dcc"
  },
  {
   "label": "neon can crack 0.8",
-  "hash": "19831459"
+  "hash": "b2a310bb"
  },
  {
   "label": "neon can sip 0.3",
-  "hash": "6bec1b69"
+  "hash": "90b3fb8"
  },
  {
   "label": "neon can sip 0.7",
-  "hash": "7b347297"
+  "hash": "4c3fc891"
  },
  {
   "label": "neon can sip 1",
-  "hash": "7b347297"
+  "hash": "822c0623"
  },
  {
   "label": "neon can tilt 0.3",
-  "hash": "52be790e"
+  "hash": "cfe5a65a"
  },
  {
   "label": "neon can flip 0.05",
-  "hash": "1985f7b6"
+  "hash": "df6b7571"
  },
  {
   "label": "neon can flip 0.2",
-  "hash": "db1f97b6"
+  "hash": "6e350d05"
  },
  {
   "label": "neon can flip 0.33",
-  "hash": "ef041ca1"
+  "hash": "b3697dfa"
  },
  {
   "label": "neon can flip 0.5",
-  "hash": "d83cda36"
+  "hash": "93701fad"
  },
  {
   "label": "neon can highFlip 0.3",
-  "hash": "5de246c3"
+  "hash": "23fd634f"
  },
  {
   "label": "neon can twirl 0.25",
-  "hash": "eeaa86d9"
+  "hash": "7224d930"
  },
  {
   "label": "neon can twirl 0.4",
-  "hash": "908e396e"
+  "hash": "2200e69"
  },
  {
   "label": "neon can doubleFlip 0.3",
-  "hash": "6078e72"
+  "hash": "df320c1a"
  },
  {
   "label": "neon can doubleFlip 0.55",
-  "hash": "51bcfc72"
+  "hash": "4d003cd7"
  },
  {
   "label": "neon can behindThrow 0.35",
-  "hash": "9d75323d"
+  "hash": "c4567051"
  },
  {
   "label": "neon can behindThrow 0.6",
-  "hash": "550d3c4d"
+  "hash": "c92de926"
  },
  {
   "label": "neon can behindThrow 0.85",
-  "hash": "5feb7725"
+  "hash": "32f452"
  },
  {
   "label": "neon card - 0",
-  "hash": "428e3cde"
+  "hash": "9836ecd3"
  },
  {
   "label": "neon card spin 0.15",
-  "hash": "34c89a75"
+  "hash": "61e5a662"
  },
  {
   "label": "neon card spin 0.3",
-  "hash": "66950ba5"
+  "hash": "3ee3d923"
  },
  {
   "label": "neon card spin 0.45",
-  "hash": "4b81f9eb"
+  "hash": "5d85e5a9"
  },
  {
   "label": "neon card spin 0.6",
-  "hash": "633a2cdb"
+  "hash": "dff53662"
  },
  {
   "label": "neon card spin 0.75",
-  "hash": "6742a88e"
+  "hash": "11fc7e54"
  },
  {
   "label": "neon card turn 0.35",
-  "hash": "9aeb8bec"
+  "hash": "8d634b32"
  },
  {
   "label": "neon card tossSpin 0.3",
-  "hash": "21382712"
+  "hash": "bc9944e"
  },
  {
   "label": "neon card tossSpin 0.5",
-  "hash": "88637ef8"
+  "hash": "587be51d"
  },
  {
   "label": "neon card vanish 0.1",
-  "hash": "ecdf4a98"
+  "hash": "883c1233"
  },
  {
   "label": "neon card vanish 0.25",
-  "hash": "f9f78d80"
+  "hash": "50a8265c"
  },
  {
   "label": "neon card vanish 0.35",
-  "hash": "6fbe9bc4"
+  "hash": "12c908b1"
  },
  {
   "label": "neon card vanish 0.8",
-  "hash": "ed634913"
+  "hash": "6f77aed7"
  },
  {
   "label": "neon card vanish 1.35",
-  "hash": "c95f481"
+  "hash": "4191d806"
  },
  {
   "label": "neon card vanish 1.52",
-  "hash": "78fff6ba"
+  "hash": "a178459"
  },
  {
   "label": "neon card vanish 1.62",
-  "hash": "6e536ce5"
+  "hash": "2a1c7df5"
  },
  {
   "label": "neon knife - 0",
-  "hash": "a365c34f"
+  "hash": "ea9fc676"
  },
  {
   "label": "neon knife open 0.15",
-  "hash": "b37e43ad"
+  "hash": "685e839c"
  },
  {
   "label": "neon knife open 0.3",
-  "hash": "c010b269"
+  "hash": "5e56648c"
  },
  {
   "label": "neon knife open 0.45",
-  "hash": "a9b59f1e"
+  "hash": "7f35d175"
  },
  {
   "label": "neon knife close 0.2",
-  "hash": "eee8b0b4"
+  "hash": "6f5f574e"
  },
  {
   "label": "neon knife rollover 0.25",
-  "hash": "5ff2f5fa"
+  "hash": "6fd536cf"
  },
  {
   "label": "neon knife rollover 0.5",
-  "hash": "6d39e28b"
+  "hash": "4eb5a185"
  },
  {
   "label": "neon knife aerial 0.25",
-  "hash": "cbe1895d"
+  "hash": "5e48334a"
  },
  {
   "label": "neon knife aerial 0.45",
-  "hash": "b721bf53"
+  "hash": "a5f8078f"
  },
  {
   "label": "neon knife aerial 0.65",
-  "hash": "86c6ef1a"
+  "hash": "acb191e5"
  },
  {
   "label": "neon knife doubleAerial 0.45",
-  "hash": "d63a39f4"
+  "hash": "e9a7d5d"
  },
  {
   "label": "neon run 420",
@@ -497,10 +497,10 @@
  },
  {
   "label": "neon knife open rest",
-  "hash": "d9a0e867"
+  "hash": "c499eecd"
  },
  {
   "label": "neon card flipped rest",
-  "hash": "200ee6e2"
+  "hash": "b2a742e2"
  }
 ]

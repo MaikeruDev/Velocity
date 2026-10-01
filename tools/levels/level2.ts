@@ -423,8 +423,7 @@ export function buildLevel2(): LevelFile {
   const e1Lip = reach(TIER1, T0[1] - E1_TOP) / RESERVE;
   const e1u0 = Math.round(-T0z + e1Lip + 16);
   const e1u1 = e1u0 + E1_LEN;
-  const E1_WEST = Number(process.env.E1_WEST ?? 0); // TEMP Sweep: E1 nach Westen bis an den S0-Grat
-  L.ramp(N, [e1u0, e1u1], [-E1_W / 2 - E1_WEST, E1_W / 2], E1_TOP, E1_TOP - E1_FALL, { tag: 'exit1', mat: 'checkpoint' });
+  L.ramp(N, [e1u0, e1u1], [-E1_W / 2, E1_W / 2], E1_TOP, E1_TOP - E1_FALL, { tag: 'exit1', mat: 'checkpoint' });
   // Vorfeld: schließt die Lücke Ring → E1. Mit Auto-Hop springt man auf der
   // Ausfahrt je nach Hop-Phase bis zu einer Sprungweite früher ab — über einer
   // Lücke fiel dann immer irgendeine Phase vor die 131 u hohe Stirn von E1
@@ -491,6 +490,7 @@ export function buildLevel2(): LevelFile {
   });
   const s0Catch = buildS0Catch(L, N, s0, s1, ridgeX - XL, e1u0);
   buildS0Fin(L, N, [...s0, s1], ridgeX - XL, e1u1);
+  buildS0Notch(L, N, s0[0], ridgeX - XL, -E1_W / 2, e1u1);
   const s2 = L.surfDrop(s1, { overlap: DROP_OVERLAP, drop: DROP, length: 1280, slopeDeg: SURF_SLOPE, tag: 'surf2', tint: TIER.s2, width: S2_W });
   const s3 = L.surfDrop(s2, { overlap: DROP_OVERLAP, drop: DROP, length: 1280, slopeDeg: SURF_SLOPE, tag: 'surf3', width: SURF_W });
 
@@ -947,6 +947,40 @@ function buildS0Fin(L: LevelBuilder, N: Frame, chain: readonly SurfRamp[], ridge
     const [a, b] = [pieces[k - 1], pieces[k]];
     L.ramp(N, [a, b], [vW, ridgeV], r3(apex(a) + S0_FIN_H), r3(apex(b) + S0_FIN_H), { ...style, thick: S0_FIN_H + S0_FIN_SINK });
   }
+}
+
+/**
+ * Sims-Oberkante unter dem S0-First (u). Die Kerbe zwischen Grat und E1-Westwand ist 48 u breit; in der Tiefe D
+ * bleiben 48 − D/tan 60° = 36 u zwischen Flanke und Wand (Hull 32). Unter 27.7 u Tiefe passt die Hull nicht mehr
+ * hinein und hinge wieder an Flanke + Wand. Von hier sind es 24 + D = 44 u bis auf E1 — ein Sprung (57 u) reicht.
+ * Gemessen (Ausfahrt-Rand −172…−96 in 2 u, 2.5 u/s, 27 434 Läufe): D 16/20/24 → 0/0/1 Hänger, 0 Tode.
+ */
+const S0_NOTCH_D = 20;
+/**
+ * So weit endet das Sims vor der E1-Nordkante (u). Länger: wer ganz vorn auf das Ende fällt, hüpft schräg nach
+ * Nordost über die Grube hinaus und stirbt neben S2; kürzer: die Kerbe davor hält wieder fest. Dichtes Raster
+ * (Versatz −176…−96 in 4 u, 2.5 u/s, 14 663 Läufe), Tode/Hänger: +64 25/0, +32 14/0, +16 8/0, 0 2/0, −8 1/0,
+ * −16 0/0, −24 0/0, −32 0/1, −40 0/1, −48 0/2, −64 0/6 — monoton, 20 liegt in der Mitte des freien Fensters.
+ */
+const S0_NOTCH_END = 20;
+
+/**
+ * Sims in der Kerbe S0-Ostflanke/E1-Westwand (drittes Review l1l2). Wer westlich an E1 vorbei in die Kerbe fiel,
+ * hing dort in der Luft (Ausfahrt-Rand: 63 von 26 015 Läufen, Fall aus dem Stand an 80/594 Stellen): Flanke und
+ * Wand bilden einen Knick mit nur 10° Gefälle, die Schwerkraft eines Ticks schiebt die Hull entlang des Knicks
+ * weniger als DIST_EPSILON, der Trace kommt nicht vom Fleck (allFraction 0) und Source nullt das Tempo — jeden Tick
+ * neu. Keine Eingabe half, nur F (fallen.md #156). Ein ebener Boden ≥ Hull-Breite am Grund der Kerbe macht aus dem
+ * Knick einen Stand: man landet, geht nach Norden weiter, springt auf E1 oder über den Grat zurück auf die Linie.
+ * Südlich 2 u hinter dem Anfang von S0 (sonst koplanar mit ihrer Südkappe), östlich 8 u in E1 hinein, westlich bis
+ * an den Grat (dort steckt es in der Flanke), unten 16 u unter der Flanke an der Wand.
+ */
+function buildS0Notch(L: LevelBuilder, N: Frame, s0a: SurfRamp, ridgeV: number, wallV: number, e1u1: number): void {
+  const u0 = -s0a.frame.z + 2;
+  const u1 = e1u1 - S0_NOTCH_END;
+  const apex = (u: number): number => s0a.apexAt(u + s0a.frame.z);
+  const v1 = wallV + 8;
+  const thick = (v1 - ridgeV) * Math.tan(s0a.flankDeg * DEG) + 16 - S0_NOTCH_D;
+  L.ramp(N, [u0, u1], [ridgeV, v1], r3(apex(u0) - S0_NOTCH_D), r3(apex(u1) - S0_NOTCH_D), { mat: 'metal', tint: TIER.apron, tag: 's0Notch', thick });
 }
 
 interface DesignNumbers {

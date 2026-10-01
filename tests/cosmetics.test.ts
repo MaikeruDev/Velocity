@@ -1744,7 +1744,9 @@ function finishScene(item: HeldItemId, scene: FinishScene, withFinish = true): {
     inp = SURF(900);
   } else if (scene === 'trick') p.onEvent(JUMP(950, 3, false));
   const before: Shot[] = [];
-  for (let f = 0; f < 48; f++) {
+  // Plan 008: Messer-Tricks sind physikalisch kürzer (Aerial 0.66 s statt 0.95 s) — das Ziel kommt mitten im Flug.
+  const lead = item === 'knife' ? 24 : 48;
+  for (let f = 0; f < lead; f++) {
     step();
     before.push(shot(p));
   }

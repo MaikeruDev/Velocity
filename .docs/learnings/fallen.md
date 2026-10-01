@@ -1899,3 +1899,185 @@ außer T6 FLUSS: ohne A/D trifft kein Skript den Hop-Rhythmus vor drei Kanten ve
   Prestrafe (350). Game erzwingt Auto-Sprint, die Session erkennt "W ohne Sprint am Boden 0.75 s" in diesen Stufen.
 - Browser-Probe mit festem Blick 4° in die T8-Rampe OHNE Rauschen: man klettert über den Grat und fällt (Grube-Tipp),
   statt langsamer zu werden — Diagnosen mit der Hand messen, die den Fehler realistisch macht (Rauschen + Reaktion).
+
+## 184. Vorführung eines Luft-Kurses: ein fester Absprungpunkt geht nicht auf — die Hop-Phase planen
+
+T6 FLUSS (drei 66er-Kanten in einem Zug, ≤ 0.25 s Boden, ≥ 250 u/s) hatte keine Vorführung: 'jump' läuft zwischen den
+Kanten am Boden (Kurs von vorn), der RouteFollower strafet und schafft es nur mit Anläufen. Ein Skript "springen, wenn der
+Rest nach dem Hop aufgeht, sonst weiterlaufen" mit FESTEM Absprungpunkt (140 u vor jeder Wand) scheitert an der
+Geometrie: Landung oben → nächstes Ziel 437 u, bei 320 u/s = 1 Hop (241) + 196 u Laufen (> 2 × 0.2 s) oder 2 Hops − 45 u;
+mit "so spät wie möglich springen" landete der letzte Hop 41 u vor der Wand — die Hull streift sie, Tempo kurz 0, und der
+Kurs beginnt neu (< 200 u/s), obwohl man oben ankommt. **Richtig:** den Absprungpunkt je Kante im Fenster wandern lassen
+(170…80 u vor der Wand) und je Bodenkontakt per kleiner Tiefensuche über die restlichen Kanten Zwischenhops + Absprung-
+punkt wählen, Laufen gleichmäßig verteilen (`Training.FlowDemo`, Stil 'flow' für course + airborne ohne Drehbalken):
+5.0 s, 0 A/D, max 0.2 s Boden, nie unter 320 u/s. Das Hochkommen-Band (20–180 u) ist nicht das Ohne-Wandkontakt-Band.
+
+## 185. Seiten-Aufgaben: Taste UND Drehrichtung
+
+"Maus gegen die Taste" prüft die Summe Σ −side·dYaw über den Hop. Ein gemischter Hop (A 60 % mit Maus langsam links,
+dann D mit Maus schnell rechts) ist nicht 'against', überwiegend A — aber netto eine Rechtskurve, und er zählte in
+LINKSKURVE. `HopReport.turnSide` (Netto-Yaw der A/D-Ticks) muss für left/right/alternate zur Taste passen; sonst Erklär-
+Tipp "Maus in Tastenrichtung". Die Matrix (T3/T4) blieb unverändert — Hände und Demo-Hand strafen je Hop eine Seite.
+
+## 186. Kosmetik: JIT-Rest ohne Allokation im Code nachweisen — `--trace-opt` über `DEBUG=pw:browser`
+
+Nach `--warmup 60` standen Jo-Jo `cradle`/Kendama `cupCatch` noch mit 2–4 KiB/s in alloc-probe. Chromium mit
+`--js-flags=--allow-natives-syntax --trace-opt --trace-deopt` und `DEBUG=pw:browser` gibt die Marken auf stderr:
+die Zeitleisten wurden in 3600 getakteten Frames NIE zur Optimierung markiert (seltener Leerlauf-Trick, zu wenige
+Aufrufe), kein Deopt-Kreislauf — Sparkplug boxt jede Kommazahl-Operation. Nach 9000 Frames: Jo-Jo 6.4 → 0.8 KiB/s.
+Kein Code-Fix nötig (Vorwärmen verschlimmert es, #146); Code-Allokation erkennt man an Maglev-Funktionen in der Liste.
+Takt-Grenzen driften mit Level-Umbauten: Münze L1 lag nach dem L1-Umbau bei 45.4 % / 32.6 pro min (Band 45/32) —
+Abklingzeiten flip/roll 1.0/0.9, Meilenstein Stufe 2 = roll (sonst flip 52 % auf L2).
+
+## 187. Training-UI: ein Tipp und der Stufenwechsel im selben Frame — Verwerfen allein reicht nicht
+
+`Hud.dropCoachNotice` bei 'lessonStage' verwirft nur, was schon im Coach-Band STEHT. Fällt der Tipp der alten Stufe in
+einem früheren Tick desselben Frames (bei 60 Hz ~2 Ticks je Frame), ist er beim Wechsel noch nicht angezeigt — Game
+zeigt ihn danach in updateLesson (`tip.serial` hat sich geändert) unter der neuen Karte. Game merkt sich `tip.serial`
+beim Stufenwechsel (`stageTipSerial`: 'lessonStage', Überspringen, Lektion neu) und zeigt nur Tipps mit höherer Nummer
+(im Abschluss-Tick zeigt die Session selbst keinen Tipp mehr). Prüfen lässt es sich nicht mit `stepTicks(1)` + Überspringen
+(stepTicks ruft onFrame — der Tipp steht dann schon und wird korrekt verworfen): erst Tick für Tick bis zum Wechsel zählen,
+dann nach "Lektion neu" dieselben n Ticks in EINEM stepTicks(n). Gegenprobe ohne Fix: 3/3 alter Tipp sichtbar, mit: 0/3.
+
+## 188. Luft-Hänger im Knick Flanke + Wand: ein ebener Boden ≥ Hull-Breite macht daraus einen Stand
+
+L2-Kerbe S0-Ostflanke/E1-Westwand (#156): der Knick hat nur 10° Gefälle; ein Tick Schwerkraft schiebt die Hull entlang
+des Knicks < DIST_EPSILON, jeder Bump endet mit fraction 0, `allFraction 0` nullt das Tempo — jeden Tick neu, kein
+Aufbau. #156 ("kein Level-Ausweg") stimmte nur für Füllungen, die wieder zwei Ebenen bilden. **Richtig:** ein EBENER
+Boden (Sims, `s0Notch`) am Grund der Kerbe, so hoch, dass zwischen Flanke und Wand ≥ 32 u bleiben (20 u unter dem First
+→ 36 u): man landet, geht weiter, springt auf E1 (44 u) oder über den Grat. Das Ende ist ein Fenster, monoton belegt
+(Tode/Hänger, dichtes Raster): bis an die E1-Kante hüpft, wer vorn landet, schräg über die Grube in den Tod (+64: 25/0,
+0: 2/0), zu kurz hält die Kerbe davor wieder (−32: 0/1, −64: 0/6); −16…−24 frei. Ergebnis: Ausfahrt-Rand 0 Tode/0 Hänger in 39 259 Läufen,
+Fall aus dem Stand in die Kerbe 80/594 → 1/1134 (mit Nordschub 4, alle in den letzten 20 u). Rest (Physik, #98): Finnen-Spitze an der S0-WESTflanke (x ≈ 1150,
+Nordschub, 9/1134) und der Grat selbst, wenn man neben dem Vorfeld auf ihn fällt. Werkzeug: Hull an jeder Stelle mit
+Tempo 0/−150/−300 fallen lassen, 3 s nichts drücken — findet Knicke, die kein Routen-Raster trifft.
+
+## 189. Slalom-Umbauten auch ab dem Checkpoint-Stand messen — der Bot sieht die Geometrie voraus
+
+L1-Phasen-Insel: Sperr-Finne in der Gegenspalte + Zunge (oder 16/20/25°-Nase) senkte die Einbrüche der Hände 1.5°/2° auf
+~0 (48 Seeds, Lauf ab Start), aber ab dem CP3-Stand — also nach jedem Respawn — starben Hand 2°/3° 4–13/6–9 von 96
+statt 2/1: die 32°-Nase wirft, wer von der Wende mittig über die Spaltenfuge hüpft, hoch und rettet ihn. Verworfen.
+Zwei Mess-Fallen: (1) RouteFollower tastet die Welt voraus — ein Lauf weicht schon VOR der geänderten Stelle ab, einzelne
+Tode wandern (Vergleich nur über Zählungen, ≥ 96 Seeds). (2) Hängen die Tode an einem Seed, der ab CP3 identisch
+wiederholt (Respawn-Schleife bis zum Timeout), sieht das wie 30 Tode aus — Tode je Seed zählen, nicht je Respawn.
+
+## 190. Medaillen: eine Referenz nur für die oberen Stufen macht die Leiter krumm — jede Stufe mit DERSELBEN Hand messen
+
+L3 maß Gold/VELOCITY/Autor am Grundtechnik-Surfer, Bronze/Silber am RouteFollower, der an jedem Surf-Drop 150–190 u/s
+verliert: Silber 25.1 → Gold 12.8 s (× 1.96), und die 3°-Hand holte in der Freischalt-Leiter über Koralle Silber (22.5 s).
+**Richtig:** jedes Medaillen-Modell nimmt den schnelleren Median aus RouteFollower und Referenz mit SEINER Hand
+(`physics.surfSigma`: Surf-Rauschen = aimNoiseDeg, gleiches AR(1) τ 0.15 s), und Leiter, Validator-Par und
+Medaillen-Stichprobe rufen dieselbe Referenz. Drei Nebenfallen: (1) **Surfen verzeiht Rauschen** — mit bestem Blick
+trennt die Referenz 3°- und 2°-Hand nur um 2.6 % (L3 Türkis 14.20/13.84 s); getrennt wird über das Wissen (Bronze Blick 0°
+wie gelehrt, ab Silber der beste Versatz) plus Mindestabstand 4 % (`staggerMedals`, lockert nur die leichtere Stufe).
+(2) **"Bester Blick" braucht eine Ziel-Quote** — der Median (Tod = langsamster) nahm bei 48 Seeds Koralle −3° mit 25/48 im
+Ziel; ≥ 80 % (`REFERENCE_FINISH`). (3) **"Perfekt" nicht rauschfrei surfen** — über die 49 Start-Jitter starben 7/49
+(Median 11.75 s, langsamer als die 1°-Hand); σ 1° ließ die 2°-Hand unter VELOCITY. σ 0.5° = beste Hand der Proben.
+Und: Stichproben gleich groß halten — die Leiter mit 24 Seeds sah die 2°-Hand auf Koralle bei 12.09 s (VELOCITY),
+build mit 48 bei 12.19 s (Gold); die Leiter nimmt jetzt `MEDAL_SEEDS`.
+
+## 191. Median einer zweigeteilten Hand: der Medaillen-Abstand lügt
+
+L1 1°-Hand über 48 Seeds: 15 Läufe 20.0–20.6 s, 33 Läufe 24.5–27.8 s (Einbruch CP1 → CP3 ohne Tod, Crouch-Kanten-Lotterie
+#178), Median 24.81. Gold (1°-Hand × 1.05 = 26.1 s) → VELOCITY (19.8 s) sieht nach 31.8 % aus, für den Spieler mit
+einer sauberen Runde sind es 1–4 %. Vor einem Abstand-Urteil die Verteilung ansehen (`timedMedian(...).runs`), nicht nur
+den Median; bei zwei Moden ist die Stelle im Level (oder die Physik) der Hebel, nicht der Aufschlag. Ebenso: ein
+Selbsttest-Fall, der an einer Stelle der Geometrie hängt ("Lücke ohne jump-Flag" am Slalom-Knoten), wird still stumpf,
+wenn ein Strang dort Boden einzieht (slalom1Lip) — den Fall über den Knoten danach bauen und bei Umbauten mitprüfen.
+
+## 192. Surf-Bots ohne Blickziel sind kein Mensch — Medaillen-Plausibilität über Blickfehler messen, nicht über "werkzeugfrei"
+
+E2E-Review v2final: ein Browser-Surfer mit Blick aus der Surf-Normale kam auf L3 nie ins Ziel (nach CP3 nach außen
+gedriftet), die Referenz mit `rampAxis` immer. Nachgemessen (Grundtechnik-Surfer, nur die Achse getauscht): (1) **Höhenlinie**
+(waagrechte Tangente aus n): auf Rampen mit Achsgefälle liegt sie atan(n_axial/n_quer) neben der Achse — W1 6°, R1 8°,
+auf dem steigenden Finale-Kicker andersherum; vom Brett 0–4/8 im Ziel, auf W1 bis zum Stillstand. (2) **Flugrichtung**
+(Blick = v_h): kein Rückweg zur Linie, das Rauschen läuft als Irrfahrt weg, R1-Rand bei Querlage ±1200, ab CP3 1–2/16.
+Mit Blick auf die Rampe (Achse) und festem Versatz −6…+12°, σ 3°, Verzug 0.4 s ab CP3 dagegen 12/12 je Versatz. Ein Mensch
+sieht die Rampe; die Frage ist, wie genau er ihre Achse trifft. Deshalb prüft levels:check jetzt Blickfehler (L3: ab CP3
+−6…+10° alle im Ziel; Bronze-Hand auf Türkis ±4°: 0° 15.1, +2° 16.3 s gegen Bronze 16.6; L4-Abfahrt ±4°: +2° 27.7, +4°
+29.2 gegen 29.2) — L3 +2° liegt 2 % unter Bronze, das ist der Punkt für den S6-Playtest.
+
+## 193. node_modules nach Worktree-Aufräumen halb gelöscht — aus dem npm-Cache zurückholen, nicht neu installieren
+
+01.10.: `.bin`, `@fontsource/*`, `@jridgewell/*`, `@esbuild/win32-x64`, `@oxc-project/types` und die package.json der
+Rolldown-Binding fehlten (alle um 01:51, zeitgleich mit dem Entfernen eines Prüf-Worktrees; die Binding-`.node` blieb,
+weil der laufende `npm run dev` sie sperrte). Symptome: `npx tsx` "nicht gefunden", vite "Cannot find native binding",
+tsc und vitest liefen noch. Ein `npm install` scheitert am gesperrten `.node` (Dev-Server läuft). **Reparatur ohne
+Netz und ohne Versionswechsel:** je fehlendem Paket das Tarball aus `%LOCALAPPDATA%/npm-cache/_cacache/content-v2`
+über den `integrity`-Hash der package-lock (Hash prüfen) mit `C:/Windows/System32/tar.exe` entpacken (Git-Bash-tar
+deutet `C:` als Host), danach `npm rebuild --ignore-scripts --offline` für die `.bin`-Links. Nie einen Worktree mit
+verlinktem node_modules per `rm -rf` wegräumen.
+
+## 194. Lektions-HUD: der erste Hop aus dem Stand ist kein Fehler
+
+Die Karte sagt "W + Leertaste", der Smart-Hop springt nach 0.2 s Stand — am Stufen-Spawn steht man meist schon so lange,
+der erste Absprung kommt mit 0–40 u/s und bekam "ANLAUF MIT W", obwohl W gedrückt war (E2E-Review). Jetzt: der erste
+Absprung nach Stufenstart/Respawn/Levelstart bekommt keinen Tadel (`Hud.standHop`), ein langsamer Absprung mit gehaltenem
+W heißt "WEITER ANLAUFEN". Allgemein: ein Urteil prüfen gegen "was tut, wer die Karte wörtlich befolgt" (training-shots:
+"Karte wörtlich").
+
+## 195. Griff-Audit: Kontaktmessung braucht dichte Oberflächen-Abtastung und mehrere Kamerawinkel
+
+Erste Messung (Mesh-Ecken + Dreiecks-Mitten gegen die Hand-Kapseln) meldete die Dose als "Finger 0.5 frei" — die Finger
+steckten 1.3 cm drin: ein Dosen-Mantel hat nur Ringe an 5 Höhen, zwischen ihnen gab es keine Probe. **Richtig:** je
+Dreieck ein baryzentrisches Raster ≤ 0.35 Einheiten (`tools/lib/handContact.ts`), Hand als HandShape (liegt auf ±0.25 am
+Mesh, Test). Aus der Spielkamera sah fast jeder Griff gut aus; erst Seiten-/Unteransicht (`ViewModel.debugOrbit`,
+`tools/hand-audit.mjs`) zeigte Daumen im Feuerzeug, Messergriffe quer durch die Faust und einen Daumen, der die Karte nie
+berührte. Griffe immer aus ≥ 3 Winkeln UND als Zahl prüfen.
+
+## 196. Finger-Kontakt: "bis zur ersten Berührung schließen" hängt an der Fingerspitze — Griffe per Gitter-Suche backen
+
+Gemeinsames Beugen aller Gelenke bis zum ersten Kontakt stoppte an der Kuppe (Finger stand gestreckt an der Dose); Stufen
+(erst Grundgelenk, dann Mittel-/Endgelenk) blieben stecken, weil die Wurzel des drehenden Glieds schon anlag; Rückwärts-
+Extrapolation über die Start-Pose bog Mittelglieder in die Dose. **Richtig:** offen → zu interpolieren und zum Backen eine
+Gitter-Suche über (Grund, Mittel, End) mit Kosten "jedes Glied liegt an, keins durchdringt, gleichmäßig gebeugt"
+(`GripSolver.fit`); pro Frame reicht `close()` (Fang). Der Daumen dieses Rigs öffnet zur Handfläche hin — für Griffe
+außerhalb seiner Bahn (Karte, Kniff) eigene Daumen-Suche.
+
+## 197. Butterfly: wo der Kniff sitzt, entscheidet, ob der Trick überhaupt geht — erst die Hand in der Messer-Ebene kartieren
+
+Mit dem Kniff nahe am Stift lag die Handfläche (Daumenballen) in der Messer-Ebene genau dort, wo der Bite Handle beim
+Öffnen herunterschwingen muss — kein Flick und keine Physik-Suche fand einen Weg (Bite durch die Hand oder Griffe
+überkreuzt). Gespiegelt schwang die Klinge durch die Handfläche; gekippt lag der Daumen im Weg. **Richtig:** vorher die
+Hand in der Ebene abtasten (Raster: welcher Handteil liegt wo), dann den Griff wählen — Kniff am Griff-Ende, Messer
+steht aus der Faust, die Schwungbahn ist frei. Zweite Falle: das 19-cm-Messer schwingt bis in die Bildmitte → Bühne
+(Hand rückt während des Tricks nach rechts unten) und Bild-Hülle als Kosten in der Suche.
+
+## 198. Physik in der mitbewegten Messer-Ebene — Projektion auf eine feste Ebene bricht bei Überschlägen
+
+Erste Fassung projizierte Basis-Winkel, Stift-Beschleunigung und Schwerkraft auf die Ebene vom Trick-Start. Für Flicks um
+Achsen AUS der Ebene (Handgelenk-Beugung ist nicht exakt die Messer-Normale) fehlten die Fliehkräfte, und ein Überschlag
+(Rollover um den Zeigefinger) spiegelt die Ebene — die Projektion wird unbestimmt. **Richtig:** im Messer-Raum rechnen:
+Drehrate um die Normale integrieren (θ), Beschleunigung/Schwerkraft in den aktuellen Achsen, Fliehkraft aus der
+Drehung in der Ebene (|Ω_p|²r − Ω_p(Ω_p·r)) als Kraft am Schwerpunkt. Danach mussten alle abgestimmten Flicks neu
+gesucht werden (Physik ist chaotisch: jede Modelländerung → `tools/knife-tune.ts` neu laufen lassen, mehrere Seeds
+parallel). Energie-Test: halb-implizites Euler driftete 1.1 % in 2 s, Geschwindigkeits-Verlet hält < 1 %.
+
+## 199. V8: Physik-Unterschritte boxen über Aufruf-Grenzen — Zeit und Punkte über Felder/Puffer, eine Motion-Klasse
+
+KnifeSim erzeugte 290 Scavenges je 24 000 Frames (Node), alle aus 960-Hz-Unterschritten: `driver.base(t, …)`,
+`frameAt(t − h, …)`, `hand.distance(x, y, z)`, `pointOf(link, lx, ly)` übergaben Kommazahlen an nicht geinlinete
+Aufrufe; eine zweite KnifeMotion-Klasse (Aerial) machte `m.at(t, out)` polymorph und boxte erneut. **Richtig:** Zeit als
+Feld (`chain.tEval`, `KnifeSim.tq`), Punkte/Kräfte über Float64Array-Puffer (`pointOfA`, `applyForceA`, `HandShape.measure`),
+Kanäle aus base() in forces() wiederverwenden statt neu auswerten, EINE Motion-Klasse mit optionalen Teilen (Wurf als
+`toss`). Danach 0 Scavenges in 24 000 Frames je Trick. Messen: `node --import tsx --trace-gc` und Scavenges zwischen zwei
+Marken zählen; der Inspector-Sampling-Profiler mit "collected by minor GC" verfälschte die Optimierung (zeigte MB, wo
+trace-gc 0 zählte).
+
+## 200. Node-Allokationsprobe: console.log-Marken zählen den stdio-Puffer von --trace-gc, nicht die Scavenges
+
+`--trace-gc` schreibt aus V8 über einen eigenen stdio-Puffer (an einer Pipe 4 KiB ≈ 24 Zeilen), `console.log` geht direkt
+an den Stream. Scavenges "zwischen MARK_START und MARK_END" waren daher 0 oder ~24 (eine Puffer-Leerung fiel ins Fenster),
+nie die echte Zahl: tossOpen meldete 24/25, ein Lauf später 1; yoyo aroundDouble 24 nach einer unbeteiligten Änderung.
+Echte Zahl vorher: ALLE Würfe 4–5 je 12 000 Frames (Dose, Feuerzeug, Handy; ~150–500 B/Frame), die Probe sah es nicht.
+**Richtig:** Marken im selben Strom — `--expose-gc`, `gc()` als Marke, zwischen den zwei `Mark-Compact … testing`-Zeilen
+zählen (beide anim-*-Tests). Bytes direkt: `--max-semi-space-size=64 --min-semi-space-size=64`, Differenz von
+`v8.getHeapSpaceStatistics()` new_space über das Fenster (Modul-`let` als Gegenprobe: 16.2 B/Frame). `PerformanceObserver('gc')`
+allokiert selbst. Gefundene Boxer: (1) `Track.value` rief das Easing des Segments als `e(u)` — megamorph (sineInOut/quadIn/
+quadOut/… je Segment), nie geinlinet, jede Rückgabe eine HeapNumber (~28 B je Aufruf) → bekannte Easings über eine
+Kennzahl inline in `Track.evalInto(buf, ti, out, k)`, value() ist eine Hülle darüber; (2) `TossRig.eval` (7× value +
+4× settleIn) — in Helfer zerlegt wurden die Helfer geinlinet und DARIN value/settleIn nicht mehr: Zeit/Parameter über
+Puffer (tb, gp), settle-Formel inline; (3) `homogeneous(y0, v0, ω, ζ, h, out)` zu groß zum Inlinen (Grund 5 in
+`--trace-turbo-inlining` = Bytecode-Limit), fünf Kommazahl-Argumente → Puffer (Feuerzeug-Flammennachlauf 80 B/Frame).
+Ergebnis 250 → 68 B/Frame (tossOpen), Würfe allgemein ~50 B/Frame, alle Tricks 0 Scavenges; bitgleich (vm-hash 0 und
+Bit-Hash aller ViewHand-Ausgaben × 65 Gegenstand/Trick gegen eine Vorher-Kopie, Gegenprobe mit 1e-15-Störung schlägt an).

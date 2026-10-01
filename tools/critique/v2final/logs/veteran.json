@@ -1,0 +1,895 @@
+{
+ "runs": [
+  {
+   "level": "level1",
+   "model": "p",
+   "seed": 1,
+   "time": 18.8515625,
+   "medal": "VELOCITY",
+   "cp": {
+    "index": 3,
+    "total": 3
+   },
+   "top": 1198,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 33,
+    "total": 34
+   },
+   "jumps": 23,
+   "perfect": 22,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level1",
+   "model": "h1",
+   "seed": 1,
+   "time": 20.171875,
+   "medal": "Gold",
+   "cp": {
+    "index": 3,
+    "total": 3
+   },
+   "top": 1061,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 33,
+    "total": 34
+   },
+   "jumps": 24,
+   "perfect": 23,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level1",
+   "model": "h1",
+   "seed": 2,
+   "time": 26.4921875,
+   "medal": "Silber",
+   "cp": {
+    "index": 3,
+    "total": 3
+   },
+   "top": 956,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 33,
+    "total": 34
+   },
+   "jumps": 30,
+   "perfect": 28,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level1",
+   "model": "h2",
+   "seed": 1,
+   "time": 30.46875,
+   "medal": "Bronze",
+   "cp": {
+    "index": 3,
+    "total": 3
+   },
+   "top": 784,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 33,
+    "total": 34
+   },
+   "jumps": 32,
+   "perfect": 27,
+   "graceClean": 1,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level1",
+   "model": "h2",
+   "seed": 2,
+   "time": 27.984375,
+   "medal": "Silber",
+   "cp": {
+    "index": 3,
+    "total": 3
+   },
+   "top": 822,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 33,
+    "total": 34
+   },
+   "jumps": 32,
+   "perfect": 29,
+   "graceClean": 1,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level1",
+   "model": "h3",
+   "seed": 1,
+   "time": 30.34375,
+   "medal": "Bronze",
+   "cp": {
+    "index": 3,
+    "total": 3
+   },
+   "top": 705,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 33,
+    "total": 34
+   },
+   "jumps": 34,
+   "perfect": 31,
+   "graceClean": 1,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level1",
+   "model": "h3",
+   "seed": 2,
+   "time": 32.2265625,
+   "medal": "Bronze",
+   "cp": {
+    "index": 3,
+    "total": 3
+   },
+   "top": 735,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 33,
+    "total": 34
+   },
+   "jumps": 36,
+   "perfect": 34,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level2",
+   "model": "p",
+   "seed": 1,
+   "time": 15.7265625,
+   "medal": "VELOCITY",
+   "cp": {
+    "index": 4,
+    "total": 4
+   },
+   "top": 1035,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "finished",
+    "reason": null,
+    "nextIndex": 33,
+    "total": 33
+   },
+   "jumps": 12,
+   "perfect": 10,
+   "graceClean": 1,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level2",
+   "model": "h1",
+   "seed": 1,
+   "time": 16.9453125,
+   "medal": "Gold",
+   "cp": {
+    "index": 4,
+    "total": 4
+   },
+   "top": 928,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 32,
+    "total": 33
+   },
+   "jumps": 12,
+   "perfect": 11,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level2",
+   "model": "h1",
+   "seed": 2,
+   "time": 16.6953125,
+   "medal": "Gold",
+   "cp": {
+    "index": 4,
+    "total": 4
+   },
+   "top": 983,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 32,
+    "total": 33
+   },
+   "jumps": 12,
+   "perfect": 11,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level2",
+   "model": "h2",
+   "seed": 1,
+   "time": 17.4296875,
+   "medal": "Silber",
+   "cp": {
+    "index": 4,
+    "total": 4
+   },
+   "top": 925,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 32,
+    "total": 33
+   },
+   "jumps": 12,
+   "perfect": 11,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level2",
+   "model": "h2",
+   "seed": 2,
+   "time": 19.5234375,
+   "medal": "Bronze",
+   "cp": {
+    "index": 4,
+    "total": 4
+   },
+   "top": 916,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 32,
+    "total": 33
+   },
+   "jumps": 12,
+   "perfect": 11,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level2",
+   "model": "h3",
+   "seed": 1,
+   "time": 18.4140625,
+   "medal": "Silber",
+   "cp": {
+    "index": 4,
+    "total": 4
+   },
+   "top": 816,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 32,
+    "total": 33
+   },
+   "jumps": 12,
+   "perfect": 11,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level2",
+   "model": "h3",
+   "seed": 2,
+   "time": 21.7890625,
+   "medal": "keine",
+   "cp": {
+    "index": 4,
+    "total": 4
+   },
+   "top": 754,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 32,
+    "total": 33
+   },
+   "jumps": 15,
+   "perfect": 14,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level3",
+   "model": "p",
+   "seed": 1,
+   "time": 17.0859375,
+   "medal": "keine",
+   "cp": {
+    "index": 3,
+    "total": 3
+   },
+   "top": 1056,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 75,
+    "total": 76
+   },
+   "jumps": 3,
+   "perfect": 2,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level3",
+   "model": "h1",
+   "seed": 1,
+   "time": 18.09375,
+   "medal": "keine",
+   "cp": {
+    "index": 3,
+    "total": 3
+   },
+   "top": 996,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 75,
+    "total": 76
+   },
+   "jumps": 2,
+   "perfect": 1,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level3",
+   "model": "h1",
+   "seed": 2,
+   "time": 19.6328125,
+   "medal": "keine",
+   "cp": {
+    "index": 3,
+    "total": 3
+   },
+   "top": 980,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 75,
+    "total": 76
+   },
+   "jumps": 2,
+   "perfect": 1,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level3",
+   "model": "h2",
+   "seed": 1,
+   "time": 18.671875,
+   "medal": "keine",
+   "cp": {
+    "index": 3,
+    "total": 3
+   },
+   "top": 936,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 75,
+    "total": 76
+   },
+   "jumps": 2,
+   "perfect": 1,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level3",
+   "model": "h2",
+   "seed": 2,
+   "time": 22.078125,
+   "medal": "keine",
+   "cp": {
+    "index": 3,
+    "total": 3
+   },
+   "top": 922,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 75,
+    "total": 76
+   },
+   "jumps": 2,
+   "perfect": 1,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level3",
+   "model": "h3",
+   "seed": 1,
+   "time": 21.34375,
+   "medal": "keine",
+   "cp": {
+    "index": 3,
+    "total": 3
+   },
+   "top": 905,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 75,
+    "total": 76
+   },
+   "jumps": 2,
+   "perfect": 1,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level3",
+   "model": "h3",
+   "seed": 2,
+   "time": 23.3046875,
+   "medal": "keine",
+   "cp": {
+    "index": 3,
+    "total": 3
+   },
+   "top": 873,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 75,
+    "total": 76
+   },
+   "jumps": 2,
+   "perfect": 1,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level4",
+   "model": "p",
+   "seed": 1,
+   "time": 25.2890625,
+   "medal": "Gold",
+   "cp": {
+    "index": 5,
+    "total": 5
+   },
+   "top": 1020,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 65,
+    "total": 66
+   },
+   "jumps": 33,
+   "perfect": 31,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level4",
+   "model": "h1",
+   "seed": 1,
+   "time": 26.1328125,
+   "medal": "Silber",
+   "cp": {
+    "index": 5,
+    "total": 5
+   },
+   "top": 976,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "finished",
+    "reason": null,
+    "nextIndex": 66,
+    "total": 66
+   },
+   "jumps": 33,
+   "perfect": 31,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level4",
+   "model": "h1",
+   "seed": 2,
+   "time": 27.84375,
+   "medal": "Bronze",
+   "cp": {
+    "index": 5,
+    "total": 5
+   },
+   "top": 935,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 65,
+    "total": 66
+   },
+   "jumps": 35,
+   "perfect": 31,
+   "graceClean": 1,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level4",
+   "model": "h2",
+   "seed": 1,
+   "time": 30.4375,
+   "medal": "keine",
+   "cp": {
+    "index": 5,
+    "total": 5
+   },
+   "top": 808,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 65,
+    "total": 66
+   },
+   "jumps": 36,
+   "perfect": 32,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level4",
+   "model": "h2",
+   "seed": 2,
+   "time": 30.6015625,
+   "medal": "keine",
+   "cp": {
+    "index": 5,
+    "total": 5
+   },
+   "top": 834,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "finished",
+    "reason": null,
+    "nextIndex": 66,
+    "total": 66
+   },
+   "jumps": 36,
+   "perfect": 33,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 1,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level4",
+   "model": "h3",
+   "seed": 1,
+   "time": 31.21875,
+   "medal": "keine",
+   "cp": {
+    "index": 5,
+    "total": 5
+   },
+   "top": 810,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 65,
+    "total": 66
+   },
+   "jumps": 36,
+   "perfect": 34,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  },
+  {
+   "level": "level4",
+   "model": "h3",
+   "seed": 2,
+   "time": 33.0234375,
+   "medal": "keine",
+   "cp": {
+    "index": 5,
+    "total": 5
+   },
+   "top": 898,
+   "fps": 60,
+   "bot": {
+    "kind": "route",
+    "status": "running",
+    "reason": null,
+    "nextIndex": 65,
+    "total": 66
+   },
+   "jumps": 38,
+   "perfect": 35,
+   "graceClean": 0,
+   "slides": 0,
+   "ledgeStep": 0,
+   "ledgeVault": 0,
+   "respawns": 1,
+   "respawnReasons": [
+    "restart"
+   ]
+  }
+ ],
+ "exploits": [
+  {
+   "level": "level1",
+   "finishWithoutCp": false,
+   "state": {
+    "finish": null,
+    "cp": {
+     "index": 0,
+     "total": 3
+    },
+    "g": "playing"
+   }
+  },
+  {
+   "level": "level2",
+   "finishWithoutCp": false,
+   "state": {
+    "finish": null,
+    "cp": {
+     "index": 0,
+     "total": 4
+    },
+    "g": "playing"
+   }
+  },
+  {
+   "level": "level3",
+   "finishWithoutCp": false,
+   "state": {
+    "finish": null,
+    "cp": {
+     "index": 0,
+     "total": 3
+    },
+    "g": "playing"
+   }
+  },
+  {
+   "level": "level4",
+   "finishWithoutCp": false,
+   "state": {
+    "finish": null,
+    "cp": {
+     "index": 0,
+     "total": 5
+    },
+    "g": "playing"
+   }
+  }
+ ],
+ "errors": []
+}

@@ -415,6 +415,9 @@ export class ViewHand {
       f.roll += o.hroll;
       f.pitch += o.hpitch;
       f.yaw += o.hyaw;
+      // Plan 008: Gelenk-Versatz des Gegenstands (Handgelenk-Flick, Finger-Kontakt) auf die Pose.
+      const ja = o.jointAdd;
+      for (let i = 0; i < ja.length; i++) f.joints[i] += ja[i];
       f.propPos[0] = o.pos[0];
       f.propPos[1] = o.pos[1];
       f.propPos[2] = o.pos[2];

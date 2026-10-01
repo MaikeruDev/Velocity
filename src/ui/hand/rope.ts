@@ -1,3 +1,5 @@
+import { VM_RIG } from '../../render/types';
+import { HandShape } from './handShape';
 import { VIEW_AXES } from './rot';
 
 /**
@@ -17,6 +19,345 @@ import { VIEW_AXES } from './rot';
  *   unten um die Hand-Neigung gedreht. Ohne Deckel wird die Schnur beim Sprung-Kick schlaff und das
  *   Pendel überschlägt sich (+6.4 u über dem Finger, Framerate-Abweichung 103 px).
  */
+
+/**
+ * Schnur und Kugel/Jo-Jo nicht durch die Hand (Plan 008): die GEZEIGTEN Punkte werden aus dem Hand-Modell
+ * (HandShape: Glied-Kapseln + Handfläche) entlang des Abstands-Gradienten herausgeschoben — eine stetige Abbildung
+ * der gerechneten Schnur, keine Rückwirkung auf die Physik. Warum nicht als Kontakt in der Verlet-Kette: eine an
+ * der Hand entlangrollende Kugel ist chaotisch (Fingerlücken, Haften/Gleiten) — 30/144 Hz liefen gegen 1440 Hz um
+ * bis zu 2 Einheiten auseinander. Als Abbildung bleiben kleine Unterschiede klein (Framerate-Tests), und die Kugel
+ * liegt sichtbar an Daumen/Fingern an statt in ihnen zu stecken.
+ * Freies Ende mit eigenem Radius und weichem Minimum über die Finger (keine Kante zwischen zwei Fingern → stetig).
+ * Die Hand setzt der Aufrufer je Frame (`hand.update(gelenke)`). Keine Allokation, Punkte über Puffer (#107/#199).
+ */
+/** Sehnen-Auflegen (RopeHandGuard.projectChords): Durchgänge und Teilung je Sehne. */
+const CHORD_ITERS = 4;
+const CHORD_SAMPLES = 8;
+
+export class RopeHandGuard {
+  readonly hand = new HandShape();
+  /**
+   * [0] Schnur-Radius, [1] Radius des Endes, [2] an/aus (0 = aus), [3] Glättung der Fingerkapseln für das Ende
+   * (Einheiten, 0 = harte Form), [4] Übergangsbreite (Einheiten): bis so weit innerhalb wird nur teilweise geschoben
+   * — sanft statt mit Knick an der Oberfläche.
+   */
+  readonly cfg = new Float64Array([0.2, 0.5, 1, 1.0, 0.6]);
+  /** Größte Verschiebung des letzten Aufrufs (Tests/Tools, ≥ 0). */
+  readonly worst = new Float64Array(1);
+  private readonly fp = new Float64Array(3);
+  private readonly pt = new Float64Array(3);
+  /** field(): [0] Abstand, [1] Glättung des aktuellen Punkts. */
+  private readonly fd = new Float64Array(2);
+  /** Zuletzt gesetzte Gelenke (setJoints rechnet nur bei Änderung). */
+  private readonly lastJ = new Float32Array(32).fill(Number.NaN);
+
+  /**
+   * Hand-Modell aus Gelenkwinkeln (wie HandShape.update, gleiche Kapseln) — ohne Kommazahl-Argumente: Glied-Ende als
+   * Punkt bei y = 2 (ganzzahlig) entlang der Glied-Achse hochgerechnet (die Achse ist gerade, exakt). HandShape.update
+   * übergibt die Gliedlänge als Argument und boxte im Frame-Pfad (Node: ~20 Scavenges je 100 000 Frames). Nur bei
+   * geänderten Gelenken.
+   */
+  setJoints(j: ArrayLike<number>): void {
+    const L = this.lastJ;
+    let same = true;
+    for (let i = 0; i < 23; i++) {
+      if (L[i] !== j[i]) {
+        same = false;
+        L[i] = j[i];
+      }
+    }
+    if (same) return;
+    const hs = this.hand;
+    const A = hs.a;
+    const B = hs.b;
+    const p = this.fp;
+    for (let f = 0; f < 4; f++) {
+      const len = VM_RIG.fingers[f].len;
+      for (let sg = 0; sg < 3; sg++) {
+        const i = (1 + f * 3 + sg) * 3;
+        this.fkFinger(j, f, sg, 0);
+        A[i] = p[0];
+        A[i + 1] = p[1];
+        A[i + 2] = p[2];
+        this.fkFinger(j, f, sg, 2);
+        const k = len[sg] / 2;
+        B[i] = A[i] + (p[0] - A[i]) * k;
+        B[i + 1] = A[i + 1] + (p[1] - A[i + 1]) * k;
+        B[i + 2] = A[i + 2] + (p[2] - A[i + 2]) * k;
+      }
+    }
+    const tl = VM_RIG.thumb.len;
+    for (let sg = 0; sg < 3; sg++) {
+      const i = (13 + sg) * 3;
+      this.fkThumb(j, sg, 0);
+      A[i] = p[0];
+      A[i + 1] = p[1];
+      A[i + 2] = p[2];
+      this.fkThumb(j, sg, 2);
+      const k = tl[sg] / 2;
+      B[i] = A[i] + (p[0] - A[i]) * k;
+      B[i + 1] = A[i + 1] + (p[1] - A[i + 1]) * k;
+      B[i + 2] = A[i + 2] + (p[2] - A[i + 2]) * k;
+    }
+  }
+
+  /**
+   * Punkt (0, ly, 0) im Fingerglied → fp. Gleiche Rechnung wie fk.fingerPoint (tests vergleichen), aber eigene Kopie
+   * mit ganzzahligem ly und festem Ausgabe-Puffer: fingerPoint wird mit vielerlei Puffern (Float32/64, Arrays)
+   * gerufen und boxte hier je Aufruf (Node-Probe: Jo-Jo-Sleeper 24 Scavenges je 96 000 Frames).
+   */
+  private fkFinger(joints: ArrayLike<number>, finger: number, seg: number, ly: number): void {
+    const f = VM_RIG.fingers[finger];
+    const b = 7 + finger * 4;
+    const g2 = seg >= 2 ? 1 : 0;
+    const g1 = seg >= 1 ? 1 : 0;
+    const a3 = -joints[b + 3] * g2;
+    const l1 = f.len[1] * g2;
+    const a2 = -joints[b + 2] * g1;
+    const l0 = f.len[0] * g1;
+    let c = Math.cos(a3);
+    let s = Math.sin(a3);
+    let y = ly * c + l1;
+    let z = ly * s;
+    c = Math.cos(a2);
+    s = Math.sin(a2);
+    let t = y * c - z * s + l0;
+    z = y * s + z * c;
+    y = t;
+    c = Math.cos(-joints[b + 1]);
+    s = Math.sin(-joints[b + 1]);
+    t = y * c - z * s;
+    z = y * s + z * c;
+    y = t;
+    c = Math.cos(joints[b] + f.splay);
+    s = Math.sin(joints[b] + f.splay);
+    const x = -y * s;
+    y = y * c;
+    const o = this.fp;
+    o[0] = f.x + x;
+    o[1] = f.y + y;
+    o[2] = f.z + z;
+  }
+
+  /** Wie fkFinger für den Daumen (Rechnung wie fk.thumbPoint). */
+  private fkThumb(joints: ArrayLike<number>, seg: number, ly: number): void {
+    const th = VM_RIG.thumb;
+    const g2 = seg >= 2 ? 1 : 0;
+    const g1 = seg >= 1 ? 1 : 0;
+    let c = Math.cos(-joints[6] * g2);
+    let s = Math.sin(-joints[6] * g2);
+    let x = 0;
+    let y = ly * c + th.len[1] * g2;
+    let z = ly * s;
+    c = Math.cos(-joints[5] * g1);
+    s = Math.sin(-joints[5] * g1);
+    let u = y * c - z * s + th.len[0] * g1;
+    z = y * s + z * c;
+    y = u;
+    c = Math.cos(th.baseY);
+    s = Math.sin(th.baseY);
+    u = x * c + z * s;
+    z = -x * s + z * c;
+    x = u;
+    c = Math.cos(th.baseX - joints[4]);
+    s = Math.sin(th.baseX - joints[4]);
+    u = y * c - z * s;
+    z = y * s + z * c;
+    y = u;
+    c = Math.cos(th.baseZ + joints[3]);
+    s = Math.sin(th.baseZ + joints[3]);
+    u = x * c - y * s;
+    y = x * s + y * c;
+    x = u;
+    const o = this.fp;
+    o[0] = th.x + x;
+    o[1] = th.y + y;
+    o[2] = th.z + z;
+  }
+
+  /**
+   * Abstand von pt zur Hand → fd[0]. Mit Glättung fd[1] > 0: die Finger als weiches Minimum (Polynom-Smin, Lücken
+   * zwischen Fingern verrundet; ein exponentielles Smin über 15 Glieder blähte die Hand um bis zu k·ln 15 auf), die
+   * Handfläche hart (aus HandShape.measure).
+   */
+  private field(): void {
+    const hs = this.hand;
+    const pt = this.pt;
+    hs.measure(pt);
+    const dm = hs.res[0];
+    const k = this.fd[1];
+    if (!(k > 0)) {
+      this.fd[0] = dm;
+      return;
+    }
+    const A = hs.a;
+    const B = hs.b;
+    const R = hs.r;
+    let m = 1e9;
+    for (let i = 1; i < 16; i++) {
+      const j = i * 3;
+      const ax = A[j];
+      const ay = A[j + 1];
+      const az = A[j + 2];
+      const dx = B[j] - ax;
+      const dy = B[j + 1] - ay;
+      const dz = B[j + 2] - az;
+      const px = pt[0] - ax;
+      const py = pt[1] - ay;
+      const pz = pt[2] - az;
+      const ll = dx * dx + dy * dy + dz * dz;
+      let t = ll > 0 ? (px * dx + py * dy + pz * dz) / ll : 0;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const qx = px - dx * t;
+      const qy = py - dy * t;
+      const qz = pz - dz * t;
+      const di = Math.sqrt(qx * qx + qy * qy + qz * qz) - R[i];
+      // Polynom-Smin (Quilez): verrundet nur, wo zwei Glieder näher als k beieinander liegen, höchstens k/4 dicker.
+      const h = Math.max(k - Math.abs(m - di), 0) / k;
+      m = (m < di ? m : di) - h * h * k * 0.25;
+    }
+    this.fd[0] = m < dm ? m : dm;
+  }
+
+  /**
+   * Punkte 1..last von `pts` (n × xyz) aus der Hand schieben (Punkt 0 = Anker bleibt; Ende n−1 mit Radius cfg[1],
+   * last = n − 2 lässt ein geführtes Ende in Ruhe). Zwei Durchgänge (gekrümmte Flächen).
+   */
+  project(pts: Float32Array | Float64Array, n: number, last: number): void {
+    const W = this.worst;
+    W[0] = 0;
+    if (this.cfg[2] <= 0) return;
+    const pt = this.pt;
+    const fd = this.fd;
+    for (let i = 1; i <= last; i++) {
+      const k = i * 3;
+      const isEnd = i === n - 1 ? 1 : 0;
+      const r = this.cfg[isEnd];
+      fd[1] = this.cfg[3] * isEnd;
+      for (let pass = 0; pass < 2; pass++) {
+        pt[0] = pts[k];
+        pt[1] = pts[k + 1];
+        pt[2] = pts[k + 2];
+        this.field();
+        const d = fd[0];
+        const band = this.cfg[4];
+        if (d >= r + band) break;
+        // Gradient per zentraler Differenz.
+        const h = 0.05;
+        pt[0] = pts[k] + h;
+        this.field();
+        let gx = fd[0];
+        pt[0] = pts[k] - h;
+        this.field();
+        gx -= fd[0];
+        pt[0] = pts[k];
+        pt[1] = pts[k + 1] + h;
+        this.field();
+        let gy = fd[0];
+        pt[1] = pts[k + 1] - h;
+        this.field();
+        gy -= fd[0];
+        pt[1] = pts[k + 1];
+        pt[2] = pts[k + 2] + h;
+        this.field();
+        let gz = fd[0];
+        pt[2] = pts[k + 2] - h;
+        this.field();
+        gz -= fd[0];
+        const l = Math.sqrt(gx * gx + gy * gy + gz * gz);
+        if (!(l > 1e-9)) break;
+        // Weicher Übergang: Abstand d → max(d, r) mit gerundeter Ecke (Breite band), stetig differenzierbar.
+        const x = (r + band - d) / (2 * band);
+        const push = x >= 1 ? r - d : band * x * x;
+        if (push <= 0) break;
+        W[0] = Math.max(W[0], push);
+        pts[k] += (gx / l) * push;
+        pts[k + 1] += (gy / l) * push;
+        pts[k + 2] += (gz / l) * push;
+      }
+    }
+  }
+
+  /**
+   * Plan 008 (additiv, Animator Jo-Jo/Kendama): Sehnen auf die Hand legen. project() schiebt nur die 9 Punkte heraus —
+   * zwei freie Punkte links und rechts eines Fingers ließen die Sehne dazwischen quer durch ihn laufen (die gerade
+   * hängende Jo-Jo-Schnur durchstieß Ring- und kleinen Finger in jedem Frame, bis 1.4). Hier: CHORD_SAMPLES − 1 Stichproben
+   * je Sehne ab `from` (1 = die Sehne an der Schlaufe auslassen, die liegt im Finger); steckt eine tiefer als der
+   * Schnur-Radius cfg[0], wandern ihre beiden Endpunkte (nur Punkte 1..last) entlang des Abstands-Gradienten so, dass
+   * die Stichprobe auf der Oberfläche liegt — die gezeigte Schnur drapiert sich über die Finger. Bis zu CHORD_ITERS Durchgänge.
+   * Reine Abbildung der gerechneten Schnur (keine Rückwirkung), allokationsfrei.
+   */
+  projectChords(pts: Float32Array | Float64Array, n: number, last: number, from: number): void {
+    if (this.cfg[2] <= 0) return;
+    const pt = this.pt;
+    const fd = this.fd;
+    const r = this.cfg[0];
+    const W = this.worst;
+    fd[1] = 0;
+    for (let it = 0; it < CHORD_ITERS; it++) {
+      let moved = 0;
+      for (let k = from; k < n - 1; k++) {
+        const a = k * 3;
+        const b = a + 3;
+        const fa = k >= 1 && k <= last ? 1 : 0;
+        const fb = k + 1 <= last ? 1 : 0;
+        if (fa + fb === 0) continue;
+        for (let q = 1; q < CHORD_SAMPLES; q++) {
+          const u = q / CHORD_SAMPLES;
+          const x = pts[a] + (pts[b] - pts[a]) * u;
+          const y = pts[a + 1] + (pts[b + 1] - pts[a + 1]) * u;
+          const z = pts[a + 2] + (pts[b + 2] - pts[a + 2]) * u;
+          pt[0] = x;
+          pt[1] = y;
+          pt[2] = z;
+          this.field();
+          const d = fd[0];
+          if (d >= r) continue;
+          const h = 0.05;
+          pt[0] = x + h;
+          this.field();
+          let gx = fd[0];
+          pt[0] = x - h;
+          this.field();
+          gx -= fd[0];
+          pt[0] = x;
+          pt[1] = y + h;
+          this.field();
+          let gy = fd[0];
+          pt[1] = y - h;
+          this.field();
+          gy -= fd[0];
+          pt[1] = y;
+          pt[2] = z + h;
+          this.field();
+          let gz = fd[0];
+          pt[2] = z - h;
+          this.field();
+          gz -= fd[0];
+          const l = Math.sqrt(gx * gx + gy * gy + gz * gz);
+          if (!(l > 1e-9)) continue;
+          const push = r - d;
+          // Gewichte der Endpunkte an der Stichprobe; Verschiebung so, dass sie um `push` wandert (gedeckelt).
+          const wa = (1 - u) * fa;
+          const wb = u * fb;
+          const s = Math.min(push / (wa * wa + wb * wb), 4 * push);
+          const nx = gx / l;
+          const ny = gy / l;
+          const nz = gz / l;
+          pts[a] += nx * s * wa;
+          pts[a + 1] += ny * s * wa;
+          pts[a + 2] += nz * s * wa;
+          pts[b] += nx * s * wb;
+          pts[b + 1] += ny * s * wb;
+          pts[b + 2] += nz * s * wb;
+          W[0] = Math.max(W[0], push);
+          moved++;
+        }
+      }
+      if (moved === 0) break;
+    }
+  }
+}
 
 export interface RopeOptions {
   /** Anzahl Segmente (Punkte = segments + 1). */
@@ -329,6 +670,21 @@ export class Rope {
     this.setTargets(s, e, 0, k);
     for (let i = 0; i < 3; i++) S[i] = a[i] + (s[i] - a[i]) * k;
     this.advance(dt * k);
+  }
+
+  /**
+   * Plan 008 (additiv): Geschwindigkeit des Endes (Einheiten/s) für den nächsten Unterschritt setzen — beim Loslassen
+   * mitten im Frame (nach updatePart) die exakte Geschwindigkeit der Zeitleiste statt der aus linear interpolierten
+   * Frame-Lagen (bei 30 Hz ein Mittel über 33 ms: das freie Pendel startete je Framerate anders).
+   */
+  setEndVelocity(v: ArrayLike<number>): void {
+    const e = (this.n - 1) * 3;
+    const h = this.h;
+    const p = this.p;
+    const q = this.q;
+    q[e] = p[e] - v[0] * h;
+    q[e + 1] = p[e + 1] - v[1] * h;
+    q[e + 2] = p[e + 2] - v[2] * h;
   }
 
   /** Rest eines geteilten Frames (nach updatePart und Moduswechsel): Anteil k..1, Dauer dt·(1 − k). */

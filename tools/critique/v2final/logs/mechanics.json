@@ -1,0 +1,203 @@
+{
+ "slide": {
+  "speeds200ms": [
+   320,
+   320,
+   320,
+   320,
+   364,
+   324,
+   313,
+   268,
+   236,
+   205,
+   177,
+   110,
+   85,
+   85
+  ],
+  "events": [
+   {
+    "type": "slideStart",
+    "speed": 370,
+    "boost": true
+   },
+   {
+    "type": "slideEnd",
+    "speed": 313
+   },
+   {
+    "type": "slideStart",
+    "speed": 295,
+    "boost": false
+   },
+   {
+    "type": "slideEnd",
+    "speed": 160
+   }
+  ]
+ },
+ "grace": [
+  {
+   "lateTicks": 0,
+   "jumps": 3,
+   "perfect": 2,
+   "cleanNotPerfect": 0,
+   "dirty": 1
+  },
+  {
+   "lateTicks": 2,
+   "jumps": 3,
+   "perfect": 0,
+   "cleanNotPerfect": 2,
+   "dirty": 1
+  },
+  {
+   "lateTicks": 4,
+   "jumps": 3,
+   "perfect": 0,
+   "cleanNotPerfect": 2,
+   "dirty": 1
+  },
+  {
+   "lateTicks": 6,
+   "jumps": 3,
+   "perfect": 0,
+   "cleanNotPerfect": 2,
+   "dirty": 1
+  },
+  {
+   "lateTicks": 8,
+   "jumps": 2,
+   "perfect": 0,
+   "cleanNotPerfect": 1,
+   "dirty": 1
+  },
+  {
+   "lateTicks": 10,
+   "jumps": 2,
+   "perfect": 0,
+   "cleanNotPerfect": 0,
+   "dirty": 2
+  },
+  {
+   "lateTicks": 12,
+   "jumps": 2,
+   "perfect": 0,
+   "cleanNotPerfect": 0,
+   "dirty": 2
+  }
+ ],
+ "airControl": {
+  "turnDeg": 33.6,
+  "speed": 322.5
+ },
+ "ledge": [
+  {
+   "cDelayTicks": 0,
+   "speed": 250,
+   "up": true,
+   "endSpeed": 198,
+   "ledge": []
+  },
+  {
+   "cDelayTicks": 0,
+   "speed": 320,
+   "up": true,
+   "endSpeed": 198,
+   "ledge": []
+  },
+  {
+   "cDelayTicks": 0,
+   "speed": 450,
+   "up": true,
+   "endSpeed": 195,
+   "ledge": []
+  },
+  {
+   "cDelayTicks": 10,
+   "speed": 250,
+   "up": true,
+   "endSpeed": 198,
+   "ledge": []
+  },
+  {
+   "cDelayTicks": 10,
+   "speed": 320,
+   "up": true,
+   "endSpeed": 198,
+   "ledge": []
+  },
+  {
+   "cDelayTicks": 10,
+   "speed": 450,
+   "up": true,
+   "endSpeed": 195,
+   "ledge": []
+  },
+  {
+   "cDelayTicks": 20,
+   "speed": 250,
+   "up": true,
+   "endSpeed": 198,
+   "ledge": []
+  },
+  {
+   "cDelayTicks": 20,
+   "speed": 320,
+   "up": true,
+   "endSpeed": 198,
+   "ledge": []
+  },
+  {
+   "cDelayTicks": 20,
+   "speed": 450,
+   "up": true,
+   "endSpeed": 195,
+   "ledge": []
+  },
+  {
+   "cDelayTicks": 30,
+   "speed": 250,
+   "up": true,
+   "endSpeed": 198,
+   "ledge": []
+  },
+  {
+   "cDelayTicks": 30,
+   "speed": 320,
+   "up": true,
+   "endSpeed": 198,
+   "ledge": []
+  },
+  {
+   "cDelayTicks": 30,
+   "speed": 450,
+   "up": true,
+   "endSpeed": 195,
+   "ledge": []
+  },
+  {
+   "cDelayTicks": 45,
+   "speed": 250,
+   "up": true,
+   "endSpeed": 198,
+   "ledge": []
+  },
+  {
+   "cDelayTicks": 45,
+   "speed": 320,
+   "up": true,
+   "endSpeed": 198,
+   "ledge": []
+  },
+  {
+   "cDelayTicks": 45,
+   "speed": 450,
+   "up": true,
+   "endSpeed": 195,
+   "ledge": []
+  }
+ ],
+ "errors": []
+}

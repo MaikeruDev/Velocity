@@ -1,6 +1,6 @@
 # Plan 007 — v2: Arcade-Movement, Trainingsmodus, Level 3/4, Kosmetik v2
 
-**Stand:** 2026-09-29 · **Status:** umgesetzt (Phase 0–3; Mensch-Playtest S6 und die Lead-Fragen in §10 offen)
+**Stand:** 2026-10-01 · **Status:** umgesetzt (Phase 0–3, E2E-Fixes §11; Mensch-Playtest S6 nach Checkliste §11 und die Lead-Fragen in §10 offen)
 
 ## Problem
 
@@ -129,6 +129,7 @@ Nicht in v2: T9 (optionale Mechanik-Lektion, das Rutschen steckt in T1), T10 (Pr
 
 ### Werkzeug-/Medaillen-Entscheidungen
 - sync-1.0-Medaillen (Gold, VELOCITY, Autor) werden als **Median über 5 Start-Jitter** (umgesetzt: 49, dazu Zweig-Warnung; Bronze/Silber über 48 Seeds, §10) gemessen, nicht als ein deterministischer Lauf. Begründung: Einzelläufe sind chaotisch (L4 Autor 23.9–27.9 s je Variante; L1 25.1 → 29.3 s im Gesamtpaket).
+- **Medaillen-Modell** (§10, 01.10.): je Stufe eine Hand, jede mit dem schnelleren Median aus RouteFollower und Surf-Referenz derselben Hand; Staffel 4–20 %.
 - `levels:build -- <id>` schreibt nur diese Level-Datei und **nicht** index.json. index.json baut nur Phase 3.
 - Jeder Strang schreibt Erkenntnisse nach `.docs/learnings/inbox/<strang>.md`. Phase 3 führt sie in `fallen.md` zusammen, damit Dateibesitz disjunkt bleibt.
 
@@ -622,6 +623,7 @@ Abnahme:
 - Verdiente Freischaltungen bleiben erhalten (die Ableitung fügt nur hinzu).
 - Admin kann alles.
 - Gemessene Leiter (Bot-Spielertypen, kosmetik/unlock-ladder): 2 → 3 → 7 → 8 → 9 → 14. Phase 3 misst sie mit den finalen Medaillen neu.
+  Nach der Medaillen-Runde (§10, 48 Seeds): **2 → 6 → 7 → 8 → 11 → 11 → 14**, monoton, jeder Typ unter Top mit nächstem Ziel.
 
 ---
 
@@ -641,3 +643,90 @@ Abnahme:
 ## 9. Offene Geschmacksfragen
 
 Siehe die Rückgabe der Synthese (openQuestions): eigene Belohnung für Training-Meister (★★★), Luftlenkung standardmäßig an, Stil der Katzenpfote, Level-Namen.
+
+## 10. Ergebnis: einheitliches Medaillen-Modell (01.10.)
+
+**Problem nach Phase 3:** Die Leiter war inkonsistent. Auf L3 zählte der Surfer (Grundtechnik) nur für Gold, VELOCITY
+und Autor. Bronze und Silber kamen vom RouteFollower mit 3°/2°-Hand, der an jedem Surf-Drop 150–190 u/s verliert. Die
+Folge: 27.3 / 25.1 / 12.8 / 12.2 / 11.6 s, Silber → Gold × 1.96, und die 3°-Hand holte über Koralle Silber. Auf L4 surften
+alle Hände rauschfrei. Auf L1 lag Silber → Gold bei 40 % (28.9 → 20.7 s); die 1°-Hand (24.8 s) kam nie an den
+Neon-Handschuh.
+
+**Entscheidung** (`tools/levels/build.ts MEDAL_RULES`, level-design.md Regel 10):
+
+| Stufe | Modell | Linie | Aufschlag |
+|---|---|---|---|
+| Bronze | 3°-Hand; Surf-Referenz σ 3°, Blick 0° (wie gelehrt) | safeRoute | × 1.05 |
+| Silber | 2°-Hand; Referenz σ 2°, bester Blick | safeRoute | × 1.05 |
+| Gold | **die leichtere** von 1°-Hand × 1.05 und perfekt × 1.10 | route | |
+| VELOCITY | perfekt (sync 1.0 über 49 Start-Jitter; Referenz σ 0.5°) | route | × 1.05 |
+| Autor | perfekt | route | × 1 |
+
+- **Referenz mit derselben Hand:** Für jede Stufe zählt der schnellere Median aus RouteFollower und Referenz, und die
+  Referenz surft mit derselben Hand (`physics.surfSigma`).
+- **Gold als die leichtere Grenze:** So ist Gold für 1°-Hände erreichbar. Gleichzeitig liegt Gold nie näher als 4.8 %
+  an VELOCITY; auf L2 wäre „1°-Hand × 1.05“ nur 2 % davon entfernt.
+- **Staffel:** Jede Stufe liegt mindestens 4 % über der nächstbesseren; sonst wird die leichtere Stufe gelockert.
+- **Obergrenze:** Bronze → Silber und Silber → Gold dürfen höchstens 20 % auseinanderliegen (Warnung).
+- **Gold → VELOCITY ist ausgenommen.** VELOCITY ist die Krone.
+
+Begründungen und Messungen stehen in level-design.md Regel 10 und fallen.md #190/#191.
+
+| Level | Par | Bronze | Silber | Gold | VELOCITY | Autor | Abstände B→S / S→G / G→V |
+|---|---|---|---|---|---|---|---|
+| L1 | 33 | 33 | 28.9 | **26.1** (vorher 20.7) | 19.8 | 18.81 | 14.2 / 10.7 / 31.8 % |
+| L2 | 22 | 21.3 | 19.2 | 17.3 | 16.5 | 15.71 | 10.9 / 11.0 / 4.8 % |
+| L3 | **17** (vorher 28) | **16.6** | **14.6** | 12.6 | 12.1 | 11.44 | 13.7 / 15.9 / 4.1 % |
+| L4 | 30 | 29.2 | 27.3 | 26.1 | 24.9 | 23.64 | 7.0 / 4.6 / 4.8 % |
+
+**Freischaltungen:** Die Freischalt-Leiter lautet 2 → 6 → 7 → 8 → 11 → 11 → 14. Die gedachten Gruppen erreichen ihre Ziele:
+
+| Freischaltung | Gruppe | Bedingung | Gemessen |
+|---|---|---|---|
+| Münze | 3°-Hand | Bronze überall | ✓ |
+| Jo-Jo | 2°-Hand | L1-Silber | 27.50 ≤ 28.9 s |
+| Feuerzeug, Kendama, Handy | 2.5°-Hand | Silber L2/L3/L4 | ✓ |
+| Skelett-Hand | 1.5°-Hand | L2-Gold | 17.30 s = 17.3, genau auf der Grenze |
+| Neon-Handschuh | 1°-Hand | L1-Gold | 24.81 ≤ 26.1 s |
+| Gold-Handschuh | 1°-Hand | Gold überall | ✓ |
+| Sammelkarte, Messer, Katzenpfote | nur Top | L1-VELOCITY | — |
+
+**Offen:**
+- **L1 Gold → VELOCITY 31.8 %:** Die 1°-Hand zerfällt in zwei Moden, und die Crouch-Kanten-Lotterie ist ein Physik-Hebel (level4.md, fallen.md #178).
+- **L3 trennt die Hände kaum:** Die 2°-Hand holt über Koralle Gold, die 1.5°-Hand VELOCITY. Der Surfer ist ein Proxy, den erst der Mensch-Playtest S6 eicht.
+- **L4 hat keinen Blick-Sweep:** Der Surfer fährt immer mit 0°.
+
+## 11. E2E-Review v2final: Fixes (01.10.)
+
+Der End-to-End-Prüfer (echte Tastatur-/Maus-Events im Spiel, Skripte in `tools/critique/v2final/`) fand keinen Absturz,
+Softlock oder Checkpoint-Exploit. Das Training trägt. Die Schwäche lag im Schritt danach.
+
+| Befund | Schwere | Ergebnis |
+|---|---|---|
+| Neuling ohne Training beendet L1 in 50–58 s (Bronze 33). Enter führte ins nächste Level, es gab nur einen Coach-Satz 5 s nach dem Start. | major | **behoben:** Ergebnis ohne jede Medaille (auch die Bestzeit hat keine) + Lektion ohne Stern → Primärknopf „Training T3“ (Enter), Hinweis „Mehr Tempo: Training T3 · AIR-STRAFE“. Reihenfolge: prepLessons des Levels (L3/L4: T7/T8), dann T3, T4. `npm run shot`: „Ergebnis ohne Medaille → Training T3“, Enter startet T3. |
+| L3-Medaillen und L4-Bronze/Silber hängen an der Surf-Referenz mit Werkzeug-Achse (`rampAxis`). Ein naiver Browser-Surfer kam nie ins L3-Ziel. | major | **gemessen, Level unverändert:** Der Browser-Surfer blickte entlang der Höhenlinie der Fläche. Auf Rampen mit Achsgefälle liegt die 6–8° neben der Achse. Ein Surfer, der der Flugrichtung folgt, driftet ohne Rückführung ab (fallen.md #192). Beides ist kein Mensch, der die Rampe sieht. Neue Probe **Blickfehler** in `levels:check`: L3 ab CP3 mit festem Versatz −6…+10°, σ 3°, Verzug 0.4 s → 36/36 im Ziel. Bronze-Hand auf Türkis (σ 3°, Verzug 0.2 s): −2° 15.0, 0° 15.1, +2° 16.3, +4° 16.6 s gegen Bronze 16.6. L4-Abfahrt mit der Bronze-Hand: −2° 26.4, 0° 27.0, +2° 27.7, +4° 29.2 s gegen Bronze 29.2. Bronze trägt also einen Blickfehler bis ±2° (L3 mit 2 % Reserve bei +2°). Ob ein Mensch die Achse so genau trifft, klärt S6. |
+| T3/T4: Wer die Karte wörtlich befolgt (W + Leertaste aus dem Stand), bekommt beim ersten Hop „ANLAUF MIT W“. | minor | **behoben:** Der erste Absprung nach Stufenstart, Respawn oder Levelstart bekommt keinen Tadel. Mit gehaltenem W heißt ein langsamer Absprung „WEITER ANLAUFEN“. training-shots „Karte wörtlich“: T3 sieht nur „MAUS!“, die Sprünge kommen mit 0/316/317/318 u/s. |
+| T1 RUTSCHEN ist nach 0.6 s erledigt (Auto-Sprint). | minor | **abgelehnt:** Mit erzwungenem Auto-Sprint sind 320 u/s nach ~0.3 s erreicht, also ist C nach 0.6 s wirklich „angelaufen, dann C“. Ohne Anlauf rutscht man nicht (Bot-Matrix „W + Leertaste“ 0, Stuck-Tipp nach 10 s), und das Timing prüft der Tunnel-Bonus. |
+| L1 Gold → VELOCITY 31.8 % | minor | **zurückgestellt:** bekannt (§10, fallen.md #191). Das Ergebnis zeigt Gold-Spielern schon „Nächstes Ziel: VELOCITY … (noch x s)“. Der Hebel ist die Crouch-Kanten-Lotterie (Physik), nicht der Aufschlag. |
+| Kanten-Assist und Rutschen kommen in Bot-Läufen nie vor | minor | **behoben (Assist):** `npm run shot` „Kanten-Assist live“. L1 Hop 7 → Crouch-Kante, 320 u/s, C 63 ms nach dem Anprall: Event `ledge vault`, oben mit 320 u/s. Ohne Assist (`setConfig`) kein Event, 85 u/s. Rutschen prüft training-shots in T1. |
+
+Außerdem: `node_modules` war beim Start dieser Runde halb gelöscht (zeitgleich mit dem Aufräumen des Prüf-Worktrees). Es
+wurde aus dem npm-Cache mit den Lockfile-Hashes zurückgeholt, ohne Install und ohne Versionswechsel (fallen.md #193).
+
+**Suite nach den Fixes:**
+- tsc: 0 Fehler.
+- vitest: 631/631.
+- build: ok.
+- levels:check: 13 Level, 0 Fehler, 2 Warnungen (die bekannten T3-Lead-Entscheidungen).
+- audio:check: 76/76.
+- shot: 41/41.
+- playtest: L1 18.85, L2 15.73, L3 17.09, L4 25.29 s; 0 Respawns, Ø 60 fps (min 60), 0 Konsolenfehler.
+
+**Checkliste S6-Mensch-Playtest** (Phase 3 I5; frische Spieler, kein Bot-Wissen):
+1. **Neuling ohne Training:** Spielt L1, sieht das Ergebnis. Nimmt er „Training T3“? Erreicht er danach Bronze 33 s?
+2. **Training T1–T8:** Zeit je Lektion, wo man die Vorführung (H) braucht und wo man hängen bleibt. Verstanden: „W lenkt, A/D + Maus beschleunigt“?
+3. **L3 Türkis:** Schafft man Bronze 16.6 s nach T7/T8? Wie viele Tode vor CP3? Bleibt man nach CP3 auf R1, oder rutscht man hinaus?
+4. **L3 Koralle:** Wird die Gabel als Wahl gelesen? Die 2°/1.5°-Hand holt dort Gold/VELOCITY (§10 offen).
+5. **L4:** Crouch-Kanten mit gehaltener Leertaste (Anprall-Quote), Bronze 29.2 / Silber 27.3 s, Abfahrt ohne Tod.
+6. **Gefühl:** Lande-Gnade, Rutschen, Luftlenkung mit W. Arcadig und smooth, oder „Eis“?
+7. **Medaillen-Leiter:** Hat jeder ein nächstes Ziel? Liest sich die Katzenpfote als Pfote?

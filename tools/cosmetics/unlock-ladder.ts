@@ -7,11 +7,12 @@
  *   npx tsx tools/cosmetics/unlock-ladder.ts [--seeds N]   → shots/v2/kosmetik/unlock-ladder-core.json
  * Level mit Gabel (safeRoute): der Spielertyp fährt die für ihn schnellere Linie (Median je Linie, das
  * kleinere) — so wählt ein Mensch, der beide kennt. Erwartung (Plan): monoton, jeder Spielertyp unter
- * sync 1.0 hat ein nächstes Ziel; Admin "Alles freischalten" = 14 (Test/Admin-Shots). Default 24 Seeds:
- * mit 8 kippte die 1°-Hand auf L1 zwischen zwei Moden (22.05 ↔ 27.30 s) und die Leiter war nicht monoton
- * (Phase 3: 8 Seeds 3 → 7 → 7 → 8 → 11 → 10 → 14, 24 Seeds 3 → 6 → 7 → 8 → 9 → 11 → 14).
+ * sync 1.0 hat ein nächstes Ziel; Admin "Alles freischalten" = 14 (Test/Admin-Shots). Default = build.MEDAL_SEEDS (48),
+ * dieselbe Stichprobe wie die Medaillen: mit 8 kippte die 1°-Hand auf L1 zwischen zwei Moden (22.05 ↔ 27.30 s) und die
+ * Leiter war nicht monoton; mit 24 lag die 2°-Hand auf L3-Koralle bei 12.09 s (48 Seeds: 12.19 s) — unter VELOCITY.
  * Level mit Medaillen-Referenz (build.ts LEVELS[].reference, L3/L4: Surf-Grundtechnik): der Spielertyp surft wie die
- * Referenz, wenn das schneller ist — genau so misst build.ts die Grenzen.
+ * Referenz mit SEINER Hand (physics.surfSigma), wenn das schneller ist — genau so misst build.ts die Grenzen (der
+ * Einsteiger mit Blick 0° wie Bronze, alle anderen mit dem besten Blickversatz).
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { compileLevel } from '../../src/world/level/compileLevel';
@@ -20,28 +21,30 @@ import type { MedalSource, UnlockId } from '../../src/engine/Unlocks';
 import type { LessonStars, TrainingProgressView } from '../../src/engine/trainingTypes';
 import type { LevelFile, LevelMedals, TrainingIndexEntry } from '../../src/world/level/LevelFormat';
 import { medalFor } from '../../src/ui/medals';
-import { LEVELS } from '../levels/build';
+import { LEVELS, MEDAL_SEEDS } from '../levels/build';
 import { medianOf, timedMedian, withRoute } from '../levels/physics';
-import type { StrafeModel } from '../levels/physics';
+import type { StrafeModel, SurfLook } from '../levels/physics';
 
 interface Arche {
   readonly name: string;
   readonly model: StrafeModel;
   /** Training ganz / nur Grundlagen / gar nicht. */
   readonly training: 'all' | 'basics' | 'none';
+  /** Surf-Blick (wie build.ts: Bronze-Hand wie gelehrt, darüber der beste Versatz). */
+  readonly look: SurfLook;
 }
 
 const ARCHES: readonly Arche[] = [
-  { name: 'Einsteiger (3°-Hand, nur Grundlagen-Training)', model: { aimNoiseDeg: 3 }, training: 'basics' },
-  { name: 'Solide (2.5°-Hand, Training komplett)', model: { aimNoiseDeg: 2.5 }, training: 'all' },
-  { name: 'Ordentlich (2°-Hand)', model: { aimNoiseDeg: 2 }, training: 'all' },
-  { name: 'Gut (1.5°-Hand)', model: { aimNoiseDeg: 1.5 }, training: 'all' },
-  { name: 'Sehr gut (1°-Hand)', model: { aimNoiseDeg: 1 }, training: 'all' },
-  { name: 'Elite (sync 0.95)', model: { sync: 0.95 }, training: 'all' },
-  { name: 'Top (sync 1.0)', model: { sync: 1 }, training: 'all' },
+  { name: 'Einsteiger (3°-Hand, nur Grundlagen-Training)', model: { aimNoiseDeg: 3 }, training: 'basics', look: 'lesson' },
+  { name: 'Solide (2.5°-Hand, Training komplett)', model: { aimNoiseDeg: 2.5 }, training: 'all', look: 'best' },
+  { name: 'Ordentlich (2°-Hand)', model: { aimNoiseDeg: 2 }, training: 'all', look: 'best' },
+  { name: 'Gut (1.5°-Hand)', model: { aimNoiseDeg: 1.5 }, training: 'all', look: 'best' },
+  { name: 'Sehr gut (1°-Hand)', model: { aimNoiseDeg: 1 }, training: 'all', look: 'best' },
+  { name: 'Elite (sync 0.95)', model: { sync: 0.95 }, training: 'all', look: 'best' },
+  { name: 'Top (sync 1.0)', model: { sync: 1 }, training: 'all', look: 'best' },
 ];
 const seedArg = process.argv.indexOf('--seeds');
-const SEED_N = seedArg >= 0 ? Number(process.argv[seedArg + 1]) : 24;
+const SEED_N = seedArg >= 0 ? Number(process.argv[seedArg + 1]) : MEDAL_SEEDS.length;
 const SEEDS = Array.from({ length: SEED_N }, (_, i) => i + 1);
 const LEVEL_IDS = ['level1', 'level2', 'level3', 'level4'];
 
@@ -78,9 +81,9 @@ for (const a of ARCHES) {
   for (const lv of levels) {
     const r = timedMedian(lv.c, a.model, SEEDS).median;
     const s = lv.safe ? timedMedian(lv.safe, a.model, SEEDS).median : null;
-    // Referenz je Linie (L3: nur route und nur perfekte Modelle, L4: alle).
-    const rr = lv.ref?.runs(lv.c, a.model, 'route', false, SEEDS) ?? null;
-    const rs = lv.safe ? (lv.ref?.runs(lv.safe, a.model, 'safeRoute', false, SEEDS) ?? null) : null;
+    // Referenz je Linie mit derselben Hand (L3: Koralle/Türkis-Surfer, L4: Hybrid) — wie build.ts.
+    const rr = lv.ref?.runs(lv.c, a.model, 'route', false, SEEDS, { look: a.look }) ?? null;
+    const rs = lv.safe ? (lv.ref?.runs(lv.safe, a.model, 'safeRoute', false, SEEDS, { look: a.look }) ?? null) : null;
     // Schnellste Linie bzw. Technik (null = Mehrheit ohne Ziel).
     const cands = [r, s, rr ? medianOf(rr.runs) : null, rs ? medianOf(rs.runs) : null].filter((x): x is number => x !== null);
     const t = cands.length ? Math.min(...cands) : null;

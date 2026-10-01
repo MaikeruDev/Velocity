@@ -1,0 +1,51 @@
+{
+ "medals": {
+  "bronze": 16.6,
+  "silver": 14.6,
+  "gold": 12.6,
+  "velocity": 12.1,
+  "author": 11.44
+ },
+ "res": [
+  {
+   "sigma": 0.5,
+   "look": -3,
+   "seed": 1,
+   "time": null,
+   "medal": null,
+   "cp": {
+    "index": 3,
+    "total": 3
+   },
+   "top": 1354,
+   "respawnsRecent": 5
+  },
+  {
+   "sigma": 0.5,
+   "look": 3,
+   "seed": 1,
+   "time": null,
+   "medal": null,
+   "cp": {
+    "index": 3,
+    "total": 3
+   },
+   "top": 1354,
+   "respawnsRecent": 10
+  },
+  {
+   "sigma": 0.5,
+   "look": 6,
+   "seed": 1,
+   "time": null,
+   "medal": null,
+   "cp": {
+    "index": 3,
+    "total": 3
+   },
+   "top": 1354,
+   "respawnsRecent": 15
+  }
+ ],
+ "errors": []
+}

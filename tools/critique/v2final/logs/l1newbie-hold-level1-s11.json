@@ -1,0 +1,52 @@
+{
+ "style": "hold",
+ "levelId": "level1",
+ "notices": [
+  {
+   "t": 5.4,
+   "text": "SCHNELLER? IN DER LUFT A ODER D HALTEN\nUND DIE MAUS MITZIEHEN · TRAINING T3",
+   "speed": 315
+  }
+ ],
+ "respawns": [
+  {
+   "t": 42.5,
+   "reason": "kill",
+   "node": 25
+  }
+ ],
+ "cps": [
+  {
+   "t": 7.8,
+   "runTime": 5.8125
+  },
+  {
+   "t": 19.8,
+   "runTime": 17.78125
+  },
+  {
+   "t": 34.3,
+   "runTime": 32.28125
+  }
+ ],
+ "finish": null,
+ "maxNode": 28,
+ "seconds": 120.02,
+ "end": {
+  "cp": {
+   "index": 3,
+   "total": 3
+  },
+  "runTime": 118.03125,
+  "hints": {
+   "crouch": 0,
+   "surf": 0,
+   "strafe": 0,
+   "noStrafe": 1
+  },
+  "finish": null,
+  "menu": null
+ },
+ "menuText": null,
+ "errors": []
+}

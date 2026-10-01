@@ -10,7 +10,7 @@
  * die Level-JSONs werden parallel umgebaut. Exit 1 bei Konsolenfehlern oder
  * fehlgeschlagenen Checks.
  */
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 import { startDevServer, launchBrowser } from './lib/devServer.mjs';
 
@@ -30,6 +30,7 @@ let passed = 0;
 try {
   if (!ONLY_CHECK) await heroShots();
   if (!ONLY_SHOTS) await flowChecks();
+  if (!ONLY_SHOTS) await v2Checks();
 } finally {
   await browser.close();
   await srv.close();
@@ -523,6 +524,100 @@ async function flowChecks() {
       await noGl.close();
     }
   });
+}
+
+// ================================================================== v2 (E2E-Review v2final)
+
+/**
+ * Kanten-Assist live im Spiel und der Trainings-Tipp im Ergebnis. Der Assist kam in 25 Bot-Läufen nie vor (Bots ducken
+ * vor der Kante); hier deterministisch: L1, Hop 7 → Crouch-Kante (66 u), 320 u/s, Sprung im ersten Tick, C 8 Ticks
+ * (63 ms) NACH dem Anprall. Headless (tools/sim/arcade edgeHop): vault, Ankunft 320 u/s; ohne Assist 85 u/s.
+ */
+async function v2Checks() {
+  console.log('\nv2: Kanten-Assist live, Trainings-Tipp im Ergebnis');
+  const page = await newGamePage();
+  const lv1 = JSON.parse(readFileSync('public/levels/level1.json', 'utf8'));
+  const hop7 = lv1.brushes.find((b) => b.tag === 'hop7');
+  const ledge = lv1.brushes.find((b) => b.tag === 'ledge');
+  const edgeRun = (assist) =>
+    page.evaluate(
+      ({ hop7, ledge, assist }) => {
+        const v = window.__vel;
+        v.freeze(true);
+        const cfg0 = v.setConfig({});
+        if (!assist) v.setConfig({ ledgeStep: 0, ledgeMemory: 0 });
+        v.teleport((hop7.min[0] + hop7.max[0]) / 2, hop7.max[1] + 0.03125, -5621.8, 0);
+        v.setVelocity(0, 0, -320);
+        // Log ist auf 512 gekappt: Marke per Objekt-Identität statt Länge.
+        const mark = v.events(1)[0] ?? null;
+        let k = 0;
+        let bonk = -1;
+        let prev = 320;
+        v.setInputOverride((s) => {
+          if (bonk < 0 && k > 0 && !s.onGround && s.speed < prev * 0.5) bonk = k;
+          prev = s.speed;
+          const inp = { forward: 1, sprint: true, yaw: 0, jumpPressed: k === 0, jumpHeld: k === 0, crouch: bonk >= 0 && k >= bonk + 8 };
+          k++;
+          return inp;
+        });
+        let arrive = null;
+        for (let i = 0; i < 192 && arrive === null; i++) {
+          const s = v.stepTicks(1);
+          if (s.pos.y >= ledge.max[1] - 2 && s.pos.z < ledge.max[2]) arrive = s.speed;
+        }
+        const all = v.events();
+        const ledges = all.slice(all.indexOf(mark) + 1).filter((e) => e.type === 'ledge').map((e) => e.kind);
+        v.setInputOverride(null);
+        v.setConfig({ ledgeStep: cfg0.ledgeStep, ledgeMemory: cfg0.ledgeMemory });
+        return { arrive, ledges, bonk };
+      },
+      { hop7, ledge, assist },
+    );
+  await step('Kanten-Assist live (L1-Crouch-Kante, C 63 ms nach dem Anprall)', async () => {
+    await page.evaluate(() => window.__vel.start('level1', { lockless: true }));
+    await page.waitForTimeout(300);
+    const a = await edgeRun(true);
+    const b = await edgeRun(false);
+    check(
+      a.ledges.includes('vault') && a.arrive !== null && a.arrive >= 300 && b.ledges.length === 0 && (b.arrive ?? 0) < 150,
+      'Kanten-Assist live: Event ledge vault, oben mit ≥ 300 u/s (ohne Assist < 150 u/s, kein Event)',
+      `mit ${JSON.stringify(a)} ohne ${JSON.stringify(b)}`,
+    );
+  });
+
+  // Ergebnis ohne Medaille, Training ohne Stern (frischer Speicher): Training T3 ist der Primärknopf, Enter startet es.
+  await step('Ergebnis ohne Medaille → Training T3 angeboten', async () => {
+    const info1 = await info(page);
+    const cps = byOrder(info1, 'checkpoint');
+    const finish = info1.triggers.find((t) => t.kind === 'finish');
+    const run = await page.evaluate(({ sp, yaw }) => {
+      const v = window.__vel;
+      v.restart();
+      v.freeze(true);
+      v.teleport(sp.x, sp.y, sp.z, yaw);
+      // Aus der Start-Zone laufen (startet den Timer), dann stehen: über Bronze (33 s), der Timer läuft in Ticks.
+      v.setInputOverride(() => ({ forward: 1, sprint: true, yaw: (yaw * Math.PI) / 180 }));
+      for (let i = 0; i < 384 && v.state().runTime === null; i++) v.stepTicks(1);
+      v.setInputOverride(null);
+      return v.stepTicks(128 * 36).runTime;
+    }, { sp: info1.spawn, yaw: info1.spawnYaw });
+    if (!(run > 34)) throw new Error(`Timer läuft nicht (runTime ${run}) — ${summary(await st(page))}`);
+    for (const c of cps) await page.evaluate(({ p, yaw }) => { window.__vel.teleport(p.x, p.y, p.z, yaw); window.__vel.stepTicks(2); }, { p: c.spawn, yaw: c.spawnYaw });
+    const f = center(finish);
+    await page.evaluate(({ p }) => { window.__vel.teleport(p.x, p.y + 4, p.z); window.__vel.stepTicks(2); window.__vel.freeze(false); }, { p: f });
+    await waitFor(page, (x) => x.menu === 'finish', 5000, 'Ergebnis');
+    await page.waitForTimeout(400);
+    const btn = await page.locator('.vel-finish-screen .vel-train-go').innerText().catch(() => '');
+    const primary = await page.locator('.vel-finish-screen .vel-btn--primary').count();
+    const hint = await page.locator('.vel-finish-screen .vel-train-tip').innerText().catch(() => '');
+    await shot(page, 'flow-result-training');
+    check(btn.toUpperCase().includes('TRAINING T3') && primary === 1 && hint.includes('T3'), 'Ergebnis ohne Medaille: Primärknopf "Training T3" + Hinweis', `Knopf "${btn}", Primär ${primary}, Hinweis "${hint}"`);
+    await page.waitForTimeout(400);
+    await page.keyboard.press('Enter');
+    const s = await waitFor(page, (x) => x.levelId === 't3' && x.gameState === 'playing', 8000, 'Lektion T3');
+    check(s.levelId === 't3', 'Enter im Ergebnis → Lektion T3', summary(s));
+  });
+  await page.close();
 }
 
 function angleDiff(a, b) {

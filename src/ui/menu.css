@@ -1760,3 +1760,8 @@
     font-size: 96px;
   }
 }
+
+/* Trainings-Tipp im Ergebnis ohne Medaille (E2E-Review v2final): in der Farbe des Neulings-Bands. */
+.vel-train-tip {
+  color: var(--magenta);
+}

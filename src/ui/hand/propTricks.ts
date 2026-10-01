@@ -1,5 +1,5 @@
 import type { GameEvent } from '../../engine/events';
-import { VM_STRING_POINTS } from '../../render/types';
+import { VM_JOINT_COUNT, VM_STRING_POINTS } from '../../render/types';
 import { clamp, fin, smooth, speedTier } from './anim';
 import { VIEW_AXES, axisAngleQ, fromEulerXYZV, mat3, mul, mulT, toAxisAngleQ, toEulerXYZ } from './rot';
 import type { Mat3 } from './rot';
@@ -75,6 +75,12 @@ export class PropOut {
   stringCount = 0;
   /** Gegenstands-Kanäle (render/types VM_PARAM). */
   readonly param = new Float32Array(4);
+  /**
+   * Plan 008: Gelenk-Versatz (rad, VM_JOINT-Layout) zusätzlich zur überblendeten Pose — Handgelenk-Flicks (Tricks
+   * entstehen aus Drehung/Beschleunigung des Handgelenks), Überlappen der Finger, Finger-Kontakt beim Fang. Wird je
+   * Frame vor der Zeitleiste auf 0 gesetzt, mit motionFx skaliert; afterPose darf ihn noch ergänzen.
+   */
+  readonly jointAdd = new Float32Array(VM_JOINT_COUNT);
   /** Impulse an die Hand seit dem letzten Abholen (Bildhöhen/s nach unten, Squash/s). */
   kickY = 0.5;
   kickSq = 0.5;
@@ -214,10 +220,10 @@ export abstract class PropTricks<T extends string> implements PropControl {
   private readonly rq = new Float64Array(4);
   /**
    * Abbruch-Überblenden: erst die Ausgabe beim Abbruch, ab dem ersten Frame des neuen Tricks der Versatz
-   * dazu (pos 0–2, spin 3, visible 4, scale 5, hx…hroll 6–11, knifeBlade 12, knifeBite 13); Lage beim
+   * dazu (pos 0–2, spin 3, visible 4, scale 5, hx…hroll 6–11, knifeBlade 12, knifeBite 13, Handgelenk 14–16); Lage beim
    * Abbruch, dann der Versatz als Achse-Winkel (xfQ). Alter wie eine Trick-Zeit (frisch = 0 im ersten Frame).
    */
-  private readonly xf = new Float64Array(14);
+  private readonly xf = new Float64Array(17);
   private readonly xfRot = new Float32Array(3);
   private readonly xfQ = new Float64Array(4);
   private xfOn = false;
@@ -410,6 +416,7 @@ export abstract class PropTricks<T extends string> implements PropControl {
     if (dt <= 0) return;
     this.now += dt;
     const o = this.out;
+    o.jointAdd.fill(0);
     const m = clamp(fin(this.motionFx), 0, 1);
     if (m <= 0) {
       if (this.busy) {
@@ -521,6 +528,8 @@ export abstract class PropTricks<T extends string> implements PropControl {
   /** Höhen mit weniger motionFx flacher (Drehungen bleiben ganz — halbe Flips gibt es nicht). */
   private scaleOut(o: PropOut, m: number): void {
     const hs = 0.6 + 0.4 * m;
+    const ja = o.jointAdd;
+    for (let i = 0; i < ja.length; i++) ja[i] *= m;
     o.hx *= m;
     o.hy *= m;
     o.hz *= hs;
@@ -540,6 +549,7 @@ export abstract class PropTricks<T extends string> implements PropControl {
     const o = this.out;
     this.interrupt();
     this.startReward(kind, this.finishBest);
+    o.jointAdd.fill(0);
     this.writeRest(o);
     const id = this.trick;
     if (id !== 'none') {
@@ -574,6 +584,9 @@ export abstract class PropTricks<T extends string> implements PropControl {
     x[11] = o.hroll;
     x[12] = o.knifeBlade;
     x[13] = o.knifeBite;
+    x[14] = o.jointAdd[0];
+    x[15] = o.jointAdd[1];
+    x[16] = o.jointAdd[2];
     this.xfRot[0] = o.rot[0];
     this.xfRot[1] = o.rot[1];
     this.xfRot[2] = o.rot[2];
@@ -617,6 +630,9 @@ export abstract class PropTricks<T extends string> implements PropControl {
       x[11] -= o.hroll;
       x[12] -= o.knifeBlade;
       x[13] = wrapPi(x[13] - o.knifeBite);
+      x[14] -= o.jointAdd[0];
+      x[15] -= o.jointAdd[1];
+      x[16] -= o.jointAdd[2];
       fromEulerXYZV(this.mA, this.xfRot);
       fromEulerXYZV(this.mB, o.rot);
       mulT(this.mC, this.mA, this.mB);
@@ -639,6 +655,9 @@ export abstract class PropTricks<T extends string> implements PropControl {
     o.hroll += x[11] * w;
     o.knifeBlade += x[12] * w;
     o.knifeBite += x[13] * w;
+    o.jointAdd[0] += x[14] * w;
+    o.jointAdd[1] += x[15] * w;
+    o.jointAdd[2] += x[16] * w;
     const q = this.rq;
     const d = this.xfQ;
     q[0] = d[0];

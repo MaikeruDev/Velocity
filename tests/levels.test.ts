@@ -10,7 +10,7 @@ import { compileBrush, compileLevel, type CompiledTrigger } from '../src/world/l
 import type { BrushDef, HullDef, LevelFile, LevelIndexEntry, RouteNode, TrainingDef, TrainingIndexEntry, Vec3Tuple } from '../src/world/level/LevelFormat';
 import { buildTrims } from '../src/render/trims';
 import { RESERVE, airTime } from '../tools/levels/ballistics';
-import { LEVELS, runBuild } from '../tools/levels/build';
+import { LEVELS, MEDAL_MAX_STEP, MEDAL_MIN_STEP, medalSteps, runBuild, staggerMedals } from '../tools/levels/build';
 import { finaleReserve, type DesignReport } from '../tools/levels/designProbes';
 import { Helix, LevelBuilder, SurfPath, dropFrom, yawTo } from '../tools/levels/lib';
 import {
@@ -102,6 +102,34 @@ describe('public/levels (npm run levels:build)', () => {
       expect(m.velocity).toBeGreaterThanOrEqual(m.author);
       expect(l.parTime).toBe(Math.ceil(m.bronze));
     }
+  });
+
+  it('Medaillen-Staffel (Regel 10): jede Stufe ≥ 4 % über der nächstbesseren, Bronze → Silber → Gold ≤ 20 %', () => {
+    // Medaillen-Runde: L3 hatte Silber 25.1 → Gold 12.8 s (× 1.96), L1 Silber → Gold 40 % — Spieler ohne erreichbares Ziel.
+    for (const e of index) {
+      const m = readLevel(e.file).medals;
+      if (!m) continue;
+      const st = medalSteps(m);
+      for (const [name, f] of [['bronze/silver', st.bs], ['silver/gold', st.sg], ['gold/velocity', st.gv]] as const)
+        expect(f, `${e.id} ${name}`).toBeGreaterThanOrEqual(MEDAL_MIN_STEP - 1e-9);
+      expect(st.bs, `${e.id} bronze/silver`).toBeLessThanOrEqual(MEDAL_MAX_STEP);
+      expect(st.sg, `${e.id} silver/gold`).toBeLessThanOrEqual(MEDAL_MAX_STEP);
+    }
+  });
+
+  it('Staffel lockert nur die leichtere Stufe (0.1-s-Raster)', () => {
+    // L3 mit bestem Blick für beide Hände: 3°-Hand 15.0, 2°-Hand 14.6 s — 2.7 %, keine eigene Stufe.
+    const { medals, notes } = staggerMedals({ bronze: 15, silver: 14.6, gold: 12.6, velocity: 12.1, author: 11.44 });
+    expect(medals).toEqual({ bronze: 15.2, silver: 14.6, gold: 12.6, velocity: 12.1, author: 11.44 });
+    expect(notes.length).toBe(1);
+    // Kaskade: Gold zu nah an VELOCITY zieht Silber und Bronze mit.
+    const c = staggerMedals({ bronze: 17, silver: 16.6, gold: 16.5, velocity: 16.4, author: 15.6 }).medals;
+    expect(c.gold).toBe(17.1);
+    expect(c.silver).toBe(17.8);
+    expect(c.bronze).toBe(18.6);
+    // Weit genug: unverändert.
+    const ok = { bronze: 21.3, silver: 19.2, gold: 17.3, velocity: 16.5, author: 15.71 };
+    expect(staggerMedals(ok)).toEqual({ medals: ok, notes: [] });
   });
 
   it('Start-Chevrons liegen als Markierungen vor dem Spawn, Stufen-Lichter am L2-Tor', () => {

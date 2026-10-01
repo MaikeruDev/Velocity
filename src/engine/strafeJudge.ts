@@ -162,6 +162,12 @@ export interface HopReport {
   turnRate: number;
   /** Überwiegende Taste: −1 = A (Linkskurve), +1 = D (Rechtskurve), 0 = keine. */
   side: -1 | 0 | 1;
+  /**
+   * Drehrichtung der Maus während A/D (Netto-Yaw der A/D-Ticks): −1 = links, +1 = rechts, 0 = keine. Für die Seiten-Aufgaben
+   * zählen Taste UND Drehung: ein Hop mit A (60 %) und D (40 %), dessen Maus netto nach rechts lief, ist keine Linkskurve —
+   * 'against' fängt nur die Summe gegen die Tasten, nicht die Richtung der Kurve.
+   */
+  turnSide: -1 | 0 | 1;
   /** Zeit bis zur ersten A/D-Taste (s), −1 = nie. */
   firstSide: number;
   /** Wand-Kontakt in der Luft (dann nur 'good' gemeldet, sonst kein Urteil). */
@@ -179,7 +185,7 @@ const TWO_PI = 2 * Math.PI;
 export class StrafeJudge {
   // Gleitkomma-Felder mit Double-Startwert (D0): V8 legt sie als Double an und schreibt in place — mit Smi-Start
   // (0) boxte jedes Urteil seine Zahlen neu (fallen.md #59, Inbox cosmetics "Smi-Startwerte").
-  readonly last: HopReport = { verdict: 'good', gain: D0, takeoffSpeed: D0, landSpeed: D0, air: D0, sideShare: D0, turnRate: D0, side: 0, firstSide: D0, wall: false, loss: D0 };
+  readonly last: HopReport = { verdict: 'good', gain: D0, takeoffSpeed: D0, landSpeed: D0, air: D0, sideShare: D0, turnRate: D0, side: 0, turnSide: 0, firstSide: D0, wall: false, loss: D0 };
   private assist: boolean;
   private inAir = false;
   private surfed = false;
@@ -192,6 +198,8 @@ export class StrafeJudge {
   private loss = D0;
   private turnSum = D0;
   private sideSum = 0;
+  /** Netto-Yaw (rad) in Ticks mit A/D: > 0 = Linksdrehung. */
+  private yawSum = D0;
   private firstSide = D0;
   private startSpeed = D0;
   private prevYaw = D0;
@@ -226,6 +234,7 @@ export class StrafeJudge {
       this.loss = 0;
       this.turnSum = 0;
       this.sideSum = 0;
+      this.yawSum = 0;
       this.firstSide = -1;
       this.startSpeed = prev.speed;
       this.prevYaw = cmd.yaw;
@@ -248,6 +257,7 @@ export class StrafeJudge {
         // Linksdrehung (yaw steigt) passt zu A (side −1): Beitrag −side·dYaw > 0.
         this.turnSum -= cmd.side * dYaw;
         this.sideSum += cmd.side;
+        this.yawSum += dYaw;
         if (prev.speed > cur.speed) this.loss += prev.speed - cur.speed;
         if (cmd.forward > 0) this.wWithSide++;
       } else if (cmd.forward > 0) this.wTicks++;
@@ -315,6 +325,7 @@ export class StrafeJudge {
     r.sideShare = this.sideTicks / n;
     r.turnRate = this.sideTicks > 0 ? (Math.abs(this.turnSum) / (this.sideTicks * dt)) * (180 / Math.PI) : 0;
     r.side = this.sideSum < 0 ? -1 : this.sideSum > 0 ? 1 : 0;
+    r.turnSide = this.yawSum > 0 ? -1 : this.yawSum < 0 ? 1 : 0;
     r.firstSide = this.firstSide;
     r.wall = this.wall;
     r.loss = this.loss;

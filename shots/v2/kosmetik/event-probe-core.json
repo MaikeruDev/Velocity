@@ -3,17 +3,17 @@
     "runs": 3,
     "finishes": 3,
     "deaths": 0,
-    "seconds": 62.4,
-    "surfShare": 5.3,
+    "seconds": 60.5,
+    "surfShare": 6,
     "props": {
       "can": {
-        "busyShare": 43.8,
-        "busyShareFree": 47.6,
-        "tricksPerMinFree": 28.2,
-        "tricksPerMin": 28.8,
-        "tricksPerMinRun": 26,
+        "busyShare": 45.1,
+        "busyShareFree": 49.2,
+        "tricksPerMinFree": 29.2,
+        "tricksPerMin": 29.8,
+        "tricksPerMinRun": 26.8,
         "surfShown": 100,
-        "actionShare": 51.8,
+        "actionShare": 53.5,
         "flourishPerMin": 35.6,
         "topTrick": {
           "name": "behindThrow",
@@ -32,13 +32,13 @@
         }
       },
       "card": {
-        "busyShare": 40.9,
-        "busyShareFree": 44.6,
-        "tricksPerMinFree": 22,
-        "tricksPerMin": 23.1,
-        "tricksPerMinRun": 20.2,
+        "busyShare": 42.2,
+        "busyShareFree": 46.1,
+        "tricksPerMinFree": 22.7,
+        "tricksPerMin": 23.8,
+        "tricksPerMinRun": 20.8,
         "surfShown": 100,
-        "actionShare": 49,
+        "actionShare": 50.6,
         "flourishPerMin": 35.6,
         "topTrick": {
           "name": "tossSpin",
@@ -55,38 +55,38 @@
         }
       },
       "knife": {
-        "busyShare": 41.9,
-        "busyShareFree": 45.6,
-        "tricksPerMinFree": 29.3,
+        "busyShare": 29.9,
+        "busyShareFree": 32.8,
+        "tricksPerMinFree": 29.4,
         "tricksPerMin": 29.8,
-        "tricksPerMinRun": 26.9,
+        "tricksPerMinRun": 26.8,
         "surfShown": 100,
-        "actionShare": 50.1,
-        "flourishPerMin": 35,
+        "actionShare": 38.8,
+        "flourishPerMin": 33.3,
         "topTrick": {
           "name": "doubleAerial",
-          "share": 57.1
+          "share": 55.6
         },
         "finishReact": "3/3",
         "finishTricks": {
           "doubleAerial": 3
         },
         "starts": {
-          "open": 4,
+          "open": 3,
           "rollover": 7,
-          "doubleAerial": 16,
-          "close": 1
+          "doubleAerial": 15,
+          "close": 2
         }
       },
       "spinner": {
-        "busyShare": 33.7,
-        "busyShareFree": 36.2,
-        "tricksPerMinFree": 24.8,
-        "tricksPerMin": 26,
-        "tricksPerMinRun": 23.1,
+        "busyShare": 34.8,
+        "busyShareFree": 37.7,
+        "tricksPerMinFree": 25.8,
+        "tricksPerMin": 26.8,
+        "tricksPerMinRun": 23.8,
         "surfShown": 100,
-        "actionShare": 40.5,
-        "flourishPerMin": 42.4,
+        "actionShare": 42.4,
+        "flourishPerMin": 39.1,
         "topTrick": {
           "name": "toss",
           "share": 37.5
@@ -103,14 +103,14 @@
         }
       },
       "yoyo": {
-        "busyShare": 38.2,
-        "busyShareFree": 41,
-        "tricksPerMinFree": 24.8,
-        "tricksPerMin": 26,
-        "tricksPerMinRun": 23.1,
+        "busyShare": 39.4,
+        "busyShareFree": 42.6,
+        "tricksPerMinFree": 25.8,
+        "tricksPerMin": 26.8,
+        "tricksPerMinRun": 23.8,
         "surfShown": 100,
-        "actionShare": 45,
-        "flourishPerMin": 42.4,
+        "actionShare": 47,
+        "flourishPerMin": 39.1,
         "topTrick": {
           "name": "around",
           "share": 37.5
@@ -128,14 +128,14 @@
         }
       },
       "lighter": {
-        "busyShare": 27.3,
-        "busyShareFree": 29.3,
-        "tricksPerMinFree": 25.8,
-        "tricksPerMin": 26.9,
-        "tricksPerMinRun": 24,
+        "busyShare": 28.2,
+        "busyShareFree": 30.5,
+        "tricksPerMinFree": 26.8,
+        "tricksPerMin": 27.8,
+        "tricksPerMinRun": 24.8,
         "surfShown": 100,
-        "actionShare": 34.1,
-        "flourishPerMin": 42.4,
+        "actionShare": 35.8,
+        "flourishPerMin": 39.1,
         "topTrick": {
           "name": "strike",
           "share": 36
@@ -152,17 +152,17 @@
         }
       },
       "coin": {
-        "busyShare": 40.4,
-        "busyShareFree": 43.9,
-        "tricksPerMinFree": 28.2,
-        "tricksPerMin": 28.8,
-        "tricksPerMinRun": 26,
+        "busyShare": 37.7,
+        "busyShareFree": 41.1,
+        "tricksPerMinFree": 26,
+        "tricksPerMin": 26.8,
+        "tricksPerMinRun": 23.8,
         "surfShown": 100,
-        "actionShare": 48.5,
+        "actionShare": 46,
         "flourishPerMin": 35.6,
         "topTrick": {
           "name": "call",
-          "share": 33.3
+          "share": 37.5
         },
         "finishReact": "3/3",
         "finishTricks": {
@@ -170,21 +170,20 @@
         },
         "starts": {
           "flip": 6,
-          "roll": 3,
           "call": 9,
           "highFlip": 6,
           "vanish": 3
         }
       },
       "kendama": {
-        "busyShare": 39.1,
-        "busyShareFree": 42.6,
-        "tricksPerMinFree": 24.1,
-        "tricksPerMin": 25,
-        "tricksPerMinRun": 22.1,
+        "busyShare": 40.4,
+        "busyShareFree": 44.3,
+        "tricksPerMinFree": 25,
+        "tricksPerMin": 25.8,
+        "tricksPerMinRun": 22.8,
         "surfShown": 100,
-        "actionShare": 47.4,
-        "flourishPerMin": 35,
+        "actionShare": 49.3,
+        "flourishPerMin": 33.3,
         "topTrick": {
           "name": "bigCup",
           "share": 30.4
@@ -201,14 +200,14 @@
         }
       },
       "phone": {
-        "busyShare": 35.3,
-        "busyShareFree": 37.9,
-        "tricksPerMinFree": 27.9,
-        "tricksPerMin": 28.8,
-        "tricksPerMinRun": 26,
+        "busyShare": 36.4,
+        "busyShareFree": 39.4,
+        "tricksPerMinFree": 29,
+        "tricksPerMin": 29.8,
+        "tricksPerMinRun": 26.8,
         "surfShown": 100,
-        "actionShare": 42.1,
-        "flourishPerMin": 42.4,
+        "actionShare": 44,
+        "flourishPerMin": 39.1,
         "topTrick": {
           "name": "spinToss",
           "share": 44.4
@@ -237,213 +236,215 @@
     "runs": 3,
     "finishes": 3,
     "deaths": 0,
-    "seconds": 91.2,
-    "surfShare": 8.8,
+    "seconds": 81.8,
+    "surfShare": 8.7,
     "props": {
       "can": {
-        "busyShare": 34.7,
-        "busyShareFree": 38.6,
-        "tricksPerMinFree": 27.1,
-        "tricksPerMin": 26.3,
-        "tricksPerMinRun": 24.3,
+        "busyShare": 35.1,
+        "busyShareFree": 39,
+        "tricksPerMinFree": 26.9,
+        "tricksPerMin": 26.4,
+        "tricksPerMinRun": 24.2,
         "surfShown": 100,
-        "actionShare": 44.8,
-        "flourishPerMin": 32.4,
+        "actionShare": 45.1,
+        "flourishPerMin": 29.4,
         "topTrick": {
           "name": "highFlip",
-          "share": 51.4
+          "share": 51.5
         },
         "finishReact": "3/3",
         "finishTricks": {
           "behindThrow": 3
         },
         "starts": {
-          "flip": 10,
-          "highFlip": 19,
-          "twirl": 7,
-          "doubleFlip": 1
+          "flip": 8,
+          "highFlip": 17,
+          "twirl": 6,
+          "doubleFlip": 1,
+          "behindThrow": 1
         }
       },
       "card": {
-        "busyShare": 35.9,
-        "busyShareFree": 39.9,
-        "tricksPerMinFree": 27.8,
-        "tricksPerMin": 27,
-        "tricksPerMinRun": 25,
-        "surfShown": 100,
-        "actionShare": 46,
-        "flourishPerMin": 32.4,
+        "busyShare": 39.9,
+        "busyShareFree": 44,
+        "tricksPerMinFree": 28.3,
+        "tricksPerMin": 27.9,
+        "tricksPerMinRun": 25.7,
+        "surfShown": 92.5,
+        "actionShare": 49.2,
+        "flourishPerMin": 31.5,
         "topTrick": {
           "name": "tossSpin",
-          "share": 44.7
+          "share": 45.7
         },
         "finishReact": "3/3",
         "finishTricks": {
           "vanish": 3
         },
         "starts": {
-          "spin": 9,
-          "tossSpin": 17,
-          "turn": 12
+          "spin": 8,
+          "tossSpin": 16,
+          "turn": 9,
+          "vanish": 2
         }
       },
       "knife": {
-        "busyShare": 33.4,
-        "busyShareFree": 37.5,
-        "tricksPerMinFree": 33.2,
-        "tricksPerMin": 31.6,
-        "tricksPerMinRun": 29.6,
+        "busyShare": 32.1,
+        "busyShareFree": 36.1,
+        "tricksPerMinFree": 33.8,
+        "tricksPerMin": 32.3,
+        "tricksPerMinRun": 30.1,
         "surfShown": 100,
-        "actionShare": 44.3,
-        "flourishPerMin": 30.3,
+        "actionShare": 43.2,
+        "flourishPerMin": 26.3,
         "topTrick": {
           "name": "rollover",
-          "share": 44.4
+          "share": 41.5
         },
         "finishReact": "3/3",
         "finishTricks": {
           "doubleAerial": 3
         },
         "starts": {
-          "open": 13,
-          "rollover": 20,
-          "close": 11,
-          "doubleAerial": 1
+          "open": 12,
+          "rollover": 17,
+          "close": 9,
+          "doubleAerial": 3
         }
       },
       "spinner": {
-        "busyShare": 32.8,
-        "busyShareFree": 36.4,
-        "tricksPerMinFree": 29.2,
-        "tricksPerMin": 28.3,
-        "tricksPerMinRun": 26.3,
+        "busyShare": 33.2,
+        "busyShareFree": 36.9,
+        "tricksPerMinFree": 29.3,
+        "tricksPerMin": 28.6,
+        "tricksPerMinRun": 26.4,
         "surfShown": 100,
-        "actionShare": 42.6,
-        "flourishPerMin": 33.5,
+        "actionShare": 43.1,
+        "flourishPerMin": 29.6,
         "topTrick": {
-          "name": "flick",
-          "share": 32.5
+          "name": "toss",
+          "share": 36.1
         },
         "finishReact": "3/3",
         "finishTricks": {
           "ufo": 3
         },
         "starts": {
-          "flick": 13,
+          "flick": 11,
           "toss": 13,
-          "swap": 13,
-          "ufo": 1
+          "swap": 10,
+          "ufo": 2
         }
       },
       "yoyo": {
-        "busyShare": 31.8,
-        "busyShareFree": 35.3,
-        "tricksPerMinFree": 26.3,
+        "busyShare": 31.2,
+        "busyShareFree": 34.5,
+        "tricksPerMinFree": 26,
         "tricksPerMin": 25.7,
-        "tricksPerMinRun": 23.7,
-        "surfShown": 100,
-        "actionShare": 41.6,
-        "flourishPerMin": 33.5,
+        "tricksPerMinRun": 23.5,
+        "surfShown": 97,
+        "actionShare": 40.8,
+        "flourishPerMin": 22.8,
         "topTrick": {
           "name": "snap",
-          "share": 30.6
+          "share": 37.5
         },
         "finishReact": "3/3",
         "finishTricks": {
           "cradle": 3
         },
         "starts": {
-          "snap": 11,
+          "snap": 12,
           "around": 5,
-          "breakaway": 10,
-          "pass": 9,
+          "breakaway": 8,
+          "pass": 6,
           "aroundDouble": 1
         }
       },
       "lighter": {
-        "busyShare": 24.8,
-        "busyShareFree": 27.5,
-        "tricksPerMinFree": 28.4,
-        "tricksPerMin": 27.6,
-        "tricksPerMinRun": 25.7,
+        "busyShare": 26.4,
+        "busyShareFree": 29.3,
+        "tricksPerMinFree": 29.3,
+        "tricksPerMin": 28.6,
+        "tricksPerMinRun": 26.4,
         "surfShown": 100,
-        "actionShare": 34.6,
-        "flourishPerMin": 33.5,
+        "actionShare": 36.3,
+        "flourishPerMin": 29.6,
         "topTrick": {
           "name": "lidFlick",
-          "share": 41
+          "share": 38.9
         },
         "finishReact": "3/3",
         "finishTricks": {
           "finale": 3
         },
         "starts": {
-          "lidFlick": 16,
-          "strike": 10,
+          "lidFlick": 14,
+          "strike": 8,
           "twirl": 12,
-          "tossOpen": 1
+          "tossOpen": 2
         }
       },
       "coin": {
-        "busyShare": 35.6,
-        "busyShareFree": 39.6,
-        "tricksPerMinFree": 31.5,
-        "tricksPerMin": 30.3,
-        "tricksPerMinRun": 28.3,
+        "busyShare": 32.5,
+        "busyShareFree": 36,
+        "tricksPerMinFree": 27.7,
+        "tricksPerMin": 27.1,
+        "tricksPerMinRun": 24.9,
         "surfShown": 100,
-        "actionShare": 45.7,
-        "flourishPerMin": 32.4,
+        "actionShare": 42.4,
+        "flourishPerMin": 29.4,
         "topTrick": {
           "name": "flip",
-          "share": 46.5
+          "share": 41.2
         },
         "finishReact": "3/3",
         "finishTricks": {
           "call": 3
         },
         "starts": {
-          "flip": 20,
-          "roll": 12,
+          "flip": 14,
           "call": 9,
-          "highFlip": 2
+          "roll": 8,
+          "highFlip": 3
         }
       },
       "kendama": {
-        "busyShare": 36.8,
-        "busyShareFree": 40.9,
-        "tricksPerMinFree": 23.4,
-        "tricksPerMin": 23,
-        "tricksPerMinRun": 21.1,
+        "busyShare": 36.7,
+        "busyShareFree": 40.8,
+        "tricksPerMinFree": 23.6,
+        "tricksPerMin": 23.5,
+        "tricksPerMinRun": 21.3,
         "surfShown": 100,
-        "actionShare": 46.8,
-        "flourishPerMin": 33,
+        "actionShare": 46.7,
+        "flourishPerMin": 29.3,
         "topTrick": {
           "name": "smallCup",
-          "share": 40.6
+          "share": 41.4
         },
         "finishReact": "3/3",
         "finishTricks": {
           "spike": 3
         },
         "starts": {
-          "bigCup": 11,
-          "smallCup": 13,
-          "aroundJapan": 6,
+          "bigCup": 10,
+          "smallCup": 12,
+          "aroundJapan": 5,
           "spike": 2
         }
       },
       "phone": {
-        "busyShare": 32.5,
-        "busyShareFree": 36.1,
-        "tricksPerMinFree": 27.7,
-        "tricksPerMin": 27,
-        "tricksPerMinRun": 25,
+        "busyShare": 32.6,
+        "busyShareFree": 36.2,
+        "tricksPerMinFree": 29.3,
+        "tricksPerMin": 28.6,
+        "tricksPerMinRun": 26.4,
         "surfShown": 100,
-        "actionShare": 42.4,
-        "flourishPerMin": 33.5,
+        "actionShare": 42.5,
+        "flourishPerMin": 29.6,
         "topTrick": {
           "name": "tap",
-          "share": 36.8
+          "share": 38.9
         },
         "finishReact": "3/3",
         "finishTricks": {
@@ -459,7 +460,7 @@
           "tap": 14,
           "buzz": 6,
           "flipCatch": 12,
-          "scroll": 5,
+          "scroll": 3,
           "spinToss": 1
         }
       }
@@ -521,13 +522,13 @@
         }
       },
       "knife": {
-        "busyShare": 28.6,
-        "busyShareFree": 42.1,
+        "busyShare": 23.1,
+        "busyShareFree": 33.9,
         "tricksPerMinFree": 31.6,
         "tricksPerMin": 25.1,
         "tricksPerMinRun": 21.5,
         "surfShown": 99.2,
-        "actionShare": 60.6,
+        "actionShare": 55,
         "flourishPerMin": 33.6,
         "topTrick": {
           "name": "rollover",
@@ -618,26 +619,26 @@
         }
       },
       "coin": {
-        "busyShare": 27.9,
-        "busyShareFree": 40.2,
-        "tricksPerMinFree": 29.2,
-        "tricksPerMin": 23.9,
-        "tricksPerMinRun": 20.3,
+        "busyShare": 24.3,
+        "busyShareFree": 35,
+        "tricksPerMinFree": 25.8,
+        "tricksPerMin": 21.5,
+        "tricksPerMinRun": 17.9,
         "surfShown": 99.6,
-        "actionShare": 58.4,
+        "actionShare": 54.8,
         "flourishPerMin": 23.5,
         "topTrick": {
           "name": "flip",
-          "share": 35.3
+          "share": 46.7
         },
         "finishReact": "3/3",
         "finishTricks": {
           "call": 3
         },
         "starts": {
-          "flip": 6,
-          "roll": 3,
-          "call": 5,
+          "flip": 7,
+          "call": 3,
+          "roll": 2,
           "highFlip": 3
         }
       },
@@ -753,13 +754,13 @@
         }
       },
       "knife": {
-        "busyShare": 22.9,
-        "busyShareFree": 35.8,
+        "busyShare": 21.1,
+        "busyShareFree": 32.9,
         "tricksPerMinFree": 30.8,
         "tricksPerMin": 23,
         "tricksPerMinRun": 19.7,
         "surfShown": 99.2,
-        "actionShare": 58.8,
+        "actionShare": 57,
         "flourishPerMin": 30.5,
         "topTrick": {
           "name": "rollover",
@@ -847,26 +848,26 @@
         }
       },
       "coin": {
-        "busyShare": 25,
-        "busyShareFree": 37.4,
+        "busyShare": 24.2,
+        "busyShareFree": 36.2,
         "tricksPerMinFree": 29.5,
         "tricksPerMin": 23,
         "tricksPerMinRun": 19.7,
         "surfShown": 99.7,
-        "actionShare": 58.1,
+        "actionShare": 57.3,
         "flourishPerMin": 26.5,
         "topTrick": {
           "name": "flip",
-          "share": 33.3
+          "share": 50
         },
         "finishReact": "3/3",
         "finishTricks": {
           "call": 3
         },
         "starts": {
-          "flip": 6,
-          "roll": 6,
-          "call": 6
+          "flip": 9,
+          "call": 6,
+          "roll": 3
         }
       },
       "kendama": {
@@ -976,13 +977,13 @@
         }
       },
       "knife": {
-        "busyShare": 7.4,
-        "busyShareFree": 34,
+        "busyShare": 6.5,
+        "busyShareFree": 29.9,
         "tricksPerMinFree": 29.9,
         "tricksPerMin": 9.8,
         "tricksPerMinRun": 6.5,
         "surfShown": 98.2,
-        "actionShare": 85.6,
+        "actionShare": 84.7,
         "flourishPerMin": 33.4,
         "topTrick": {
           "name": "open",
@@ -1066,14 +1067,14 @@
         }
       },
       "coin": {
-        "busyShare": 7.1,
-        "busyShareFree": 25.6,
-        "tricksPerMinFree": 23.6,
-        "tricksPerMin": 9.8,
-        "tricksPerMinRun": 6.5,
-        "surfShown": 99.2,
-        "actionShare": 79.4,
-        "flourishPerMin": 27.1,
+        "busyShare": 3.5,
+        "busyShareFree": 18.9,
+        "tricksPerMinFree": 17.5,
+        "tricksPerMin": 6.5,
+        "tricksPerMinRun": 3.3,
+        "surfShown": 99.8,
+        "actionShare": 84.8,
+        "flourishPerMin": 28.1,
         "topTrick": {
           "name": "flip",
           "share": 100
@@ -1083,7 +1084,7 @@
           "call": 3
         },
         "starts": {
-          "flip": 6
+          "flip": 3
         }
       },
       "kendama": {
@@ -1192,14 +1193,14 @@
         }
       },
       "knife": {
-        "busyShare": 6.6,
-        "busyShareFree": 29,
-        "tricksPerMinFree": 25.5,
+        "busyShare": 5.8,
+        "busyShareFree": 26.2,
+        "tricksPerMinFree": 26.2,
         "tricksPerMin": 8.7,
         "tricksPerMinRun": 5.8,
-        "surfShown": 98,
-        "actionShare": 83.9,
-        "flourishPerMin": 28.7,
+        "surfShown": 98.2,
+        "actionShare": 83.7,
+        "flourishPerMin": 28.5,
         "topTrick": {
           "name": "open",
           "share": 50
@@ -1282,24 +1283,25 @@
         }
       },
       "coin": {
-        "busyShare": 6.3,
-        "busyShareFree": 22.9,
-        "tricksPerMinFree": 21.2,
-        "tricksPerMin": 8.7,
-        "tricksPerMinRun": 5.8,
-        "surfShown": 99,
-        "actionShare": 78.9,
-        "flourishPerMin": 26.5,
+        "busyShare": 4.4,
+        "busyShareFree": 19.7,
+        "tricksPerMinFree": 17.2,
+        "tricksPerMin": 6.8,
+        "tricksPerMinRun": 3.9,
+        "surfShown": 99.1,
+        "actionShare": 82,
+        "flourishPerMin": 27.4,
         "topTrick": {
           "name": "flip",
-          "share": 100
+          "share": 75
         },
         "finishReact": "3/3",
         "finishTricks": {
           "call": 3
         },
         "starts": {
-          "flip": 6
+          "flip": 3,
+          "roll": 1
         }
       },
       "kendama": {
@@ -1412,27 +1414,27 @@
         }
       },
       "knife": {
-        "busyShare": 29.5,
-        "busyShareFree": 40.4,
-        "tricksPerMinFree": 31.6,
-        "tricksPerMin": 25.4,
-        "tricksPerMinRun": 23.1,
+        "busyShare": 27.2,
+        "busyShareFree": 37.2,
+        "tricksPerMinFree": 34.8,
+        "tricksPerMin": 27.7,
+        "tricksPerMinRun": 25.4,
         "surfShown": 98.6,
-        "actionShare": 56.5,
+        "actionShare": 54.2,
         "flourishPerMin": 42.7,
         "topTrick": {
           "name": "rollover",
-          "share": 40
+          "share": 42.4
         },
         "finishReact": "3/3",
         "finishTricks": {
           "doubleAerial": 3
         },
         "starts": {
-          "open": 6,
-          "rollover": 12,
-          "doubleAerial": 6,
-          "close": 6
+          "open": 8,
+          "rollover": 14,
+          "close": 3,
+          "doubleAerial": 8
         }
       },
       "spinner": {
@@ -1509,26 +1511,26 @@
         }
       },
       "coin": {
-        "busyShare": 32.4,
-        "busyShareFree": 42.9,
+        "busyShare": 32.8,
+        "busyShareFree": 43.5,
         "tricksPerMinFree": 30.6,
         "tricksPerMin": 25.4,
         "tricksPerMinRun": 23.1,
         "surfShown": 100,
-        "actionShare": 57,
+        "actionShare": 57.4,
         "flourishPerMin": 9.4,
         "topTrick": {
-          "name": "flip",
-          "share": 30
+          "name": "call",
+          "share": 36.7
         },
         "finishReact": "3/3",
         "finishTricks": {
           "call": 3
         },
         "starts": {
-          "flip": 9,
+          "flip": 7,
           "roll": 6,
-          "call": 9,
+          "call": 11,
           "highFlip": 6
         }
       },
@@ -1645,17 +1647,17 @@
         }
       },
       "knife": {
-        "busyShare": 29.6,
-        "busyShareFree": 41.3,
-        "tricksPerMinFree": 37.1,
-        "tricksPerMin": 28.6,
-        "tricksPerMinRun": 26.5,
+        "busyShare": 26.6,
+        "busyShareFree": 37.3,
+        "tricksPerMinFree": 35.2,
+        "tricksPerMin": 27.2,
+        "tricksPerMinRun": 25.2,
         "surfShown": 99,
-        "actionShare": 58.1,
+        "actionShare": 55.2,
         "flourishPerMin": 35.8,
         "topTrick": {
           "name": "rollover",
-          "share": 41
+          "share": 43.2
         },
         "finishReact": "3/3",
         "finishTricks": {
@@ -1664,7 +1666,7 @@
         "starts": {
           "open": 12,
           "rollover": 16,
-          "close": 10,
+          "close": 8,
           "doubleAerial": 1
         }
       },
@@ -1741,25 +1743,25 @@
         }
       },
       "coin": {
-        "busyShare": 27.2,
-        "busyShareFree": 37.2,
-        "tricksPerMinFree": 29.8,
-        "tricksPerMin": 23.8,
-        "tricksPerMinRun": 21.8,
+        "busyShare": 25.2,
+        "busyShareFree": 34.5,
+        "tricksPerMinFree": 28,
+        "tricksPerMin": 22.5,
+        "tricksPerMinRun": 20.4,
         "surfShown": 100,
-        "actionShare": 54.2,
+        "actionShare": 52.2,
         "flourishPerMin": 20.2,
         "topTrick": {
           "name": "flip",
-          "share": 40.6
+          "share": 46.7
         },
         "finishReact": "3/3",
         "finishTricks": {
           "call": 3
         },
         "starts": {
-          "flip": 13,
-          "roll": 10,
+          "flip": 14,
+          "roll": 7,
           "call": 9
         }
       },

@@ -15,16 +15,19 @@
  * 6. Risiko nur innen: Aussetzer-Modell (Hand 2°, A/D beim Surfen periodisch losgelassen) stirbt auf Koralle,
  *    auf Türkis nie. Die Gabel ist für jeden, der die Kurve HÄLT, keine Zeitfrage (Abnahme: Hand 1–3° 0 Tode,
  *    Quote ≤ 0.90) — sie trennt, wer sie hält, von dem, der zwischendurch loslässt.
- * 7. Medaillen-Stichprobe: Bronze/Silber (build.ts: Hand 3°/2° auf safeRoute, Median über 48 Seeds) gegen 24 Seeds —
+ * 7. Medaillen-Stichprobe: Bronze/Silber (build.ts: Hand 3°/2° auf safeRoute, schnellere Technik aus RouteFollower und
+ *    Surfer, Median über 48 Seeds) gegen 24 Seeds —
  *    schafft die Hand, für die die Medaille steht, sie in weniger als der Hälfte der Läufe, warnt die Probe.
  * 8. Bande-Gleiter: wer auf dem Band an der unsichtbaren Außenbande entlanggleitet oder -hüpft, kommt über jede
  *    Fuge (W1 → Viertel 1 … Viertel 3 → 4) mit ≤ 10 % Tempoverlust (Review Phase 3: Lippe 1.5 u, 943 → 0 u/s).
  * 9. Mensch-Band: Grundtechnik-Surfer mit Blickversatz, Blick-Verzug und Rauschen ab dem Brett, ab CP1/CP2 und quer
  *    über W1 berührt kein Checkpoint-Pad (Luftticks ≥ PAD_AIR_GAP daneben) und bricht nie in einem Tick ein (Review
  *    Phase 3: Pads im Flugband); ab CP3 kommt jeder ins Ziel (Türkis-Bandfahrer sterben nach CP3 am Rand von R1 — der
- *    Respawn muss sie tragen). Dazu die Zeiten gegen die Medaillen (build.ts misst Gold/VELOCITY/Autor seit Phase 3 an
+ *    Respawn muss sie tragen). Dazu die Zeiten gegen die Medaillen (build.ts misst jede Stufe mit derselben Hand auch an
  *    derselben Grundtechnik, `level3Reference`): Warnung, wenn sie den Autor deutlich unterbietet oder Türkis VELOCITY schafft.
  *    Info: Koralle-Wähler, die vom Spawn schräg links um die Finne laufen (bekannte Falle am Drop W1 → Viertel 1).
+ * 10. Blickfehler (E2E-Review v2final): ab CP3 kommt jeder mit festem Blickversatz −6…+10° ins Ziel (Fehler sonst);
+ *    die Bronze-Hand auf Türkis mit Versatz −4…+4° gegen Bronze (Warnung, wenn sie im Band ±2° Bronze verfehlt).
  * Geometrie über Tags (cp<n>pad, outer<k><a–z>), Linien über route/safeRoute — nie über Notizen.
  */
 import { Box3, Vector3 } from 'three';
@@ -54,6 +57,7 @@ import {
   type ProbeOutcome,
   type ReferenceRuns,
   type StrafeModel,
+  surfSigma,
   type TimedRun,
 } from '../physics';
 
@@ -114,6 +118,7 @@ export function level3Probes(level: CompiledLevel, cfg: MovementConfig, r: Desig
   lapseRisk(level, safe, cfg, r);
   bankGliders(level, cfg, r);
   humanBand(level, cfg, r);
+  lookBias(level, cfg, r);
 }
 
 // ---------------------------------------------------------------------------
@@ -274,26 +279,36 @@ function forkAdvantage(level: CompiledLevel, safe: CompiledLevel, cfg: MovementC
 }
 
 /**
- * 7. Bronze/Silber stehen für die 3°/2°-Hand auf der sicheren Linie (build.ts, Median über 48 Seeds × 1.05, seit
- * Plan 007 Phase 3; vorher die 8 Validator-Seeds). Türkis streut stark (ein Fall aufs Band kostet 2–4 s): gemessen
- * wird, wie viele von 24 Läufen der Medaillen-Hand die Medaille wirklich schaffen. Weniger als die Hälfte = die
- * Medaille hängt an einer glücklichen Stichprobe (Warnung; die Messung selbst gehört build.ts).
+ * 7. Bronze/Silber stehen für die 3°/2°-Hand auf der sicheren Linie (build.ts, Median über 48 Seeds × 1.05) — mit der
+ * schnelleren Technik derselben Hand: RouteFollower oder Grundtechnik-Surfer (`level3Reference`, Türkis). Gemessen wird,
+ * wie viele von 24 Läufen der Medaillen-Hand die Medaille wirklich schaffen. Weniger als die Hälfte = die Medaille hängt
+ * an einer glücklichen Stichprobe (Warnung; die Messung selbst gehört build.ts).
  */
 function medalSample(level: CompiledLevel, safe: CompiledLevel, hand3: readonly TimedRun[], cfg: MovementConfig, r: DesignReport): void {
   const m = level.def.medals;
   if (!m) return;
   const hand2 = timedMedian(safe, { aimNoiseDeg: 2 }, HAND_SEEDS, cfg).runs;
+  const ref = level3Reference();
   const parts: string[] = [];
   const short: string[] = [];
-  for (const [name, limit, runs, deg] of [
+  for (const [name, limit, bot, deg] of [
     ['Bronze', m.bronze, hand3, 3],
     ['Silber', m.silver, hand2, 2],
   ] as const) {
+    // Wie build.ts: die schnellere Technik (Median) zählt.
+    // Blick wie build.ts: Bronze wie gelehrt (0°), Silber der beste Versatz.
+    const surf = ref.runs(safe, { aimNoiseDeg: deg }, 'safeRoute', false, HAND_SEEDS, { cfg, look: deg === 3 ? 'lesson' : 'best' });
+    const bm = medianOf(bot);
+    const sm = surf ? medianOf(surf.runs) : null;
+    const useSurf = sm !== null && (bm === null || sm < bm);
+    const runs = useSurf && surf ? surf.runs : bot;
     const ok = runs.filter((x) => x.time !== null && x.time <= limit).length;
-    const times = runs.flatMap((x) => (x.time === null ? [] : [x.time])).sort((a, b) => a - b);
-    const med = times[Math.floor((runs.length - 1) / 2)];
-    const would = med !== undefined ? Math.ceil(med * 1.05 * 10 - 1e-6) / 10 : NaN;
-    parts.push(`${name} ${limit} s: Hand ${deg}° auf Türkis ${ok}/${runs.length} (24-Seed-Median ${med?.toFixed(2) ?? '–'} → ${would.toFixed(1)} s)`);
+    const med = useSurf ? sm : bm;
+    const would = med !== null ? Math.ceil(med * 1.05 * 10 - 1e-6) / 10 : NaN;
+    parts.push(
+      `${name} ${limit} s: Hand ${deg}° auf Türkis ${useSurf ? `surfend (${surf?.detail ?? ''})` : 'RouteFollower'} ${ok}/${runs.length} ` +
+        `(24-Seed-Median ${med?.toFixed(2) ?? '–'} → ${would.toFixed(1)} s; RouteFollower ${bm?.toFixed(2) ?? '–'} s)`,
+    );
     if (ok < MEDAL_SHARE * runs.length) short.push(name);
   }
   const text = `Medaillen-Stichprobe — ${parts.join('; ')}`;
@@ -742,7 +757,15 @@ export function humanCtx(level: CompiledLevel): HumanCtx {
  * Ein Lauf des Mensch-Modells: vom Brett (`goal` null, Spiel-Uhr bis ins Ziel, ohne Respawn) oder ab einem Punkt bis
  * zum Trigger `goal`. Auf dem Brett blickt er in Spawn-Richtung (Achse), von einer Plattform läuft er in `walkYaw`.
  */
-export function humanRun(level: CompiledLevel, ctx: HumanCtx, pos: Vector3, walkYaw: number | null, goal: CompiledTrigger | null, m: HumanModel, cfg: MovementConfig): HumanRun {
+export function humanRun(
+  level: CompiledLevel,
+  ctx: HumanCtx,
+  pos: Vector3,
+  walkYaw: number | null,
+  goal: CompiledTrigger | null,
+  m: HumanModel,
+  cfg: MovementConfig,
+): HumanRun {
   const sb = ctx.start;
   const onStart = (x: number, z: number): boolean => sb !== null && x > sb.min.x - 40 && x < sb.max.x + 40 && z > sb.min.z - 40 && z < sb.max.z + 40;
   const axis = (x: number, z: number): number => (onStart(x, z) ? level.spawnYaw * DEG : ctx.axis(x, z));
@@ -814,37 +837,63 @@ export function humanRun(level: CompiledLevel, ctx: HumanCtx, pos: Vector3, walk
   return done(null, 'stau', HUMAN_TIMEOUT, onBand);
 }
 
-/** Seeds der Medaillen-Referenz je Blickversatz (build.ts; die Probe fährt 4). */
+/** Seeds der Medaillen-Referenz je Blickversatz, wenn der Aufrufer keine vorgibt (die Probe fährt 4). */
 export const REFERENCE_SEEDS: readonly number[] = Array.from({ length: 16 }, (_, i) => i + 1);
+/**
+ * Ein Blickversatz zählt für die Referenz nur, wenn so viele Läufe ins Ziel kommen. Der Median allein (Tod = langsamster)
+ * nahm mit 48 Seeds Koralle −3° bei 25/48 im Ziel — eine Münze, keine Technik, die ein Mensch wählt.
+ */
+export const REFERENCE_FINISH = 0.8;
+
+/** Bester Blickversatz der Grundtechnik vom Brett auf einer Spur: Läufe, Blick, Median (null = kein Blick trägt). */
+export function bestLook(
+  level: CompiledLevel,
+  x: number,
+  sigma: number,
+  seeds: readonly number[],
+  cfg: MovementConfig = VELOCITY_DEFAULT,
+  looks: readonly number[] = HUMAN_LOOKS,
+): { readonly runs: TimedRun[]; readonly look: number; readonly median: number } | null {
+  const ctx = humanCtx(level);
+  const pos = new Vector3(x, level.spawnPos.y + 1, level.spawnPos.z);
+  let best: { runs: TimedRun[]; look: number; median: number } | null = null;
+  for (const look of looks) {
+    const runs = seeds.map((seed): TimedRun => {
+      const h = humanRun(level, ctx, pos, null, null, { look, lag: 0, sigma, seed }, cfg);
+      return { time: h.time, deaths: h.reason === 'tod' ? 1 : 0, reason: h.reason === 'ziel' ? null : h.reason, splits: [] };
+    });
+    if (runs.filter((r) => r.time !== null).length < REFERENCE_FINISH * runs.length) continue;
+    const med = medianOf(runs);
+    if (med !== null && (best === null || med < best.median)) best = { runs, look, median: med };
+  }
+  return best;
+}
 
 /**
- * Medaillen-Referenz L3 (build.ts, Freischalt-Leiter; Lead-Entscheid Phase 3): der Grundtechnik-Surfer (Taste in die
- * Rampe, Blick entlang, σ 1°, ohne Verzug) vom Brett auf der Koralle-Seite (x −160) mit dem BESTEN Blickversatz aus
- * −3…+1° — der Median über REFERENCE_SEEDS (Tod = ohne Ziel, Mehrheit nötig). Nur für die Modelle des perfekten Bots
- * (Gold/VELOCITY/Autor): der RouteFollower strafet an jedem Drop zum nächsten Knoten und verliert 150–190 u/s, die
- * Grundtechnik schlug so VELOCITY auf beiden Bahnen. Bronze/Silber bleiben die Hände auf Türkis (samt Band-Stürzen):
- * "kommt durch" bzw. "kommt sauber durch".
+ * Medaillen-Referenz L3 (build.ts, Freischalt-Leiter, Validator-Par): der Grundtechnik-Surfer (Taste in die Rampe, Blick
+ * entlang, ohne Verzug) vom Brett — für JEDES Medaillen-Modell mit dessen Hand (`surfSigma`: Rauschen = aimNoiseDeg,
+ * perfekt PERFECT_SURF_SIGMA), über Seeds. Blick `opts.look`: 'lesson' = 0° (T8 wörtlich, Bronze), 'best' = der beste Versatz aus −3…+1°, der
+ * ≥ REFERENCE_FINISH ins Ziel bringt. Linie route = Koralle
+ * (x −160), safeRoute = Türkis (x +160). Der RouteFollower strafet an jedem Drop zum nächsten Knoten und verliert
+ * 150–190 u/s; seine 3°-Hand brauchte auf Türkis 26 s, dieselbe Hand surfend wie gelehrt 15.8 s — Bronze 27.3 s war
+ * damit keine Aussage über Menschen, die T7/T8 bestanden haben.
  */
 export function level3Reference(): MedalReference {
   return {
-    name: 'L3-Grundtechnik (bester Blickversatz, Koralle)',
-    runs(level, model, line, _jitter, _seeds, cfg = VELOCITY_DEFAULT): ReferenceRuns | null {
-      if (model.aimNoiseDeg !== undefined || line !== 'route') return null;
-      const ctx = humanCtx(level);
-      const pos = new Vector3(HUMAN_XS[0], level.spawnPos.y + 1, level.spawnPos.z);
-      let best: { runs: TimedRun[]; look: number; median: number } | null = null;
-      for (const look of HUMAN_LOOKS) {
-        const runs = REFERENCE_SEEDS.map((seed): TimedRun => {
-          const h = humanRun(level, ctx, pos, null, null, { look, lag: 0, sigma: 1, seed }, cfg);
-          return { time: h.time, deaths: h.reason === 'tod' ? 1 : 0, reason: h.reason === 'ziel' ? null : h.reason, splits: [] };
-        });
-        const med = medianOf(runs);
-        if (med !== null && (best === null || med < best.median)) best = { runs, look, median: med };
-      }
+    name: 'L3-Grundtechnik (Hand-Rauschen, Blick je Stufe)',
+    runs(level, model, line, _jitter, seeds, opts): ReferenceRuns | null {
+      const x = line === 'route' ? HUMAN_XS[0] : HUMAN_XS[1];
+      const sigma = surfSigma(model);
+      const looks = opts?.look === 'lesson' ? [0] : HUMAN_LOOKS;
+      const best = bestLook(level, x, sigma, seeds.length ? seeds : REFERENCE_SEEDS, opts?.cfg ?? VELOCITY_DEFAULT, looks);
       if (!best) return null;
-      const n = best.runs.filter((x) => x.time !== null).length;
-      // Seeds statt Start-Jitter: Tode sind hier das Risiko des Blickversatzes, keine Chaos-Zweige.
-      return { runs: best.runs, detail: `Koralle x ${HUMAN_XS[0]}, Blick ${best.look}°, ${n}/${best.runs.length} im Ziel`, overJitter: false };
+      const n = best.runs.filter((r) => r.time !== null).length;
+      // Seeds statt Start-Jitter: Tode sind hier das Risiko des Blickversatzes, keine Chaos-Zweige (Rauschen σ > 0 immer).
+      return {
+        runs: best.runs,
+        detail: `${line === 'route' ? 'Koralle' : 'Türkis'} x ${x}, σ ${sigma}°, Blick ${best.look}°, ${n}/${best.runs.length} im Ziel`,
+        overJitter: false,
+      };
     },
   };
 }
@@ -1015,6 +1064,60 @@ function humanBand(level: CompiledLevel, cfg: MovementConfig, r: DesignReport): 
   medalsVsHuman(level, times, r);
 }
 
+/** Blickversätze der Blickfehler-Probe ab CP3 (Grad, + = in die Rampe) — weit über das Mensch-Band (−3…+1°) hinaus. */
+export const LOOK_BIAS_CP3 = [-6, -3, 0, 3, 6, 10] as const;
+/** Blickversätze der Bronze-Hand vom Brett auf Türkis. */
+export const LOOK_BIAS_BOARD = [-4, -2, 0, 2, 4] as const;
+const LOOK_BIAS_SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
+
+/**
+ * 10. Blickfehler (E2E-Review v2final: L3-Medaillen kommen nur aus der Surf-Referenz, deren Blick `rampAxis` exakt
+ * trifft; ein naiver Browser-Surfer starb nach CP3). Ein Mensch sieht die Rampe, trifft ihre Achse aber nicht genau:
+ * - ab CP3 (0/±20° vom Pad) mit festem Versatz −6…+10°, σ 3°, Verzug 0.4 s → jeder Lauf im Ziel (Fehler sonst);
+ * - Bronze-Hand (σ 3°, Verzug 0.2 s) vom Brett auf Türkis mit Versatz −4…+4° → Median (Tod = ∞) gegen Bronze;
+ *   Warnung, wenn sie im Band ±2° Bronze verfehlt.
+ * Nicht geprüft: Fahrer ohne Blickziel. Der Blick entlang der Höhenlinie (Tangente aus der Flächennormale) liegt auf
+ * Rampen mit Achsgefälle 6–8° neben der Achse und hängt auf W1 fest; der Blick entlang der Flugrichtung driftet ohne
+ * Rückführung von R1 (fallen.md). Beides ist kein Mensch, der die Rampe vor sich sieht.
+ */
+function lookBias(level: CompiledLevel, cfg: MovementConfig, r: DesignReport): void {
+  const ctx = humanCtx(level);
+  const cp3 = level.triggers.find((t) => t.kind === 'checkpoint' && t.order === 3) ?? null;
+  const finish = level.triggers.find((t) => t.kind === 'finish') ?? null;
+  const bronze = level.def.medals?.bronze;
+  if (!cp3 || !finish || bronze === undefined) {
+    r.errors.push('Design L3: Blickfehler — CP3, Ziel oder Medaillen fehlen');
+    return;
+  }
+  const lost: string[] = [];
+  let runs = 0;
+  let slow = 0;
+  for (const turn of HUMAN_CP3_EXITS) {
+    for (const look of LOOK_BIAS_CP3) {
+      for (const seed of [1, 2]) {
+        const h = humanRun(level, ctx, new Vector3(cp3.spawnPos.x, cp3.spawnPos.y + 1, cp3.spawnPos.z), (cp3.spawnYaw + turn) * DEG, finish, { look, lag: 0.4, sigma: 3, seed }, cfg);
+        runs++;
+        if (h.reason !== 'ziel') lost.push(`${turn}° Blick ${look}° Seed ${seed}: ${h.reason}`);
+        else slow = Math.max(slow, h.time ?? 0);
+      }
+    }
+  }
+  const cp3Line = `ab CP3 mit Blickversatz ${LOOK_BIAS_CP3[0]}…+${LOOK_BIAS_CP3[LOOK_BIAS_CP3.length - 1]}°, σ 3°, Verzug 0.4 s: ${runs - lost.length}/${runs} im Ziel`;
+  if (lost.length) r.errors.push(`Design L3: Blickfehler — ${cp3Line} (${lost.slice(0, 3).join('; ')})`);
+  const parts: string[] = [];
+  const miss: string[] = [];
+  const pos = new Vector3(HUMAN_XS[1], level.spawnPos.y + 1, level.spawnPos.z);
+  for (const look of LOOK_BIAS_BOARD) {
+    const ts = LOOK_BIAS_SEEDS.map((seed) => humanRun(level, ctx, pos, null, null, { look, lag: 0.2, sigma: 3, seed }, cfg).time ?? Infinity).sort((a, b) => a - b);
+    const med = ts[Math.floor((ts.length - 1) / 2)];
+    parts.push(`${look > 0 ? '+' : ''}${look}° ${Number.isFinite(med) ? med.toFixed(1) : '–'} s (${ts.filter((t) => t <= bronze).length}/${ts.length} ≤ Bronze)`);
+    if (Math.abs(look) <= 2 && !(med <= bronze)) miss.push(`${look}°`);
+  }
+  const boardLine = `Bronze-Hand (σ 3°, Verzug 0.2 s) vom Brett auf Türkis, ${LOOK_BIAS_SEEDS.length} Seeds, Tod = ∞: ${parts.join(', ')}; Bronze ${bronze} s`;
+  if (miss.length) r.warnings.push(`Design L3: Blickfehler — ${boardLine} — verfehlt Bronze im Band ±2° (${miss.join(', ')})`);
+  if (!lost.length) r.info.push(`Design L3: Blickfehler — ${cp3Line} (langsamster ${slow.toFixed(1)} s)${miss.length ? '' : `; ${boardLine}`}`);
+}
+
 /** Koralle-Wähler, die vom Spawn (rechts der Finne) schräg links um die Finne laufen: Winkel zur Blickachse (Grad). */
 export const KORALLE_DIAGONALS = [24, 28, 32] as const;
 
@@ -1051,7 +1154,8 @@ export const REFERENCE_TOLERANCE = 0.03;
 /**
  * Grundtechnik gegen die Medaillen: je Spur der beste Blickversatz (Verzug 0, Median der Seeds, ohne Ziel = ∞). Seit
  * Phase 3 misst build.ts Gold/VELOCITY/Autor aus dem schnelleren von RouteFollower (verliert an jedem Surf-Drop
- * 150–190 u/s) und `level3Reference` (dieselbe Grundtechnik auf Koralle über 16 Seeds): Koralle mit bestem Blick ≈ Autor.
+ * 150–190 u/s) und `level3Reference` (dieselbe Grundtechnik auf Koralle über 48 Seeds, perfekt mit σ 0.5°): Koralle mit
+ * bestem Blick ≈ Autor.
  * Warnung, wenn (a) die Probe den Autor um mehr als REFERENCE_TOLERANCE unterbietet (Medaillen veraltet — levels:build)
  * oder (b) Türkis VELOCITY schafft (VELOCITY/Gold sollen nur innen gehen, sonst lohnt die Gabel nicht).
  */

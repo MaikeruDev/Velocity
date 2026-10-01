@@ -1,0 +1,118 @@
+{
+ "style": "hold",
+ "levelId": "level1",
+ "notices": [
+  {
+   "t": 5.4,
+   "text": "SCHNELLER? IN DER LUFT A ODER D HALTEN\nUND DIE MAUS MITZIEHEN · TRAINING T3",
+   "speed": 315
+  }
+ ],
+ "respawns": [
+  {
+   "t": 30.5,
+   "reason": "kill",
+   "node": 20
+  },
+  {
+   "t": 36.7,
+   "reason": "kill",
+   "node": 18
+  },
+  {
+   "t": 42.9,
+   "reason": "kill",
+   "node": 18
+  },
+  {
+   "t": 49.1,
+   "reason": "kill",
+   "node": 18
+  },
+  {
+   "t": 55.4,
+   "reason": "kill",
+   "node": 18
+  },
+  {
+   "t": 61.6,
+   "reason": "kill",
+   "node": 18
+  },
+  {
+   "t": 67.8,
+   "reason": "kill",
+   "node": 18
+  },
+  {
+   "t": 74.1,
+   "reason": "kill",
+   "node": 18
+  },
+  {
+   "t": 80.3,
+   "reason": "kill",
+   "node": 18
+  },
+  {
+   "t": 86.5,
+   "reason": "kill",
+   "node": 18
+  },
+  {
+   "t": 92.7,
+   "reason": "kill",
+   "node": 18
+  },
+  {
+   "t": 98.9,
+   "reason": "kill",
+   "node": 18
+  },
+  {
+   "t": 105.2,
+   "reason": "kill",
+   "node": 18
+  },
+  {
+   "t": 111.4,
+   "reason": "kill",
+   "node": 18
+  },
+  {
+   "t": 117.6,
+   "reason": "kill",
+   "node": 18
+  }
+ ],
+ "cps": [
+  {
+   "t": 7.8,
+   "runTime": 5.8046875
+  },
+  {
+   "t": 19.8,
+   "runTime": 17.7734375
+  }
+ ],
+ "finish": null,
+ "maxNode": 20,
+ "seconds": 120.01,
+ "end": {
+  "cp": {
+   "index": 2,
+   "total": 3
+  },
+  "runTime": 118.0234375,
+  "hints": {
+   "crouch": 0,
+   "surf": 0,
+   "strafe": 0,
+   "noStrafe": 1
+  },
+  "finish": null,
+  "menu": null
+ },
+ "menuText": null,
+ "errors": []
+}

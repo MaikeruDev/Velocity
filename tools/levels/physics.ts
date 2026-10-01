@@ -960,12 +960,12 @@ export function medianOf(runs: readonly TimedRun[]): number | null {
 }
 
 /**
- * Zweites Medaillen-Modell eines Levels (Plan 007 Phase 3, Lead-Entscheid): die Grundtechnik der Lektionen T7/T8
+ * Zweites Medaillen-Modell eines Levels (Plan 007, Medaillen-Modell nach Phase 3): die Grundtechnik der Lektionen T7/T8
  * dort, wo der RouteFollower nachweislich schlechter surft als sie (er drückt auf fallenden Rampen entlang −n_h, also
- * etwas gegen die Fahrt, und strafet an Drops in der Luft zum nächsten Knoten). build.ts nimmt je Medaille den
- * schnelleren Median aus RouteFollower und Referenz; die Freischalt-Leiter rechnet ihre Spielertypen genauso.
- * L3: Grundtechnik-Surfer mit bestem Blickversatz (nur Gold/VELOCITY/Autor), L4: RouteFollower bis zur Krone, dann
- * Surfer (alle Medaillen). Beides Proxies — der Mensch-Playtest S6 eicht.
+ * etwas gegen die Fahrt, und strafet an Drops in der Luft zum nächsten Knoten). build.ts nimmt je Medaillen-Modell den
+ * schnelleren Median aus RouteFollower und Referenz — für JEDE Stufe mit derselben Hand (`surfSigma`); die
+ * Freischalt-Leiter und der Validator (Par) rechnen genauso. L3: Grundtechnik-Surfer mit bestem Blickversatz, L4:
+ * RouteFollower bis zur Krone, dann Surfer. Beides Proxies — der Mensch-Playtest S6 eicht.
  */
 export interface MedalReference {
   /** Kurzname für Build-Log und Leiter. */
@@ -974,8 +974,36 @@ export interface MedalReference {
    * Läufe (Spiel-Uhr wie timedRun, Tode inklusive bzw. ohne Ziel = null) des Referenz-Modells zu diesem Medaillen-Modell
    * auf dieser Linie; `jitter` = über START_JITTERS statt über `seeds`. null = keine Referenz (nur RouteFollower).
    */
-  runs(level: CompiledLevel, model: StrafeModel, line: RouteChoice, jitter: boolean, seeds: readonly number[], cfg?: MovementConfig): ReferenceRuns | null;
+  runs(level: CompiledLevel, model: StrafeModel, line: RouteChoice, jitter: boolean, seeds: readonly number[], opts?: ReferenceOptions): ReferenceRuns | null;
 }
+
+/**
+ * Blick der Referenz beim Surfen: 'lesson' = wie T7/T8 lehren (entlang der Rampe, Versatz 0°), 'best' = der beste
+ * Blickversatz, den das Level-Modell kennt (L3: −3…+1°; L4 sucht keinen, fährt immer 0°). Bronze misst 'lesson' —
+ * wer die Lektion wörtlich anwendet, kommt durch —, ab Silber 'best': den Versatz findet man durch Üben.
+ */
+export type SurfLook = 'lesson' | 'best';
+
+export interface ReferenceOptions {
+  readonly cfg?: MovementConfig;
+  /** Default 'best'. */
+  readonly look?: SurfLook;
+}
+
+/**
+ * Zielrauschen (Grad, 1σ, AR(1) τ 0.15 s wie StrafeController) des Referenz-Surfers zu einem Medaillen-Modell:
+ * dieselbe Hand wie beim Strafen. Die fensterrelativen Modelle (sync) surfen mit PERFECT_SURF_SIGMA.
+ */
+export function surfSigma(model: StrafeModel): number {
+  return model.aimNoiseDeg ?? PERFECT_SURF_SIGMA;
+}
+/**
+ * "Perfekt" surft mit dem Rauschen der besten Hand der Medaillen-Proben (0.5°, medalProbe). Rauschfrei ist kein Maß:
+ * L3 Koralle −2.5° über die 49 Start-Jitter 7/49 tot, Median 11.75 s — langsamer als die 1°-Hand (11.60 s), der Blick
+ * steht auf einer Messerschneide. Mit 1° (Stand vor der Medaillen-Runde) lag die 2°-Hand auf Koralle (12.19 s) unter
+ * VELOCITY; mit 0.5° ist Autor 11.44 s und VELOCITY verlangt ≤ 1.5°-Hand.
+ */
+export const PERFECT_SURF_SIGMA = 0.5;
 
 export interface ReferenceRuns {
   readonly runs: readonly TimedRun[];

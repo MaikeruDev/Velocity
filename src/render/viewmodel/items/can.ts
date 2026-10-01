@@ -7,6 +7,9 @@ import { canLabelTexture, canLidTexture } from '../vmTextures';
 import { PROP_OUTLINE } from '../vmBuild';
 import type { ItemView, VmBuildCtx } from '../vmBuild';
 
+/** Drehung von Lasche/Öffnung um die Dosenachse (rad): Laschen-Ende (−z) → Richtung (0.894, 0, −0.447). */
+const LID_TURN = -1.107;
+
 /**
  * Energy-Drink-Dose (Plan 005/006, seit Plan 007 in der Item-Registry): weiß mit eigenem grünem
  * Zacken-Blitz, Deckel mit Niete, Lasche und Trinköffnung. Aufbau-Reihenfolge unverändert aus
@@ -36,19 +39,25 @@ export function buildCan(ctx: VmBuildCtx): ItemView {
   const lid = new Mesh(ctx.trackGeo(discGeometry(2.8, 10, H - 0.06)), alu);
   lid.frustumCulled = false;
   group.add(lid);
+  // Plan 008: Lasche und Öffnung um die Achse gedreht — das Laschen-Ende zeigt zum Zeigefinger, der sie im crack
+  // aufhebelt (IK: nur dort erreicht er den Rand); die Öffnung liegt gegenüber, neben dem Daumen.
+  const lidTurn = new Group();
+  lidTurn.rotation.y = LID_TURN;
+  group.add(lidTurn);
   const hole = new Mesh(ctx.trackGeo(discGeometry(1.0, 8, 0)), dark);
   hole.scale.set(1.15, 1, 0.85);
   hole.position.set(0, H - 0.02, 1.55);
   hole.visible = false;
-  group.add(hole);
+  lidTurn.add(hole);
   const tab = new Group();
-  // Drehpunkt an der Niete (Mitte), Lasche zeigt zur Öffnung hin (+z) und nach hinten (−z).
+  // Drehpunkt an der Niete (Mitte), Lasche zeigt zur Öffnung hin (+z) und nach hinten (−z). Etwas größer als
+  // Plan 006, damit das Aufhebeln bei 270 Zeilen lesbar ist.
   tab.position.set(0, H - 0.02, 0.1);
-  const tabMesh = new Mesh(ctx.trackGeo(new BoxGeometry(1.1, 0.14, 2.3)), aluPlain);
-  tabMesh.position.set(0, 0.07, -0.85);
+  const tabMesh = new Mesh(ctx.trackGeo(new BoxGeometry(1.25, 0.18, 2.5)), aluPlain);
+  tabMesh.position.set(0, 0.09, -0.95);
   tabMesh.frustumCulled = false;
   tab.add(tabMesh);
-  group.add(tab);
+  lidTurn.add(tab);
   group.visible = false;
   return {
     group,

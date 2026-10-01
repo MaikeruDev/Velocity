@@ -6,6 +6,13 @@ index.json). Vorlage: Prototyp `tools/critique/v2/level3/level3.ts` (DEFAULT_L3,
 `shots/v2/level3/`). Alle Zahlen gegen die **finale Phase-1-Physik** (Cap 40, Lande-Gnade, Hang-Landung mit
 gestundetem Verlust, Kanten-Assist, Rutschen, Luftlenkung an, Rampbug-Fix).
 
+**Stand 01.10., Medaillen-Runde (voller `levels:build`):** Medaillen **16.6 / 14.6 / 12.6 / VELOCITY 12.1 / Autor 11.44 s**,
+Par **17** (vorher 27.3 / 25.1 / 12.8 / 12.2 / 11.6, Par 28). Jede Stufe misst jetzt den schnelleren Median aus
+RouteFollower und Grundtechnik-Surfer mit DERSELBEN Hand: Bronze = Türkis-Surfer σ 3°, Blick 0° (15.78 s, 48/48),
+Silber = Türkis σ 2°, bester Blick −2.5° (13.84 s, 44/48), Gold = max(Koralle σ 1° 11.60 × 1.05, perfekt × 1.1),
+VELOCITY/Autor = Koralle σ 0.5°, −2.5° (11.44 s, 47/48). Begründung: level-design.md Regel 10, Plan 007 §10, fallen.md
+#190. Die Zahlen darunter sind der Stand davor.
+
 **Stand 29.09., Fix-Runde 2 (`levels:build -- level3`):** `levels:check -- level3` **0 Fehler / 0 Warnungen**. Par 28 s,
 Medaillen **27.3 / 25.1 / 12.8 / VELOCITY 12.2 / Autor 11.6 s** — identisch zu Datei und index.json der Integration
 (Gold/VELOCITY/Autor seit Phase 3 aus der Surf-Referenz `level3Reference`, Abschnitt "Medaillen"). Neu: das **Netz
@@ -467,3 +474,7 @@ W1→1), gegen den Stand ohne Schürze 3 (Schürze, Layout, Türkis-Bandfahrer).
   und fährt ab CP1/CP2 Türkis; die Zeile "[route] Grundtechnik-Surfer … CP1 836 / CP2 794" ist also keine
   Koralle-Zahl. Für Gabel-Level braucht er den Start auf der Seite der Linie (wie `probes/level3.surferStart`).
 - Tote Zeit nach CP3 (35–39 %): S-Kurve oder Kaskade auf Z wäre eine Design-Erweiterung (Playtest).
+- **Blickfehler (E2E-Review v2final, 01.10., Probe 10):** ab CP3 mit festem Blickversatz −6…+10°, σ 3°, Verzug 0.4 s
+  36/36 im Ziel. Bronze-Hand auf Türkis (σ 3°, Verzug 0.2 s, 8 Seeds, Tod = ∞): −4° 14.8, −2° 15.0, 0° 15.1, +2° 16.3,
+  +4° 16.6 s gegen Bronze 16.6. Ein Browser-Surfer mit Blick entlang der Höhenlinie (6–8° neben der Achse) bzw. der
+  Flugrichtung kommt nicht durch — kein Mensch-Modell (fallen.md #192). S6: trifft ein Mensch die Achse auf ±2°?

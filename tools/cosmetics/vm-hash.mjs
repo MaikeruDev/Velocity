@@ -17,7 +17,17 @@
  * Baseline (tools/cosmetics/vm-hash-baseline/{game,menu}.json): Plan-006-Stand (HEAD vor Plan 007) —
  * mit EINER bewussten Abweichung: "can crack 0.5/0.8" (4 Spiel-, 2 Menü-Kacheln, 16 Pixel im Spielblatt).
  * Der einmalige Lasche-Ruck der festgehaltenen Dose wirkt seit Plan 007 K9 am Frame-Ende (fallen.md #77)
- * statt am Anfang. Die Hashes hängen am Rasterizer (Chromium über ANGLE, launchBrowser): auf einem
+ * statt am Anfang.
+ * Plan 008 (01.10., bewusst neu geschrieben): Griff-Audit und Butterfly-Mechanik ändern 102 von 126 Kacheln je
+ * Größe — die Posen grip/pinch/crack (Finger liegen an Dose/Karte an statt hindurch), alle Dosen- und Karten-
+ * Kacheln (Dose 1 Einheit höher in der Faust, Karte 2 Einheiten höher im Kniff) und alle Messer-Kacheln (neues
+ * Modell mit zwei Stiften, Tang und Riegel, Griff am Safe-Handle-Ende, Physik statt Zeitleiste). Alle anderen
+ * Posen blieben pixelgleich (geprüft vor dem Neuschreiben). Plan 008 Schritt 2 (Karte/Münze/Messer-Feinschliff, 01.10.):
+ * NUR die 45 Karten- und Messer-Kacheln je Größe neu (Karte: Daumen wieder vorn, 0.7 tiefer im Kniff, neue Tricks;
+ * Messer: Daumen-Fang per Kontakt statt Posenwechsel, Rollover 0.5 weiter vor) — übrige Kacheln unverändert übernommen.
+ * Zweiter Durchgang (01.10. nachmittags): 9 Karten-Kacheln je Größe neu — "card spin" (die Karte steht mit der
+ * Unterkante auf der Daumenkuppe statt 0.1–0.6 darüber zu schweben, Zeigefinger schnippt) und "card vanish" 0.8–1.62
+ * (Back-Palm 0.18 s kürzer). Der Check davor zeigte NUR diese 18 Kacheln (Spiel+Menü) verschieden. Die Hashes hängen am Rasterizer (Chromium über ANGLE, launchBrowser): auf einem
  * anderen Rechner/GPU zuerst den HEAD-Stand hashen (`git archive HEAD | tar -x`, node_modules als
  * Junction) und nur gegen DIESEN vergleichen — nicht gegen die eingecheckte Datei.
  */

@@ -88,6 +88,7 @@
     {"type":"box","min":[-1587.145,128,-6438.737],"max":[-1427.145,192,-5810.378],"mat":"accent","tint":"#ffd166","tag":"cut2","rotY":115.963},
     {"type":"box","min":[-2225.985,128,-6097.691],"max":[-2065.985,192,-5469.333],"mat":"accent","tint":"#ffd166","tag":"cut3","rotY":123.66},
     {"type":"box","min":[-2672.563,128,-4812.831],"max":[-2400.563,192,-4092.831],"mat":"accent","tint":"#ff6fa8","tag":"slalom1"},
+    {"type":"wedge","min":[-2672.563,128,-4859.831],"max":[-2400.563,192,-4812.831],"rise":"+z","lowY":184.556,"mat":"accent","tint":"#ff6fa8","tag":"slalom1Lip"},
     {"type":"box","min":[-2992.563,128,-4057.344],"max":[-2720.563,192,-3321.344],"mat":"floor","tag":"slalom2"},
     {"type":"wedge","min":[-2992.563,128,-4159.766],"max":[-2720.563,192,-4057.344],"rise":"+z","mat":"floor","tag":"slalom2Nose"},
     {"type":"box","min":[-2672.563,128,-3281.066],"max":[-2400.563,192,-2529.066],"mat":"accent","tint":"#ff6fa8","tag":"slalom3"},
@@ -281,8 +282,8 @@
   ],
   "medals": {
     "bronze": 33,
-    "silver": 29.1,
-    "gold": 20.7,
+    "silver": 28.9,
+    "gold": 26.1,
     "velocity": 19.8,
     "author": 18.81
   }

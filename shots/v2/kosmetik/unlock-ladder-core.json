@@ -1,11 +1,11 @@
 {
-  "seeds": 24,
+  "seeds": 48,
   "ladder": [
-    3,
+    2,
     6,
     7,
     8,
-    9,
+    11,
     11,
     14
   ],
@@ -14,26 +14,25 @@
   "rows": {
     "Einsteiger (3°-Hand, nur Grundlagen-Training)": {
       "medals": [
-        "level1 33.30 s → bronze",
-        "level2 19.91 s → bronze",
-        "level3 22.53 s (route 22.53 / safe 26.22) → silver",
-        "level4 27.35 s [Referenz 27.35 gegen RouteFollower 31.73] → bronze"
+        "level1 31.41 s → bronze",
+        "level2 20.21 s → bronze",
+        "level3 15.72 s (route 22.71 / safe 25.99) [Referenz 15.72 gegen RouteFollower 22.71] → bronze",
+        "level4 27.77 s [Referenz 27.77 gegen RouteFollower 31.48] → bronze"
       ],
-      "count": 3,
+      "count": 2,
       "hands": 0,
       "unlocked": [
         "Fidget-Spinner",
-        "Münze",
-        "Kendama"
+        "Münze"
       ],
       "nextGoal": "Roboter-Hand"
     },
     "Solide (2.5°-Hand, Training komplett)": {
       "medals": [
-        "level1 31.88 s → bronze",
+        "level1 29.20 s → bronze",
         "level2 19.18 s → silver",
-        "level3 21.49 s (route 21.49 / safe 24.75) → silver",
-        "level4 26.37 s [Referenz 26.37 gegen RouteFollower 30.38] → silver"
+        "level3 12.88 s (route 21.62 / safe 24.75) [Referenz 12.88 gegen RouteFollower 21.62] → silver",
+        "level4 26.83 s [Referenz 26.83 gegen RouteFollower 30.07] → silver"
       ],
       "count": 6,
       "hands": 1,
@@ -49,10 +48,10 @@
     },
     "Ordentlich (2°-Hand)": {
       "medals": [
-        "level1 29.56 s → silver",
+        "level1 27.50 s → silver",
         "level2 18.26 s → silver",
-        "level3 21.23 s (route 21.23 / safe 23.88) → silver",
-        "level4 25.91 s [Referenz 25.91 gegen RouteFollower 28.42] → gold"
+        "level3 12.19 s (route 21.22 / safe 23.88) [Referenz 12.19 gegen RouteFollower 21.22] → gold",
+        "level4 25.91 s [Referenz 25.91 gegen RouteFollower 28.52] → gold"
       ],
       "count": 7,
       "hands": 1,
@@ -69,10 +68,10 @@
     },
     "Gut (1.5°-Hand)": {
       "medals": [
-        "level1 29.02 s → silver",
-        "level2 17.23 s → gold",
-        "level3 20.21 s (route 20.21 / safe 22.87) → silver",
-        "level4 26.20 s [Referenz 26.20 gegen RouteFollower 28.53] → gold"
+        "level1 26.59 s → silver",
+        "level2 17.30 s → gold",
+        "level3 11.84 s (route 19.84 / safe 22.81) [Referenz 11.84 gegen RouteFollower 19.84] → velocity",
+        "level4 26.07 s [Referenz 26.07 gegen RouteFollower 28.45] → gold"
       ],
       "count": 8,
       "hands": 2,
@@ -90,13 +89,13 @@
     },
     "Sehr gut (1°-Hand)": {
       "medals": [
-        "level1 25.93 s → silver",
-        "level2 16.05 s → velocity",
-        "level3 18.70 s (route 18.70 / safe 21.31) → silver",
-        "level4 24.23 s [Referenz 24.23 gegen RouteFollower 27.47] → velocity"
+        "level1 24.81 s → gold",
+        "level2 16.06 s → velocity",
+        "level3 11.60 s (route 18.89 / safe 21.38) [Referenz 11.60 gegen RouteFollower 18.89] → velocity",
+        "level4 24.77 s [Referenz 24.77 gegen RouteFollower 27.34] → velocity"
       ],
-      "count": 9,
-      "hands": 2,
+      "count": 11,
+      "hands": 4,
       "unlocked": [
         "Fidget-Spinner",
         "Roboter-Hand",
@@ -105,17 +104,19 @@
         "Sturmfeuerzeug",
         "Kendama",
         "Handy",
+        "Neon-Handschuh",
         "Skelett-Hand",
-        "Dose"
+        "Dose",
+        "Gold-Handschuh"
       ],
-      "nextGoal": "Neon-Handschuh"
+      "nextGoal": "Sammelkarte"
     },
     "Elite (sync 0.95)": {
       "medals": [
-        "level1 20.71 s → gold",
-        "level2 16.23 s → velocity",
-        "level3 11.59 s (route 18.87 / safe 21.37) [Referenz 11.59 gegen RouteFollower 18.87] → velocity",
-        "level4 25.55 s [Referenz 25.55 gegen RouteFollower 27.76] → gold"
+        "level1 20.15 s → gold",
+        "level2 16.21 s → velocity",
+        "level3 11.44 s (route 18.70 / safe 21.11) [Referenz 11.44 gegen RouteFollower 18.70] → velocity",
+        "level4 25.09 s [Referenz 25.09 gegen RouteFollower 27.76] → gold"
       ],
       "count": 11,
       "hands": 4,
@@ -136,10 +137,10 @@
     },
     "Top (sync 1.0)": {
       "medals": [
-        "level1 19.48 s → velocity",
+        "level1 18.85 s → velocity",
         "level2 15.73 s → velocity",
-        "level3 11.59 s (route 17.52 / safe 19.25) [Referenz 11.59 gegen RouteFollower 17.52] → velocity",
-        "level4 23.76 s [Referenz 23.76 gegen RouteFollower 25.22] → velocity"
+        "level3 11.44 s (route 17.52 / safe 19.25) [Referenz 11.44 gegen RouteFollower 17.52] → velocity",
+        "level4 23.72 s [Referenz 23.72 gegen RouteFollower 25.22] → velocity"
       ],
       "count": 14,
       "hands": 5,

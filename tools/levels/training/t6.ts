@@ -156,8 +156,10 @@ export function buildT6(): LevelFile {
     task: { kind: 'course', zones: ['k0', 'k1', 'k2'], minSpeed: 250, airborne: true, groundGrace: 0.25 },
     rank: 'master',
     spawn: { pos: [0, 48, z(TOR1 + 150)], yaw: 0 },
-    // Keine Vorführung: der RouteFollower 3° schafft den Fluss nur mit Anläufen (13/20) — eine Demo,
-    // die scheitert, lehrt nichts.
+    // Vorführung 'flow' (Training.createDemo: Kurs in der Luft ohne Drehbalken): W + Sprint, nie A/D, die Hop-Phase
+    // geplant — Zwischenhops und kurzes Weiterlaufen (≤ 0.18 s je Landung), damit jeder letzte Hop im Band abspringt.
+    // Vorher keine: der RouteFollower schafft den Fluss nur mit Anläufen, und 'jump' läuft zwischen den Kanten am Boden.
+    demo: { kind: 'route', from: 3, to: 10, seconds: 12 },
   });
   return B.build();
 }

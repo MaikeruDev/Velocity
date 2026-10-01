@@ -797,6 +797,41 @@ describe('TrainingSession — echte Hops (Judge)', () => {
     expect(left.r.session.tip.text).toBe(MISS_TEXT[2]);
   });
 
+  it('Seite nach Taste UND Drehrichtung: A-Mehrheit mit Maus netto nach rechts ist keine Linkskurve (gut, zählt nicht)', () => {
+    // Ein Hop: erst A + Maus langsam links (60 % der Luft), dann D + Maus schnell rechts — jede Taste mit ihrer Maus
+    // ('against' greift nicht), die Taste überwiegend A, die Kurve aber netto rechts.
+    const run = (split: number, leftRate: number, rightRate: number): { verdict: string; counted: boolean; side: number; turnSide: number } => {
+      const { r, pm } = fresh([REQ('links', { kind: 'goodHops', count: 5, side: 'left' })]);
+      const inp: MutablePlayerInput = { ...NO_INPUT };
+      let yaw = 0;
+      let airT = 0;
+      for (let t = 0; t < CFG.tickRate * 2; t++) {
+        const air = t > 0 && !pm.state.onGround;
+        if (t > 0 && pm.state.onGround && airT > 0) break;
+        if (air) airT += DT;
+        const a = airT < split;
+        if (air) yaw += (a ? leftRate : -rightRate) * (Math.PI / 180) * DT;
+        inp.yaw = yaw;
+        inp.jumpHeld = t === 0;
+        inp.jumpPressed = t === 0;
+        inp.forward = t === 0 ? 1 : 0;
+        inp.side = air ? (a ? -1 : 1) : 0;
+        pm.copySnapshot(r.prev);
+        pm.tick(inp);
+        pm.copySnapshot(r.cur);
+        r.out.length = 0;
+        r.session.tick(DT, r.prev, r.cur, inp, HULL, r.out);
+        for (const e of r.out) r.events.push({ ...e });
+      }
+      const e = r.of('lessonHop')[0];
+      return { verdict: e.verdict, counted: e.counted, side: r.session.judge.last.side, turnSide: r.session.judge.last.turnSide };
+    };
+    const mixed = run(0.45, 40, 200);
+    expect(mixed).toMatchObject({ verdict: 'good', side: -1, turnSide: 1, counted: false });
+    // Gegenprobe: dieselbe Mischung mit netto Linksdrehung zählt.
+    expect(run(0.45, 200, 40)).toMatchObject({ verdict: 'good', side: -1, turnSide: -1, counted: true });
+  });
+
   it(`dasselbe Fehlurteil ${VERDICT_REPEAT}× in Folge → Coach-Text des Urteils (kind verdict), nicht vorher`, () => {
     const { r, pm } = fresh([REQ('g', { kind: 'goodHops', count: 5, side: 'any' })]);
     hops(r, pm, [0]);
@@ -1137,7 +1172,7 @@ describe('Vorführung (TC3)', () => {
       (lv.def.training?.stages ?? []).forEach((st, i) => {
         if (!st.demo || demoStyle(st.demo, lv) === 'surf') return;
         n++;
-        expect(['walk', 'hold', 'jump'], `${e.id}/${st.id}`).toContain(demoStyle(st.demo, lv));
+        expect(['walk', 'hold', 'jump', 'flow'], `${e.id}/${st.id}`).toContain(demoStyle(st.demo, lv));
         const o = runDemo(lv, CFG, i);
         expect(o.passed, `${e.id}/${st.id}: schafft die Stufe`).toBe(true);
         expect(o.sideTicks, `${e.id}/${st.id}: A/D-Ticks`).toBe(0);
@@ -1147,7 +1182,7 @@ describe('Vorführung (TC3)', () => {
         expect(o.restored, `${e.id}/${st.id}`).toBe(true);
       });
     }
-    expect(n).toBeGreaterThanOrEqual(9);
+    expect(n).toBeGreaterThanOrEqual(10);
   });
 
   it('PRESTRAFE (T4) hat eine Vorführung: PrestrafeHand — Anlauf mit W, dann W + A und Maus links, nie ein Sprung; schafft die Stufe', () => {
@@ -1180,10 +1215,55 @@ describe('Vorführung (TC3)', () => {
     expect(o.restored).toBe(true);
   });
 
-  it('jede Stufe hat eine Vorführung — außer T6 FLUSS (Meister: ohne A/D schafft kein Bot den Rhythmus verlässlich)', () => {
+  it("jede Stufe hat eine Vorführung (T6 FLUSS seit der zweiten Fix-Runde: 'flow')", () => {
     const missing: string[] = [];
     for (const e of LESSONS) for (const st of e.build().training?.stages ?? []) if (!st.demo) missing.push(`${e.id}/${st.id}`);
-    expect(missing).toEqual(['t6/fluss']);
+    expect(missing).toEqual([]);
+  });
+
+  it("'flow'-Vorführung (T6 FLUSS): W + Leertaste im Rhythmus, nie A/D, nach der ersten Kante nie länger als 0.25 s am Boden, nie unter 250 u/s — schafft den Fluss", () => {
+    const lv = lessonLevel('t6');
+    const i = stageOf(lv, 'fluss');
+    const st = lv.def.training?.stages[i];
+    if (!st?.demo) throw new Error('T6 fluss ohne Vorführung');
+    expect(demoStyle(st.demo, lv)).toBe('flow');
+    const world = new GatedWorld(lv.world, lv.gates);
+    const pm = new PlayerMovement(world, CFG);
+    const session = new TrainingSession(lv, CFG, { world });
+    session.jumpTo(i);
+    const sp = session.respawnPoint();
+    pm.teleport(sp.pos);
+    session.suspended = true;
+    const runner = createDemo(st.demo, lv, CFG, world, { pos: sp.pos.clone(), yaw: sp.yaw });
+    const prev = PlayerMovement.createSnapshot();
+    const cur = PlayerMovement.createSnapshot();
+    const out: RunEvent[] = [];
+    let ground = 0;
+    let maxGround = 0;
+    let minSpeed = Infinity;
+    let crouchJumps = 0;
+    let passed = false;
+    for (let k = 0; k < st.demo.seconds * CFG.tickRate && !passed; k++) {
+      const cmd = runner.next(pm.state, pm.surfNormal);
+      expect(cmd.side).toBe(0);
+      pm.copySnapshot(prev);
+      pm.tick(cmd);
+      pm.copySnapshot(cur);
+      out.length = 0;
+      session.tick(DT, prev, cur, cmd, pm.hullMaxs.y, out);
+      if (cmd.crouch && !prev.ducked && !cur.onGround) crouchJumps++;
+      // Ab der ersten Kante (Kurs läuft): Bodenzeit am Stück und Tempo wie die Stufe sie prüft.
+      if (session.stageCount > 0) {
+        ground = cur.onGround ? ground + DT : 0;
+        maxGround = Math.max(maxGround, ground);
+        minSpeed = Math.min(minSpeed, cur.speed);
+      }
+      passed = session.demoPassed;
+    }
+    expect(passed).toBe(true);
+    expect(crouchJumps).toBe(3);
+    expect(maxGround).toBeLessThanOrEqual(0.25);
+    expect(minSpeed).toBeGreaterThanOrEqual(250);
   });
 
   it(`T5: Vorführung fliegt die Tore wie ein Mensch — eine Seite je Hop (≤ ${DEMO_MAX_FLIPS} A/D-Wechsel je s), nur gute Hops, jede Stufe`, () => {

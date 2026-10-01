@@ -19,7 +19,8 @@
  *    Demo-Band
  *  - Stufenwechsel (T3, W + A + Maus 60 °/s): im ersten Frame der neuen Stufe steht kein Coach-Text der alten,
  *    die Karte zeigt "GESCHAFFT!" mit der VOLLEN Pip-Reihe der erledigten Stufe, der Luft-Tipp der neuen Stufe kommt
- *    nach ≤ 2 s; die Legende am Drehbalken ("MAUS-TEMPO / IM FLUG IM GRÜNEN HALTEN") steht bis zum ersten guten Hop
+ *    nach ≤ 2 s; die Legende am Drehbalken ("MAUS-TEMPO / IM FLUG IM GRÜNEN HALTEN") steht bis zum ersten guten Hop.
+ *    Fallen Tipp und Wechsel in denselben Frame (alle Ticks per stepTicks in einem Aufruf), erscheint der Tipp nicht
  *  - Lektion neu + Überspringen direkt nach einer erledigten Stufe verwerfen deren Geschafft-Blitz; in der ersten
  *    Bonus-/Meisterstufe mit Vorführung zeigt die Karte "[ENTER] ERGEBNIS" UND "[H] ZEIGEN"
  *  - W-Showkey: in der Lektion (Strafe-Assist erzwungen) nie rot, auch mit Spieler-Config ohne Assist; Gegenprobe
@@ -324,6 +325,8 @@ try {
     report.layoutForced = await layoutForced(page, judgeId, layoutOk, check);
     report.stageSwitch = await stageSwitch(page, judgeId, check);
     report.bonusHint = await bonusHint(page, judgeId, check);
+    // Nach bonusHint: dessen Check braucht den Geschafft-Blitz, den stageSwitch hinterlässt.
+    report.staleTip = await staleTip(page, judgeId, check);
     report.wKey = await wKeyInLesson(page, judgeId, check);
   } else console.log('(Layout erzwungen / Stufenwechsel / W-Taste / Bonus-Hinweis nur mit t3)');
 
@@ -523,7 +526,10 @@ async function newbieCheck(page, id, check) {
   await page.waitForTimeout(300);
   const t = await V(() => window.__vel.training());
   if (!t) return { skipped: 'keine Lektion' };
-  if (t.judge) return newbieNoRunUp(page, id, check);
+  if (t.judge) {
+    const noRunUp = await newbieNoRunUp(page, id, check);
+    return { noRunUp, withW: await newbieWithW(page, id, check) };
+  }
   const r = await V(
     () =>
       new Promise((resolve) => {
@@ -946,6 +952,102 @@ async function stageSwitch(page, id, check) {
 }
 
 /**
+ * Tipp der alten Stufe im selben Frame wie der Stufenwechsel: fiel er in einem früheren Tick des Frames, gab es beim
+ * Wechsel nichts zu verwerfen (noch nicht angezeigt) — updateLesson zeigte ihn danach unter der neuen Karte. Erzwungen:
+ * Ticks eingefroren, W + A + Maus 60 °/s; erst Tick für Tick (je Tick ein Frame) bis zum Wechsel zählen, dann dieselben
+ * Ticks nach "Lektion neu" in EINEM Frame (stepTicks(n)). Gegenprobe ohne Game.stageTipSerial: 3/3 alter Tipp sichtbar.
+ */
+async function staleTip(page, id, check) {
+  const V = (fn, arg) => page.evaluate(fn, arg);
+  const setup = `(() => {
+    const vel = window.__vel;
+    vel.freeze(true);
+    vel.trainingReset();
+    const x0 = vel.training();
+    let yaw = (x0.spawn.yaw * Math.PI) / 180;
+    const dt = 1 / vel.state().tickRate;
+    vel.setInputOverride((st) => {
+      const air = !st.onGround;
+      if (air) yaw += ((60 * Math.PI) / 180) * dt;
+      return { forward: 1, side: air ? -1 : 0, jumpHeld: true, sprint: true, yaw };
+    });
+    return x0;
+  })`;
+  const a = await V((src) => {
+    const vel = window.__vel;
+    const x0 = (0, eval)(src)();
+    let n = 0;
+    let ser = x0.tipSerial;
+    let lastTip = null;
+    while (vel.training().stageIndex === x0.stageIndex && n < 128 * 30) {
+      vel.stepTicks(1);
+      n++;
+      const x = vel.training();
+      if (x.stageIndex === x0.stageIndex && x.tipSerial !== ser) {
+        ser = x.tipSerial;
+        lastTip = x.tip;
+      }
+    }
+    vel.setInputOverride(null);
+    vel.freeze(false);
+    return { n, lastTip, switched: vel.training().stageIndex !== x0.stageIndex };
+  }, setup);
+  const b = await V(
+    ([src, n]) => {
+      const vel = window.__vel;
+      const x0 = (0, eval)(src)();
+      vel.stepTicks(n);
+      const x = vel.training();
+      vel.setInputOverride(null);
+      vel.freeze(false);
+      return { from: x0.stageId, to: x.stageId, notice: x.notice };
+    },
+    [setup, a.n],
+  );
+  const r = { ticks: a.n, oldTip: a.lastTip, ...b };
+  check(a.switched && a.lastTip !== null && b.to !== b.from && b.notice !== a.lastTip, `${id}: Tipp und Stufenwechsel im selben Frame (${a.n} Ticks) — der Tipp der alten Stufe erscheint nicht`, r);
+  await V(() => window.__vel.trainingReset());
+  await page.waitForTimeout(300);
+  return r;
+}
+
+/**
+ * Neuling folgt der Karte wörtlich in einer Stufe MIT Urteil: W + Leertaste vom Stufen-Spawn gehalten, A in der Luft.
+ * Der Smart-Hop springt nach 0.2 s Stand mit ~40 u/s — dafür kein "ANLAUF MIT W" (E2E-Review v2final: Tadel für genau
+ * das, was die Karte verlangt). Ein zu langsamer Absprung mit gehaltenem W heißt "WEITER ANLAUFEN".
+ */
+async function newbieWithW(page, id, check) {
+  const V = (fn, arg) => page.evaluate(fn, arg);
+  await V(() => window.__vel.trainingReset());
+  await page.waitForTimeout(300);
+  const r = await V(
+    () =>
+      new Promise((resolve) => {
+        const vel = window.__vel;
+        const yaw = (vel.training().spawn.yaw * Math.PI) / 180;
+        const mark = vel.events(1)[0] ?? null;
+        vel.setInputOverride((st) => ({ forward: 1, side: st.onGround ? 0 : -1, jumpHeld: true, sprint: true, yaw }));
+        const t0 = performance.now();
+        const seen = [];
+        const loop = () => {
+          const v = vel.hudLayout().verdict;
+          if (v !== null && !seen.includes(v)) seen.push(v);
+          if (performance.now() - t0 < 2500) return void requestAnimationFrame(loop);
+          vel.setInputOverride(null);
+          const all = vel.events();
+          const jumps = all.slice(all.indexOf(mark) + 1).filter((e) => e.type === 'jump').map((e) => Math.round(e.speed));
+          resolve({ seen, jumps });
+        };
+        requestAnimationFrame(loop);
+      }),
+  );
+  check(!r.seen.includes('ANLAUF MIT W'), `${id}: Karte wörtlich (W + Leertaste, A in der Luft) — kein "ANLAUF MIT W"`, r);
+  await V(() => window.__vel.trainingReset());
+  await page.waitForTimeout(300);
+  return r;
+}
+
+/**
  * Neuling ohne Anlauf in einer Stufe MIT Urteil: Leertaste gehalten, A nur in der Luft (wie der Stufentext "IN DER
  * LUFT: A HALTEN"), kein W, keine Maus — hüpft mit ~40 u/s, der Judge wertet Absprünge unter 200 u/s nie. Pflicht:
  * eine Rückmeldung (Gain-Popup mit Text oder ein Urteils-/Vorführungs-Tipp) nach ≤ 5 s (Review: 20 s Stille).
@@ -958,6 +1060,8 @@ async function newbieNoRunUp(page, id, check) {
         const vel = window.__vel;
         const x0 = vel.training();
         const yaw = (x0.spawn.yaw * Math.PI) / 180;
+        // Vorher sichtbares Popup (Rest des Laufs davor) mitschreiben: die Rückmeldung muss aus DIESEM Versuch kommen.
+        const before = vel.hudLayout().verdict;
         vel.setInputOverride((st) => ({ side: st.onGround ? 0 : -1, jumpHeld: true, sprint: true, yaw }));
         const t0 = performance.now();
         let maxSpeed = 0;
@@ -970,13 +1074,13 @@ async function newbieNoRunUp(page, id, check) {
           const tip = x.notice !== null && x.notice === x.tip && (x.tipKind === 'verdict' || x.tipKind === 'demo') ? x.notice : null;
           if (L.verdict !== null || tip !== null || s > 8) {
             vel.setInputOverride(null);
-            resolve({ stage: x0.stageId, s: Math.round(s * 10) / 10, verdict: L.verdict, tip, maxSpeed: Math.round(maxSpeed) });
+            resolve({ stage: x0.stageId, s: Math.round(s * 10) / 10, verdict: L.verdict, tip, maxSpeed: Math.round(maxSpeed), before });
           } else requestAnimationFrame(loop);
         };
         requestAnimationFrame(loop);
       }),
   );
-  check(r.s <= 5 && (r.verdict !== null || r.tip !== null), `${id}: Neuling ohne Anlauf (Stufe mit Urteil, kein W) — Rückmeldung nach ≤ 5 s`, r);
+  check(r.before === null && r.s <= 5 && (r.verdict !== null || r.tip !== null), `${id}: Neuling ohne Anlauf (Stufe mit Urteil, kein W) — Rückmeldung nach ≤ 5 s`, r);
   await V(() => window.__vel.trainingReset());
   await page.waitForTimeout(300);
   return r;

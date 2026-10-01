@@ -1,0 +1,461 @@
+{
+ "style": "hold",
+ "levelId": "level1",
+ "notices": [
+  {
+   "t": 5.4,
+   "text": "SCHNELLER? IN DER LUFT A ODER D HALTEN\nUND DIE MAUS MITZIEHEN · TRAINING T3",
+   "speed": 315
+  }
+ ],
+ "respawns": [
+  {
+   "t": 42.5,
+   "reason": "kill",
+   "node": 25
+  }
+ ],
+ "cps": [
+  {
+   "t": 7.8,
+   "runTime": 5.8125
+  },
+  {
+   "t": 19.8,
+   "runTime": 17.78125
+  },
+  {
+   "t": 34.4,
+   "runTime": 32.3828125
+  }
+ ],
+ "finish": {
+  "levelId": "level1",
+  "levelName": "01 GRUNDKURS",
+  "time": 57.6953125,
+  "previousBest": null,
+  "isBest": true,
+  "parTime": 33,
+  "splits": [
+   5.796875,
+   17.78125,
+   32.359375
+  ],
+  "bestSplits": null,
+  "hasNext": true,
+  "topSpeed": 832.325138224414,
+  "medals": {
+   "bronze": 33,
+   "silver": 28.9,
+   "gold": 26.1,
+   "velocity": 19.8,
+   "author": 18.81
+  },
+  "unlocked": []
+ },
+ "maxNode": 33,
+ "trace": [
+  {
+   "t": 0,
+   "pos": [
+    0,
+    0,
+    224
+   ],
+   "v": 0,
+   "node": 1,
+   "g": true,
+   "surf": false
+  },
+  {
+   "t": 2,
+   "pos": [
+    -5,
+    55,
+    -166
+   ],
+   "v": 315,
+   "node": 2,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 4,
+   "pos": [
+    -1,
+    15,
+    -800
+   ],
+   "v": 315,
+   "node": 6,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 6,
+   "pos": [
+    2,
+    50,
+    -1424
+   ],
+   "v": 315,
+   "node": 8,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 8,
+   "pos": [
+    5,
+    138,
+    -2058
+   ],
+   "v": 315,
+   "node": 9,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 10,
+   "pos": [
+    5,
+    178,
+    -2687
+   ],
+   "v": 315,
+   "node": 10,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 12,
+   "pos": [
+    7,
+    152,
+    -3311
+   ],
+   "v": 315,
+   "node": 11,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 14,
+   "pos": [
+    -4,
+    130,
+    -3945
+   ],
+   "v": 315,
+   "node": 12,
+   "g": true,
+   "surf": false
+  },
+  {
+   "t": 16,
+   "pos": [
+    2,
+    159,
+    -4569
+   ],
+   "v": 315,
+   "node": 13,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 18,
+   "pos": [
+    -2,
+    154,
+    -5198
+   ],
+   "v": 315,
+   "node": 14,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 20,
+   "pos": [
+    -3,
+    237,
+    -5827
+   ],
+   "v": 315,
+   "node": 16,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 22,
+   "pos": [
+    -124,
+    238,
+    -6444
+   ],
+   "v": 315,
+   "node": 17,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 24,
+   "pos": [
+    -509,
+    246,
+    -6945
+   ],
+   "v": 315,
+   "node": 17,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 26,
+   "pos": [
+    -1070,
+    197,
+    -7209
+   ],
+   "v": 315,
+   "node": 18,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 28,
+   "pos": [
+    -1692,
+    241,
+    -7192
+   ],
+   "v": 315,
+   "node": 19,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 30,
+   "pos": [
+    -2223,
+    242,
+    -6889
+   ],
+   "v": 315,
+   "node": 20,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 32,
+   "pos": [
+    -2542,
+    200,
+    -6369
+   ],
+   "v": 315,
+   "node": 21,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 34,
+   "pos": [
+    -2681,
+    246,
+    -5757
+   ],
+   "v": 315,
+   "node": 22,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 36,
+   "pos": [
+    -2662,
+    238,
+    -5135
+   ],
+   "v": 315,
+   "node": 23,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 38,
+   "pos": [
+    -2560,
+    211,
+    -4516
+   ],
+   "v": 315,
+   "node": 24,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 40,
+   "pos": [
+    -2779,
+    248,
+    -3926
+   ],
+   "v": 315,
+   "node": 24,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 42,
+   "pos": [
+    -2689,
+    128,
+    -3323
+   ],
+   "v": 296,
+   "node": 25,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 44,
+   "pos": [
+    -2647,
+    247,
+    -5107
+   ],
+   "v": 315,
+   "node": 23,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 46,
+   "pos": [
+    -2568,
+    240,
+    -4481
+   ],
+   "v": 315,
+   "node": 24,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 48,
+   "pos": [
+    -2778,
+    210,
+    -3893
+   ],
+   "v": 315,
+   "node": 24,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 50,
+   "pos": [
+    -2656,
+    249,
+    -3300
+   ],
+   "v": 315,
+   "node": 25,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 52,
+   "pos": [
+    -2647,
+    233,
+    -2692
+   ],
+   "v": 315,
+   "node": 26,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 54,
+   "pos": [
+    -2817,
+    218,
+    -2090
+   ],
+   "v": 315,
+   "node": 27,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 56,
+   "pos": [
+    -2852,
+    11,
+    -1461
+   ],
+   "v": 315,
+   "node": 28,
+   "g": false,
+   "surf": false
+  },
+  {
+   "t": 58,
+   "pos": [
+    -3125,
+    -807,
+    -327
+   ],
+   "v": 832,
+   "node": 30,
+   "g": false,
+   "surf": false
+  }
+ ],
+ "midShot": true,
+ "seconds": 59.696,
+ "end": {
+  "cp": {
+   "index": 3,
+   "total": 3
+  },
+  "runTime": 57.6953125,
+  "hints": {
+   "crouch": 0,
+   "surf": 0,
+   "strafe": 0,
+   "noStrafe": 1
+  },
+  "finish": {
+   "levelId": "level1",
+   "levelName": "01 GRUNDKURS",
+   "time": 57.6953125,
+   "previousBest": null,
+   "isBest": true,
+   "parTime": 33,
+   "splits": [
+    5.796875,
+    17.78125,
+    32.359375
+   ],
+   "bestSplits": null,
+   "hasNext": true,
+   "topSpeed": 832.325138224414,
+   "medals": {
+    "bronze": 33,
+    "silver": 28.9,
+    "gold": 26.1,
+    "velocity": 19.8,
+    "author": 18.81
+   },
+   "unlocked": []
+  },
+  "menu": null
+ },
+ "menuText": "ZIEL\n· 01 GRUNDKURS\n\n00:57.69\n\nNEUE BESTZEIT!\nBESTZEIT\n00:57.69\nPAR\n00:33.00\n+24.70\nTOP-SPEED\n832 u/s\nMEDAILLE\n—\nNÄCHSTES ZIEL: BRONZE 33.00 (NOCH 24.70 S)\nZWISCHENZEITEN\nCHECKPOINT\tZEIT\tDIFF\nCP 1\t00:05.79\t-\nCP 2\t00:17.78\t-\nCP 3\t00:32.35\t-\nNOCHMAL\nR\nNÄCHSTES LEVEL\nENTER\nMENÜ\nESC",
+ "errors": []
+}

@@ -218,11 +218,16 @@ const cases: Case[] = [
     mutate: (l) => (l.medals = l.medals ? { ...l.medals, velocity: l.medals.author - 0.5 } : { bronze: 30, silver: 20, gold: 15, velocity: 9, author: 10 }),
   },
   {
-    // Slalom statt Lauf-Lücke 1: unter den Erstkontakt-Lücken liegen Auffangmulden — dort ist Laufen erlaubt.
+    // Der Knoten NACH 'Slalom' (Insel 1 → 2): unter den Erstkontakt-Lücken liegen Auffangmulden, und vor Insel 1 trägt
+    // seit der l1l2-Runde die 9°-Lippe (slalom1Lip) — dort ist Laufen erlaubt, der Fall wäre nicht mehr eingebaut.
     name: 'Lücke ohne jump-Flag',
     file: 'level1',
     expect: /Laufstrecke ohne Boden/,
-    mutate: (l) => (l.route = (l.route ?? []).map((n: RouteNode) => (n.note === 'Slalom' ? { ...n, jump: false } : n))),
+    mutate: (l) => {
+      const route = l.route ?? [];
+      const i = route.findIndex((n: RouteNode) => n.note === 'Slalom') + 1;
+      l.route = route.map((n: RouteNode, k: number) => (k === i ? { ...n, jump: false } : n));
+    },
   },
   {
     name: 'Deko im Weg',

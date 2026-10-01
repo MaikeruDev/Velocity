@@ -1,0 +1,474 @@
+{
+ "ok90": {
+  "verdicts": {
+   "good": 5
+  },
+  "verdictTexts": [
+   {
+    "t": 0,
+    "text": "ANLAUF MIT W"
+   },
+   {
+    "t": 1.7,
+    "text": "GUT"
+   }
+  ],
+  "tips": [
+   {
+    "t": 0.9,
+    "kind": "stage",
+    "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+   }
+  ],
+  "notices": [
+   {
+    "t": 0.9,
+    "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+   }
+  ],
+  "firstFeedback": 0,
+  "count": 0,
+  "stageDoneAt": 4.7
+ },
+ "noMouse": {
+  "verdicts": {
+   "noMouse": 11
+  },
+  "verdictTexts": [
+   {
+    "t": 0,
+    "text": "ANLAUF MIT W"
+   },
+   {
+    "t": 1.7,
+    "text": "MAUS!"
+   },
+   {
+    "t": 10.2,
+    "text": "ANLAUF MIT W"
+   },
+   {
+    "t": 12.2,
+    "text": "ANLAUF MIT W"
+   },
+   {
+    "t": 13.2,
+    "text": "ANLAUF MIT W"
+   },
+   {
+    "t": 14.2,
+    "text": "ANLAUF MIT W"
+   },
+   {
+    "t": 15.2,
+    "text": "ANLAUF MIT W"
+   },
+   {
+    "t": 16.2,
+    "text": "ANLAUF MIT W"
+   },
+   {
+    "t": 17.3,
+    "text": "ANLAUF MIT W"
+   },
+   {
+    "t": 18.3,
+    "text": "ANLAUF MIT W"
+   },
+   {
+    "t": 19.3,
+    "text": "ANLAUF MIT W"
+   }
+  ],
+  "tips": [
+   {
+    "t": 0.9,
+    "kind": "stage",
+    "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+   },
+   {
+    "t": 7,
+    "kind": "verdict",
+    "text": "DIE MAUS MITZIEHEN\nA + MAUS LINKS, D + MAUS RECHTS"
+   },
+   {
+    "t": 13,
+    "kind": "stage",
+    "text": "DER BALKEN ÜBER W ZEIGT DEIN MAUS-TEMPO:\nIM FLUG IM GRÜNEN BAND HALTEN"
+   },
+   {
+    "t": 19.2,
+    "kind": "demo",
+    "text": "TIPP: [H] ZEIGT ES DIR"
+   }
+  ],
+  "notices": [
+   {
+    "t": 0.9,
+    "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+   },
+   {
+    "t": 7,
+    "text": "DIE MAUS MITZIEHEN\nA + MAUS LINKS, D + MAUS RECHTS"
+   },
+   {
+    "t": 13,
+    "text": "DER BALKEN ÜBER W ZEIGT DEIN MAUS-TEMPO:\nIM FLUG IM GRÜNEN BAND HALTEN"
+   },
+   {
+    "t": 19.2,
+    "text": "TIPP: [H] ZEIGT ES DIR"
+   }
+  ],
+  "firstFeedback": 0,
+  "count": 0
+ },
+ "against": {
+  "verdicts": {
+   "against": 24
+  },
+  "verdictTexts": [
+   {
+    "t": 0,
+    "text": "ANLAUF MIT W"
+   },
+   {
+    "t": 1.7,
+    "text": "FALSCHE SEITE"
+   },
+   {
+    "t": 7.2,
+    "text": "FALSCHE SEITE"
+   },
+   {
+    "t": 11.1,
+    "text": "FALSCHE SEITE"
+   },
+   {
+    "t": 13.6,
+    "text": "FALSCHE SEITE"
+   },
+   {
+    "t": 19.8,
+    "text": "FALSCHE SEITE"
+   }
+  ],
+  "tips": [
+   {
+    "t": 0.9,
+    "kind": "stage",
+    "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+   },
+   {
+    "t": 7.2,
+    "kind": "verdict",
+    "text": "TASTE UND MAUS IN DIESELBE RICHTUNG\nA = MAUS LINKS, D = MAUS RECHTS"
+   },
+   {
+    "t": 13.2,
+    "kind": "stage",
+    "text": "DER BALKEN ÜBER W ZEIGT DEIN MAUS-TEMPO:\nIM FLUG IM GRÜNEN BAND HALTEN"
+   },
+   {
+    "t": 19.2,
+    "kind": "demo",
+    "text": "TIPP: [H] ZEIGT ES DIR"
+   }
+  ],
+  "notices": [
+   {
+    "t": 0.9,
+    "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+   },
+   {
+    "t": 7.2,
+    "text": "TASTE UND MAUS IN DIESELBE RICHTUNG\nA = MAUS LINKS, D = MAUS RECHTS"
+   },
+   {
+    "t": 13.2,
+    "text": "DER BALKEN ÜBER W ZEIGT DEIN MAUS-TEMPO:\nIM FLUG IM GRÜNEN BAND HALTEN"
+   },
+   {
+    "t": 19.2,
+    "text": "TIPP: [H] ZEIGT ES DIR"
+   }
+  ],
+  "firstFeedback": 0,
+  "count": 0
+ },
+ "wOnlyMouse": {
+  "verdicts": {
+   "wOnly": 25
+  },
+  "verdictTexts": [
+   {
+    "t": 0,
+    "text": "ANLAUF MIT W"
+   },
+   {
+    "t": 1.7,
+    "text": "W LOS"
+   }
+  ],
+  "tips": [
+   {
+    "t": 0.9,
+    "kind": "stage",
+    "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+   },
+   {
+    "t": 7,
+    "kind": "verdict",
+    "text": "IN DER LUFT W LOSLASSEN\nSTATTDESSEN A ODER D HALTEN"
+   },
+   {
+    "t": 13,
+    "kind": "stage",
+    "text": "DER BALKEN ÜBER W ZEIGT DEIN MAUS-TEMPO:\nIM FLUG IM GRÜNEN BAND HALTEN"
+   },
+   {
+    "t": 19.2,
+    "kind": "demo",
+    "text": "TIPP: [H] ZEIGT ES DIR"
+   }
+  ],
+  "notices": [
+   {
+    "t": 0.9,
+    "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+   },
+   {
+    "t": 7,
+    "text": "IN DER LUFT W LOSLASSEN\nSTATTDESSEN A ODER D HALTEN"
+   },
+   {
+    "t": 13,
+    "text": "DER BALKEN ÜBER W ZEIGT DEIN MAUS-TEMPO:\nIM FLUG IM GRÜNEN BAND HALTEN"
+   },
+   {
+    "t": 19.2,
+    "text": "TIPP: [H] ZEIGT ES DIR"
+   }
+  ],
+  "firstFeedback": 0,
+  "count": 0
+ },
+ "slowMouse": {
+  "verdicts": {
+   "tooSlow": 24
+  },
+  "verdictTexts": [
+   {
+    "t": 0,
+    "text": "ANLAUF MIT W"
+   },
+   {
+    "t": 1.6,
+    "text": "WEITER"
+   },
+   {
+    "t": 11.6,
+    "text": "WEITER"
+   }
+  ],
+  "tips": [
+   {
+    "t": 0.9,
+    "kind": "stage",
+    "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+   },
+   {
+    "t": 6.9,
+    "kind": "verdict",
+    "text": "DIE MAUS WEITER ZIEHEN\nEINE VIERTELDREHUNG PRO SPRUNG"
+   },
+   {
+    "t": 12.9,
+    "kind": "stage",
+    "text": "DER BALKEN ÜBER W ZEIGT DEIN MAUS-TEMPO:\nIM FLUG IM GRÜNEN BAND HALTEN"
+   },
+   {
+    "t": 19.2,
+    "kind": "demo",
+    "text": "TIPP: [H] ZEIGT ES DIR"
+   }
+  ],
+  "notices": [
+   {
+    "t": 0.9,
+    "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+   },
+   {
+    "t": 6.9,
+    "text": "DIE MAUS WEITER ZIEHEN\nEINE VIERTELDREHUNG PRO SPRUNG"
+   },
+   {
+    "t": 12.9,
+    "text": "DER BALKEN ÜBER W ZEIGT DEIN MAUS-TEMPO:\nIM FLUG IM GRÜNEN BAND HALTEN"
+   },
+   {
+    "t": 19.2,
+    "text": "TIPP: [H] ZEIGT ES DIR"
+   }
+  ],
+  "firstFeedback": 0,
+  "count": 0
+ },
+ "fastMouse": {
+  "verdicts": {
+   "good": 5
+  },
+  "verdictTexts": [
+   {
+    "t": 0,
+    "text": "ANLAUF MIT W"
+   },
+   {
+    "t": 1.6,
+    "text": "GUT"
+   }
+  ],
+  "tips": [
+   {
+    "t": 0.8,
+    "kind": "stage",
+    "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+   }
+  ],
+  "notices": [
+   {
+    "t": 0.8,
+    "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+   }
+  ],
+  "firstFeedback": 0,
+  "count": 0,
+  "stageDoneAt": 4.6
+ },
+ "noRunup": {
+  "verdicts": {
+   "good": 5
+  },
+  "verdictTexts": [
+   {
+    "t": 0,
+    "text": "ANLAUF MIT W"
+   },
+   {
+    "t": 6.8,
+    "text": "GUT"
+   }
+  ],
+  "tips": [
+   {
+    "t": 1.5,
+    "kind": "verdict",
+    "text": "ERST ANLAUFEN: W + LEERTASTE HALTEN\nSPRÜNGE ZÄHLEN AB 200 u/s"
+   },
+   {
+    "t": 7.5,
+    "kind": "stage",
+    "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+   },
+   {
+    "t": 9.9,
+    "kind": "stage",
+    "text": "JETZT ANDERSHERUM:\nD HALTEN, MAUS NACH RECHTS"
+   }
+  ],
+  "notices": [
+   {
+    "t": 1.5,
+    "text": "ERST ANLAUFEN: W + LEERTASTE HALTEN\nSPRÜNGE ZÄHLEN AB 200 u/s"
+   },
+   {
+    "t": 7.5,
+    "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+   },
+   {
+    "t": 9.9,
+    "text": "JETZT ANDERSHERUM:\nD HALTEN, MAUS NACH RECHTS"
+   }
+  ],
+  "firstFeedback": 0,
+  "count": 0,
+  "stageDoneAt": 9.9
+ },
+ "lateKey": {
+  "verdicts": {
+   "good": 5
+  },
+  "verdictTexts": [
+   {
+    "t": 0,
+    "text": "ANLAUF MIT W"
+   },
+   {
+    "t": 1.7,
+    "text": "GUT"
+   }
+  ],
+  "tips": [
+   {
+    "t": 0.9,
+    "kind": "stage",
+    "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+   },
+   {
+    "t": 4.7,
+    "kind": "stage",
+    "text": "JETZT ANDERSHERUM:\nD HALTEN, MAUS NACH RECHTS"
+   }
+  ],
+  "notices": [
+   {
+    "t": 0.9,
+    "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+   },
+   {
+    "t": 4.7,
+    "text": "JETZT ANDERSHERUM:\nD HALTEN, MAUS NACH RECHTS"
+   }
+  ],
+  "firstFeedback": 0,
+  "count": 0,
+  "stageDoneAt": 4.7
+ },
+ "mashSpace": {
+  "verdicts": {
+   "good": 5
+  },
+  "verdictTexts": [
+   {
+    "t": 0.9,
+    "text": "GUT"
+   }
+  ],
+  "tips": [
+   {
+    "t": 0.1,
+    "kind": "stage",
+    "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+   },
+   {
+    "t": 3.9,
+    "kind": "stage",
+    "text": "JETZT ANDERSHERUM:\nD HALTEN, MAUS NACH RECHTS"
+   }
+  ],
+  "notices": [
+   {
+    "t": 0.1,
+    "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+   },
+   {
+    "t": 3.9,
+    "text": "JETZT ANDERSHERUM:\nD HALTEN, MAUS NACH RECHTS"
+   }
+  ],
+  "firstFeedback": 0.9,
+  "count": 0,
+  "stageDoneAt": 3.9
+ },
+ "errors": []
+}

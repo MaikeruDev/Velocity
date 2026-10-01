@@ -5,11 +5,11 @@
     "subtitle": "Lauf. Spring. Strafe.",
     "file": "level1.json",
     "medals": {
-      "bronze": 35.2,
-      "silver": 31.1,
-      "gold": 21.5,
-      "velocity": 20.5,
-      "author": 19.49
+      "bronze": 33,
+      "silver": 28.9,
+      "gold": 26.1,
+      "velocity": 19.8,
+      "author": 18.81
     }
   },
   {
@@ -31,11 +31,11 @@
     "subtitle": "Halt die Linie.",
     "file": "level3.json",
     "medals": {
-      "bronze": 27.3,
-      "silver": 25.1,
-      "gold": 12.8,
-      "velocity": 12.2,
-      "author": 11.6
+      "bronze": 16.6,
+      "silver": 14.6,
+      "gold": 12.6,
+      "velocity": 12.1,
+      "author": 11.44
     },
     "prepLessons": [
       "t7",
@@ -48,11 +48,11 @@
     "subtitle": "Tempo ist Höhe.",
     "file": "level4.json",
     "medals": {
-      "bronze": 28.7,
+      "bronze": 29.2,
       "silver": 27.3,
-      "gold": 26.2,
-      "velocity": 25,
-      "author": 23.76
+      "gold": 26.1,
+      "velocity": 24.9,
+      "author": 23.64
     },
     "prepLessons": [
       "t6",

@@ -1,0 +1,488 @@
+{
+ "lessons": {
+  "t1": {
+   "stages": [
+    {
+     "id": "laufen",
+     "title": "LAUFEN",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 2.3,
+       "ok": true,
+       "maxSpeed": 320
+      }
+     ],
+     "verdicts": {},
+     "tips": [],
+     "notices": [],
+     "respawns": 0,
+     "done": true
+    },
+    {
+     "id": "springen",
+     "title": "SPRINGEN",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 6.3,
+       "ok": true,
+       "maxSpeed": 320
+      }
+     ],
+     "verdicts": {
+      "wOnly": 3
+     },
+     "tips": [],
+     "notices": [],
+     "respawns": 0,
+     "done": true
+    },
+    {
+     "id": "stufe",
+     "title": "AUF DIE STUFE",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 3.5,
+       "ok": true,
+       "maxSpeed": 320
+      }
+     ],
+     "verdicts": {
+      "wOnly": 1
+     },
+     "tips": [],
+     "notices": [],
+     "respawns": 0,
+     "done": true
+    },
+    {
+     "id": "rutschen",
+     "title": "RUTSCHEN",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 0.6,
+       "ok": true,
+       "maxSpeed": 367
+      }
+     ],
+     "verdicts": {},
+     "tips": [],
+     "notices": [],
+     "respawns": 0,
+     "done": true
+    }
+   ],
+   "started": 1790810834413,
+   "seconds": 16.633,
+   "menuAfter": "lessonDone",
+   "stars": 1,
+   "resultText": "GESCHAFFT!\n· T1 ERSTE SCHRITTE\n\n★☆☆\n\nSTUFEN\n✓\tLAUFEN\t\n✓\tSPRINGEN\t\n✓\tAUF DIE STUFE\t\n✓\tRUTSCHEN\t\n·\tFLINK DURCH\tBonus\n·\tRUTSCH-RINNE\tMeister\n\nNoch 2 Bonus-/Meisterstufen offen — mehr Sterne mit „Nochmal“.\n\nNÄCHSTE LEKTION\nENTER\nNOCHMAL\nR\nÜBERSICHT\nESC"
+  },
+  "t2": {
+   "stages": [
+    {
+     "id": "halten",
+     "title": "HALTEN",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 4.7,
+       "ok": true,
+       "maxSpeed": 315
+      }
+     ],
+     "verdicts": {
+      "wOnly": 5
+     },
+     "tips": [],
+     "notices": [],
+     "respawns": 0,
+     "done": true
+    },
+    {
+     "id": "graeben",
+     "title": "ÜBER DIE GRÄBEN",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 13.6,
+       "ok": true,
+       "maxSpeed": 313
+      }
+     ],
+     "verdicts": {
+      "wOnly": 17
+     },
+     "tips": [],
+     "notices": [],
+     "respawns": 0,
+     "done": true
+    }
+   ],
+   "started": 1790810856297,
+   "seconds": 20.323,
+   "menuAfter": "lessonDone",
+   "stars": 1,
+   "resultText": "GESCHAFFT!\n· T2 AUTO-HOP\n\n★☆☆\n\nSTUFEN\n✓\tHALTEN\t\n✓\tÜBER DIE GRÄBEN\t\n·\tLENKEN\tBonus\n·\tGANZER SLALOM\tMeister\n\nNoch 2 Bonus-/Meisterstufen offen — mehr Sterne mit „Nochmal“.\n\nNÄCHSTE LEKTION\nENTER\nNOCHMAL\nR\nÜBERSICHT\nESC"
+  },
+  "t3": {
+   "stages": [
+    {
+     "id": "links",
+     "title": "LINKSKURVE",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 4.7,
+       "ok": true,
+       "maxSpeed": 426
+      }
+     ],
+     "verdicts": {
+      "good": 5
+     },
+     "tips": [
+      {
+       "t": 0.9,
+       "mode": 1,
+       "kind": "stage",
+       "text": "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+      }
+     ],
+     "notices": [
+      "JETZT: A HALTEN\nMAUS FLÜSSIG NACH LINKS"
+     ],
+     "respawns": 0,
+     "done": true
+    },
+    {
+     "id": "rechts",
+     "title": "RECHTSKURVE",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 4.7,
+       "ok": true,
+       "maxSpeed": 424
+      }
+     ],
+     "verdicts": {
+      "good": 5
+     },
+     "tips": [
+      {
+       "t": 0.9,
+       "mode": 1,
+       "kind": "stage",
+       "text": "JETZT ANDERSHERUM:\nD HALTEN, MAUS NACH RECHTS"
+      }
+     ],
+     "notices": [
+      "JETZT ANDERSHERUM:\nD HALTEN, MAUS NACH RECHTS"
+     ],
+     "respawns": 0,
+     "done": true
+    },
+    {
+     "id": "wechsel",
+     "title": "WECHSELN",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 5.4,
+       "ok": true,
+       "maxSpeed": 443
+      }
+     ],
+     "verdicts": {
+      "good": 6
+     },
+     "tips": [],
+     "notices": [],
+     "respawns": 0,
+     "done": true
+    }
+   ],
+   "started": 1790810881889,
+   "seconds": 17.673,
+   "menuAfter": "lessonDone",
+   "stars": 1,
+   "resultText": "GESCHAFFT!\n· T3 AIR-STRAFE\n\n★☆☆\n\nSTUFEN\n✓\tLINKSKURVE\t\n✓\tRECHTSKURVE\t\n✓\tWECHSELN\t\n·\tFRÜH DRÜCKEN\tBonus\n·\tPROFI-WECHSEL\tMeister\n\nNoch 2 Bonus-/Meisterstufen offen — mehr Sterne mit „Nochmal“.\n\nNÄCHSTE LEKTION\nENTER\nNOCHMAL\nR\nÜBERSICHT\nESC"
+  },
+  "t4": {
+   "stages": [
+    {
+     "id": "v400",
+     "title": "TEMPO 400",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 10.1,
+       "ok": true,
+       "maxSpeed": 400
+      }
+     ],
+     "verdicts": {
+      "good": 8
+     },
+     "tips": [],
+     "notices": [],
+     "respawns": 0,
+     "done": true
+    },
+    {
+     "id": "halten",
+     "title": "HALTEN",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 8.5,
+       "ok": true,
+       "maxSpeed": 479
+      }
+     ],
+     "verdicts": {
+      "good": 8
+     },
+     "tips": [],
+     "notices": [
+      "NICHT STEHEN BLEIBEN:\nLEERTASTE GEDRÜCKT HALTEN"
+     ],
+     "respawns": 0,
+     "done": true
+    }
+   ],
+   "started": 1790810904837,
+   "seconds": 20.49,
+   "menuAfter": "lessonDone",
+   "stars": 1,
+   "resultText": "GESCHAFFT!\n· T4 SPEED\n\n★☆☆\n\nFREIGESCHALTET\nFIDGET-SPINNER\n\nSchon angelegt. Ändern im Titel unter „Kosmetik“.\n\nSTUFEN\n✓\tTEMPO 400\t\n✓\tHALTEN\t\n·\tBONUS 500\tBonus\n·\tPRESTRAFE\tBonus\n·\tMEISTER 600\tMeister\n\nNoch 3 Bonus-/Meisterstufen offen — mehr Sterne mit „Nochmal“.\n\nNÄCHSTE LEKTION\nENTER\nNOCHMAL\nR\nÜBERSICHT\nESC"
+  },
+  "t5": {
+   "stages": [
+    {
+     "id": "anlauf",
+     "title": "ANLAUF",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 3.1,
+       "ok": true,
+       "maxSpeed": 381
+      }
+     ],
+     "verdicts": {
+      "good": 2
+     },
+     "tips": [],
+     "notices": [],
+     "respawns": 0,
+     "done": true
+    },
+    {
+     "id": "bogen",
+     "title": "DER BOGEN",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 16.4,
+       "ok": true,
+       "maxSpeed": 561
+      }
+     ],
+     "verdicts": {
+      "good": 18,
+      "tooFast": 2
+     },
+     "tips": [],
+     "notices": [
+      "NICHT STEHEN BLEIBEN:\nLEERTASTE GEDRÜCKT HALTEN"
+     ],
+     "respawns": 0,
+     "done": true
+    }
+   ],
+   "started": 1790810930634,
+   "seconds": 21.493,
+   "menuAfter": "lessonDone",
+   "stars": 1,
+   "resultText": "GESCHAFFT!\n· T5 KURVEN\n\n★☆☆\n\nSTUFEN\n✓\tANLAUF\t\n✓\tDER BOGEN\t\n·\tBONUS 450\tBonus\n·\tMEISTER 600\tMeister\n\nNoch 2 Bonus-/Meisterstufen offen — mehr Sterne mit „Nochmal“.\n\nNÄCHSTE LEKTION\nENTER\nNOCHMAL\nR\nÜBERSICHT\nESC"
+  },
+  "t6": {
+   "stages": [
+    {
+     "id": "stufe",
+     "title": "STUFE 48",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 3,
+       "ok": true,
+       "maxSpeed": 320
+      }
+     ],
+     "verdicts": {
+      "wOnly": 1
+     },
+     "tips": [],
+     "notices": [],
+     "respawns": 0,
+     "done": true
+    },
+    {
+     "id": "kanten",
+     "title": "KANTEN 66",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 6.1,
+       "ok": true,
+       "maxSpeed": 320
+      }
+     ],
+     "verdicts": {
+      "wOnly": 3
+     },
+     "tips": [
+      {
+       "t": 2.4,
+       "mode": 1,
+       "kind": "stage",
+       "text": "GUT! DAS IST DER CROUCH-JUMP:\nDUCKEN ZIEHT DIE FÜSSE 18 u HÖHER"
+      }
+     ],
+     "notices": [
+      "GUT! DAS IST DER CROUCH-JUMP:\nDUCKEN ZIEHT DIE FÜSSE 18 u HÖHER"
+     ],
+     "respawns": 0,
+     "done": true
+    }
+   ],
+   "started": 1790810957377,
+   "seconds": 11.061,
+   "menuAfter": "lessonDone",
+   "stars": 1,
+   "resultText": "GESCHAFFT!\n· T6 CROUCH-JUMP\n\n★☆☆\n\nSTUFEN\n✓\tSTUFE 48\t\n✓\tKANTEN 66\t\n·\tBONUS 72\tBonus\n·\tMEISTER: FLUSS\tMeister\n\nNoch 2 Bonus-/Meisterstufen offen — mehr Sterne mit „Nochmal“.\n\nNÄCHSTE LEKTION\nENTER\nNOCHMAL\nR\nÜBERSICHT\nESC"
+  },
+  "t7": {
+   "stages": [
+    {
+     "id": "halten3",
+     "title": "HALTEN",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 8,
+       "ok": true,
+       "maxSpeed": 357
+      }
+     ],
+     "verdicts": {
+      "against": 1
+     },
+     "tips": [
+      {
+       "t": 5.5,
+       "mode": 1,
+       "kind": "stage",
+       "text": "JETZT A HALTEN: DIE TASTE\nZUR RAMPE HIN HÄLT DICH OBEN"
+      }
+     ],
+     "notices": [
+      "JETZT A HALTEN: DIE TASTE\nZUR RAMPE HIN HÄLT DICH OBEN"
+     ],
+     "respawns": 1,
+     "done": true
+    },
+    {
+     "id": "halten6",
+     "title": "LÄNGER",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 5,
+       "ok": true,
+       "maxSpeed": 455
+      }
+     ],
+     "verdicts": {},
+     "tips": [],
+     "notices": [],
+     "respawns": 0,
+     "done": true
+    }
+   ],
+   "started": 1790810973766,
+   "seconds": 15.039,
+   "menuAfter": "lessonDone",
+   "stars": 1,
+   "resultText": "GESCHAFFT!\n· T7 SURF: HALTEN\n\n★☆☆\n\nSTUFEN\n✓\tHALTEN\t\n✓\tLÄNGER\t\n·\tWESTFLANKE\tBonus\n·\tMEISTER: OBEN\tMeister\n\nNoch 2 Bonus-/Meisterstufen offen — mehr Sterne mit „Nochmal“.\n\nNÄCHSTE LEKTION\nENTER\nNOCHMAL\nR\nÜBERSICHT\nESC"
+  },
+  "t8": {
+   "stages": [
+    {
+     "id": "v800",
+     "title": "TEMPO 800",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 5.7,
+       "ok": true,
+       "maxSpeed": 802
+      }
+     ],
+     "verdicts": {},
+     "tips": [],
+     "notices": [],
+     "respawns": 0,
+     "done": true
+    },
+    {
+     "id": "v1000",
+     "title": "TEMPO 1000",
+     "rank": "required",
+     "attempts": [
+      {
+       "mode": 1,
+       "seconds": 0.2,
+       "ok": true,
+       "maxSpeed": 1005
+      }
+     ],
+     "verdicts": {},
+     "tips": [],
+     "notices": [],
+     "respawns": 0,
+     "done": true
+    }
+   ],
+   "started": 1790810994119,
+   "seconds": 7.892,
+   "menuAfter": "lessonDone",
+   "stars": 2,
+   "resultText": "GESCHAFFT!\n· T8 SURF: SPEED\n\n★★☆\n\nFREIGESCHALTET\nROBOTER-HAND\n\nSchon angelegt. Ändern im Titel unter „Kosmetik“.\n\nSTUFEN\n✓\tTEMPO 800\t\n✓\tDER DROP\t\n✓\tTEMPO 1000\t\n✓\tBONUS 1200\tBonus\n·\tMEISTER 1300\tMeister\n\nNoch 1 Bonus-/Meisterstufe offen — mehr Sterne mit „Nochmal“.\n\nNOCHMAL\nR\nÜBERSICHT\nENTER"
+  }
+ },
+ "errors": []
+}

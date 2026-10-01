@@ -84,7 +84,8 @@ function kenGeometry(): BufferGeometry {
   return g;
 }
 
-export const TAMA_R = 1.9;
+/** Plan 008: Ø 5 cm (gleich ui/hand/kendamaTricks TAMA_R). */
+export const TAMA_R = 2.5;
 
 export function buildKendama(ctx: VmBuildCtx): ItemView {
   const L = ctx.light;
@@ -97,7 +98,7 @@ export function buildKendama(ctx: VmBuildCtx): ItemView {
   const ball = capsuleGeometry(0.01, TAMA_R, TAMA_R, 12, 1, 3, {
     color: RED,
     colorAt: (x, y, z, c) => {
-      const col = Math.abs(y) < 0.3 ? STRIPE : y > TAMA_R * 0.82 && Math.sqrt(x * x + z * z) < 0.75 ? HOLE : null;
+      const col = Math.abs(y) < 0.3 ? STRIPE : y > TAMA_R * 0.82 && Math.sqrt(x * x + z * z) < 1.0 ? HOLE : null;
       if (col) {
         c[0] = col[0];
         c[1] = col[1];

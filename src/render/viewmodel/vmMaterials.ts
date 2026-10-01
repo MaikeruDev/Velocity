@@ -171,14 +171,17 @@ void main() {
   // Fell-Saum (Bein): je Zacken-Reihe eine Zickzack-Kante im Objektraum, darunter ein schmaler dunkler Streifen
   // (Schatten unter den Büscheln) — je Pixel scharf wie die Streifen; die Zacken der Geometrie (Ring.fur) liegen
   // genau auf dieser Kante. uRuff[i] = (y der Kante, Versatz der Spitzen, Phase 0/1), uRuffShape = (Zacken rundum, Breite).
+  float rf = 0.0;
   if (vTabby > 1.5) {
     float tri = abs(2.0 * fract(atan(vLoc.x * RUFF_ASPECT, vLoc.z) * uRuffShape.x / 6.2831853) - 1.0);
     for (int i = 0; i < RUFF_N; i++) {
       float tooth = uRuff[i].z > 0.5 ? 1.0 - tri : tri;
       float e = uRuff[i].x + uRuff[i].y * tooth;
-      st = max(st, step(e - uRuffShape.y, vLoc.y) * step(vLoc.y, e));
+      rf = max(rf, step(e - uRuffShape.y, vLoc.y) * step(vLoc.y, e));
     }
   }
+  // Nur halb zur Streifenfarbe: in voller Stärke lasen sich die Zickzack-Reihen als Schuppen/Zapfen.
+  st = max(st, rf * RUFF_MIX);
 #endif
   base = mix(base, uStripe, st);
 #endif
@@ -290,6 +293,8 @@ export interface RuffPattern {
   readonly teeth: number;
   readonly aspect: number;
   readonly band: number;
+  /** Stärke des Schattens unter der Kante (0..1, Anteil der Streifenfarbe). */
+  readonly mix: number;
 }
 
 /** Krallen-Ausfahren (Katzen-Skin): Anteil 0..1 (skinFx) und Rückzugs-Länge (Hand-Einheiten). */
@@ -354,6 +359,7 @@ export function createLitMaterial(light: VmLightUniforms, o: LitOptions): Shader
     defines.RUFF = '';
     defines.RUFF_N = String(ruff.rows.length);
     defines.RUFF_ASPECT = ruff.aspect.toFixed(6);
+    defines.RUFF_MIX = ruff.mix.toFixed(3);
     uniforms.uRuff = { value: ruff.rows.map((r) => new Vector3(r.y, r.drop, r.phase)) };
     uniforms.uRuffShape = { value: new Vector2(ruff.teeth, ruff.band) };
   }

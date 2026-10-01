@@ -5,6 +5,12 @@ Tests `tests/level4.test.ts`. Vorlage war der Prototyp `tools/critique/v2/level4
 `shots/v2/level4/`). Alle Zahlen hier sind gegen die **finale Phase-1-Physik** gemessen: Cap 40,
 Lande-Gnade, Hang-Landung mit gestundetem Verlust, Kanten-Assist, Rutschen, Luftlenkung an.
 
+**Stand 01.10., Medaillen-Runde (voller `levels:build`):** Medaillen **29.2 / 27.3 / 26.1 / VELOCITY 24.9 / Autor 23.64 s**,
+Par **30** (vorher 28.7 / 27.3 / 26.2 / 25.0 / 23.76, Par 29). Der Hybrid-Surfer surft jetzt mit dem Rauschen der
+kletternden Hand (`physics.surfSigma`: 3° → 27.77 statt 27.33 s, perfekt σ 0.5° → 23.63 statt 23.76 s); Gold =
+max(1°-Hand × 1.05, perfekt × 1.1) = 26.1. Begründung: level-design.md Regel 10, Plan 007 §10. Die Zahlen darunter sind
+der Stand davor.
+
 **Stand 29.09., dritte Runde (nach der Integration):** `levels:build -- level4` → **Par 29 s**, Medaillen
 **28.7 / 27.3 / 26.2 / VELOCITY 25.0 / Autor 23.76 s** — unverändert gegenüber der Integration (Route und Aufstieg
 außen unberührt; index.json stimmt weiter mit der Level-Datei überein). `build.ts` misst jede Medaille als schnelleren
@@ -480,6 +486,10 @@ Reserve, falls der Playtest Nord-Drift zeigt.
 - T6-Band (Hull-Mitte 100–180 u, gemessen in gerader Halle bei 320 u/s) und L4-Band (ab 250 u/s) haben dieselbe
   Semantik, aber andere Maße — Training-Strang prüfen, ob T6 den Hinweis "mit wenig Tempo näher an die Wand" braucht.
 - Dritte Crouch-Kante (Plan 007 §4): nicht gebaut.
+- **Blickfehler (E2E-Review v2final, 01.10.):** Bronze-Hand (3°, Surfer σ 3°) mit festem Blickversatz auf der Abfahrt,
+  6 Seeds: −4° 30.7, −2° 26.4, 0° 27.0, +2° 27.7, +4° 29.2 s gegen Bronze 29.2 (Probe `lookBiasProbe`, Warnung, wenn
+  ±2° Bronze verfehlt). Der In-Game-RouteFollower allein (2°/3°) bleibt ohne Medaille (30.4–33.0 s): er surft schlechter
+  als die Grundtechnik (siehe "Medaillen und Abfahrt"), kein Level-Befund.
 - Frame-Zeit auf echter bzw. schwacher GPU: L4 hat 1,7 × die Dreiecke von L2.
 
 ## Werkzeuge

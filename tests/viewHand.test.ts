@@ -123,7 +123,9 @@ describe('View-Hand: Bewegung (Plan 004/006)', () => {
       expect(Math.abs(m.pitch)).toBeLessThanOrEqual(L.pitch + 1e-9);
       for (const j of a.frame.joints) expect(Number.isFinite(j)).toBe(true);
     }
-  });
+    // Eigenes Timeout: ViewHand rechnet die 20 000 Frames in ~30 ms, die ~720 000 expect-Aufrufe kosten isoliert ~2.3 s
+    // und im parallelen Gesamtlauf 5.0–5.2 s (riss das 5-s-Default) — Testumfang, keine Verlangsamung im Code.
+  }, 20000);
 
   it('NaN/Infinity in Eingaben und dt vergiften den Zustand nicht', () => {
     const a = new ViewHand();

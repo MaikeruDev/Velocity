@@ -89,6 +89,8 @@ const TITLE_ALL_DONE = 'ALLES GESCHAFFT!';
 const HINT_RESULT = '[ENTER] ERGEBNIS';
 /** Kurztext am Gain-Popup für einen Absprung, der zu langsam für ein Urteil ist (strafeJudge.MIN_TAKEOFF). */
 const SLOW_TAKEOFF_TEXT = 'ANLAUF MIT W';
+/** Dasselbe mit gehaltenem W: der Absprung kam vor dem Tempo (Smart-Hop nach 0.2 s Stand), W ist schon richtig. */
+const SLOW_TAKEOFF_W_TEXT = 'WEITER ANLAUFEN';
 /** Beschriftung des Maus-Drehbalkens in Lektionen mit Zielband (sonst sah man nur Striche über W). */
 const TURN_LABEL = 'MAUS';
 /**
@@ -381,6 +383,8 @@ export class Hud {
   private stageStepText: readonly string[] | null = null;
   /** Index der zuletzt erledigten Stufe (lessonStage) — ihr Zähler steht beim Geschafft-Blitz. */
   private stageDoneIndex = -1;
+  /** Nächster Absprung ist der erste nach Stufenstart/Respawn/Levelstart (aus dem Stand) — kein "ANLAUF"-Tadel. */
+  private standHop = true;
   /**
    * Ziel und Art des Fortschritts der laufenden Stufe (zuletzt gezeichnet) und die der erledigten: beim
    * Geschafft-Blitz steht die VOLLE Reihe der erledigten Stufe ("5/5"). Die Session setzt den Zähler im
@@ -680,6 +684,7 @@ export class Hud {
 
   /** Alle Popups/Overlays verwerfen (z. B. beim Levelwechsel). */
   clear(): void {
+    this.standHop = true;
     this.photoAt = -Infinity;
     this.turnLegend = true;
     this.gainCount = 0;
@@ -708,7 +713,11 @@ export class Hud {
           // In Stufen mit Urteil trägt das Urteil (lessonHop) den Gewinn — sonst stünde "+23" doppelt da. Einen
           // Absprung unter MIN_TAKEOFF beurteilt der Judge nie: ohne Anlauf (Probe T3: Leertaste + A in der Luft,
           // 40 u/s) kam sonst bis zu 20 s gar keine Rückmeldung. Nicht in der Vorführung (die zeigt, wie es geht).
-          if (e.speed < MIN_TAKEOFF && !this.demo) this.pushGain('', C.white, SLOW_TAKEOFF_TEXT, C.gold, 0);
+          // Der erste Hop nach Stufenstart/Respawn kommt aus dem Stand (W + Leertaste wie auf der Karte: Smart-Hop springt
+          // nach 0.2 s bei ~40 u/s) — dort kein Tadel (E2E-Review v2final: "ANLAUF MIT W" bei gehaltenem W).
+          if (e.speed < MIN_TAKEOFF && !this.demo && !this.standHop)
+            this.pushGain('', C.white, this.data.keys.forward > 0 ? SLOW_TAKEOFF_W_TEXT : SLOW_TAKEOFF_TEXT, C.gold, 0);
+          this.standHop = false;
           break;
         }
         if (e.chain < 2) break;
@@ -741,6 +750,7 @@ export class Hud {
         if (e.lessonDone) this.lessonDoneAt = this.t;
         // Der Tipp der alten Stufe widerspräche der neuen Karte (Probe T3: "JETZT: A HALTEN" unter "D HALTEN").
         this.dropCoachNotice();
+        this.standHop = true;
         break;
       case 'checkpoint': {
         // Selten (einmal pro Checkpoint) — hier darf formatiert werden. Den Stand "CP x/n"
@@ -777,6 +787,7 @@ export class Hud {
         this.photoAt = -Infinity;
         break;
       case 'respawn':
+        this.standHop = true;
         this.finish = null;
         this.photoAt = -Infinity;
         this.gainCount = 0;

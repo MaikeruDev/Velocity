@@ -200,6 +200,29 @@ export const VM_RIG: { readonly fingers: readonly VmFingerRig[]; readonly thumb:
 };
 
 /**
+ * Butterfly-Messer (Plan 008, Balisong-Trainer): Maße in Hand-Einheiten (~1 cm), die Renderer (items/knife)
+ * und UI (ui/hand/knifeRig: Pendel-Physik, Kontakt) teilen. Gehaltener Griff (Safe Handle) hängt am Sockel,
+ * sein Stift im Ursprung, der Griff läuft nach −y. Die Klinge dreht um diesen Stift (knifeBlade, 0 = offen
+ * nach +y, π = zu); ihr Tang trägt den ZWEITEN Stift im Abstand pinGap quer zur Klinge (+x bei offen), um den
+ * der Bite Handle dreht (knifeBite relativ zur Klinge). Offen und zu liegen beide Griffe nebeneinander
+ * (knifeBite = −knifeBlade). Die Schneide zeigt zur Bite-Seite (+x): geschlossen schließt der Bite Handle auf
+ * der Schneide. Riegel am Ende des Bite Handle (VM_PARAM.knife.latch).
+ */
+export const VM_KNIFE = {
+  handleLen: 10.6,
+  handleW: 1.35,
+  handleD: 1.05,
+  /** Stift sitzt so weit innen vom oberen Griffende. */
+  pinInset: 0.35,
+  pinGap: 1.6,
+  bladeLen: 8.8,
+  bladeW: 1.8,
+  bladeD: 0.2,
+  /** Klinge beginnt so weit über den Stiften (Tang-Ansatz). */
+  bladeFrom: 0.25,
+} as const;
+
+/**
  * Hand-Skin (Plan 005/007), gleiche Werte wie GloveId in den Settings. Skins ohne Umsetzung zeichnet
  * der Renderer als 'classic'.
  */
@@ -212,12 +235,15 @@ export const VM_STRING_POINTS = 9;
 
 /**
  * Kanäle von ViewModelFrame.propParam je Gegenstand (Plan 007). Andere Gegenstände nutzen keine.
+ *   knife:   Riegel 0..1 (Plan 008)
  *   spinner: Winkel (rad), Unschärfe 0..1, Nabe (−1 zurück / 0 / +1 vorn)
  *   coin:    Seite (0 Kopf, 1 Zahl)
  *   lighter: Deckel 0..1, Flamme 0..1, Windneigung −1..1, Rad-Winkel (rad)
  *   phone:   Modus (VM_PHONE_MODE), Wert (u/s bzw. s), Scroll-Versatz, Blitz 0..1
  */
 export const VM_PARAM = {
+  /** Plan 008: Riegel (Latch) am Bite Handle, 0 = eingerastet (Griffe verriegelt), 1 = weggeklappt. */
+  knife: { latch: 0 },
   spinner: { angle: 0, blur: 1, hub: 2 },
   coin: { side: 0 },
   lighter: { lid: 0, flame: 1, wind: 2, wheel: 3 },

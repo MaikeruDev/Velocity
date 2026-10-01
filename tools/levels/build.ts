@@ -18,7 +18,7 @@ import { buildLevel1 } from './level1';
 import { buildLevel2 } from './level2';
 import { buildLevel3 } from './level3';
 import { buildLevel4 } from './level4';
-import { describeBranches, jitterBranches, jitterMedian, medianOf, timedMedian, withRoute, type MedalReference, type RouteChoice, type StrafeModel } from './physics';
+import { describeBranches, jitterBranches, jitterMedian, medianOf, timedMedian, withRoute, type MedalReference, type RouteChoice, type StrafeModel, type SurfLook } from './physics';
 import { level3Reference } from './probes/level3';
 import { level4Reference } from './probes/level4';
 import { buildTraining } from './training/index';
@@ -48,28 +48,84 @@ export const LEVELS: readonly LevelEntry[] = [
  */
 export const MEDAL_SEEDS: readonly number[] = Array.from({ length: 48 }, (_, i) => i + 1);
 
+/** Ein Medaillen-Modell: Hand, gemessene Linie, Messart (Seeds oder Start-Jitter). */
+interface MedalModel {
+  readonly model: StrafeModel;
+  readonly line: RouteChoice;
+  readonly jitter: boolean;
+  /** Blick der Surf-Referenz (physics.SurfLook). */
+  readonly look: SurfLook;
+}
+const HAND3: MedalModel = { model: { aimNoiseDeg: 3 }, line: 'safeRoute', jitter: false, look: 'lesson' };
+const HAND2: MedalModel = { model: { aimNoiseDeg: 2 }, line: 'safeRoute', jitter: false, look: 'best' };
+const HAND1: MedalModel = { model: { aimNoiseDeg: 1 }, line: 'route', jitter: false, look: 'best' };
+const PERFECT: MedalModel = { model: { sync: 1 }, line: 'route', jitter: true, look: 'best' };
+
 /**
- * Medaillen: Bot-Modell, Aufschlag (LevelFormat.LevelMedals), gemessene Linie und Messart.
- * Bronze/Silber auf der sicheren Linie einer Gabel (safeRoute, sonst route) als Median über MEDAL_SEEDS:
- * Gelegenheitsspieler schaffen sie ohne Risiko. Gold/VELOCITY/Autor auf der Ideallinie, als Median über 49 Start-Jitter
- * (physics.START_JITTERS): der perfekte Bot ist deterministisch, aber chaotisch — ein Einzellauf hängt
- * an Zehntelgrad. Der Median trägt nur, solange der Bot EINEN Zweig fährt; zerfällt er in Zweige
- * (physics.jitterBranches, L1: Bonk an der Crouch-Kante), warnt der Build laut (BuildResult.warnings,
- * levels:check ebenso) — dann ist das Level zu reparieren, nicht die Kennzahl zu wechseln.
- * Hat ein Level eine Referenz (LevelEntry.reference, L3/L4: Surf-Grundtechnik), zählt je Modell der schnellere
- * Median — der RouteFollower surft fallende Rampen langsamer als ein Mensch mit der Technik aus T7/T8.
+ * Einheitliches Medaillen-Modell (level-design.md Regel 10, Plan 007 §10). Je Stufe ein Hand-Modell × Aufschlag; jedes
+ * Modell zählt mit dem schnelleren Median aus RouteFollower und Level-Referenz (LevelEntry.reference, Surf-Grundtechnik
+ * mit DERSELBEN Hand, physics.surfSigma) — für alle Stufen, nicht nur die oberen:
+ * - Bronze = 3°-Hand × 1.05 auf der sicheren Linie (Gelegenheitsspieler, CS2-Parität; ohne Risiko), surfend wie
+ *   gelehrt (Blick 0°, T8 wörtlich — den Blickversatz kennt ein Gelegenheitsspieler nicht).
+ * - Silber = 2°-Hand × 1.05 auf der sicheren Linie (geübt), surfend mit dem besten Blickversatz.
+ * - Gold = die LEICHTERE von 1°-Hand × 1.05 und perfekt × 1.10 auf der Ideallinie: Gold ist für sehr gute Hände
+ *   erreichbar (L1 vorher perfekt × 1.10 = 20.7 s gegen 1°-Hand 24.8 s — Neon-Handschuh unerreichbar), und nie
+ *   enger als 4.8 % über VELOCITY (L2: 1°-Hand × 1.05 = 16.9 s läge 2 % über VELOCITY 16.5 s).
+ * - VELOCITY = perfekt × 1.05, Autor = perfekt (Median über 49 Start-Jitter). 1°/0.5°-Hand und sync 0.9/0.95 taugen
+ *   hier nicht: sie zerfallen auf L1 in zwei Moden (fallen.md #70), der Median springt zwischen ihnen.
+ * Hände als Median über MEDAL_SEEDS; der perfekte Bot über Start-Jitter (physics.START_JITTERS: deterministisch, aber
+ * chaotisch — zerfällt er in Zweige, warnt der Build laut: dann ist das Level zu reparieren, nicht die Kennzahl).
+ * Danach die Staffel (`staggerMedals`): jede Stufe mindestens MEDAL_MIN_STEP über der nächstbesseren.
  */
-const MEDAL_MODELS: Record<keyof LevelMedals, { readonly model: StrafeModel; readonly factor: number; readonly line: RouteChoice; readonly jitter: boolean }> = {
-  bronze: { model: { aimNoiseDeg: 3 }, factor: 1.05, line: 'safeRoute', jitter: false },
-  silver: { model: { aimNoiseDeg: 2 }, factor: 1.05, line: 'safeRoute', jitter: false },
-  gold: { model: { sync: 1 }, factor: 1.1, line: 'route', jitter: true },
-  // VELOCITY: halber Weg zwischen Gold und Autor. 1°/0.5°-Hand und sync 0.9/0.95 streuen
-  // zu stark (L1-Median 25.8–27.6 s, langsamer als Gold), taugen also nicht als Maß —
-  // die Ideallinie + 5 % ist die Zahl, die ein sehr guter Mensch mit sauberer Linie schafft
-  // (level-design.md Regel 10, npx tsx tools/levels/medalProbe.ts).
-  velocity: { model: { sync: 1 }, factor: 1.05, line: 'route', jitter: true },
-  author: { model: { sync: 1 }, factor: 1, line: 'route', jitter: true },
+const MEDAL_RULES: Record<keyof LevelMedals, ReadonlyArray<{ readonly m: MedalModel; readonly factor: number }>> = {
+  bronze: [{ m: HAND3, factor: 1.05 }],
+  silver: [{ m: HAND2, factor: 1.05 }],
+  gold: [
+    { m: HAND1, factor: 1.05 },
+    { m: PERFECT, factor: 1.1 },
+  ],
+  velocity: [{ m: PERFECT, factor: 1.05 }],
+  author: [{ m: PERFECT, factor: 1 }],
 };
+
+/**
+ * Mindestabstand benachbarter Medaillen (Faktor). Unter 4 % ist die bessere Stufe kein eigenes Ziel: Hand-Mediane über
+ * 48 Seeds streuen um 1–3 % (L4: 1.5°-Hand 26.07 s langsamer als 2°-Hand 25.91 s), und die Surf-Referenz trennt die
+ * Hände kaum (L3 Türkis: 3°-Hand 14.20 s, 2°-Hand 13.84 s — 2.6 %). Gelockert wird immer die LEICHTERE Stufe: das
+ * nimmt keiner Hand ihre Medaille.
+ */
+export const MEDAL_MIN_STEP = 1.04;
+/**
+ * Größter sinnvoller Abstand Bronze → Silber → Gold (Faktor): darüber hat eine Spielergruppe zwischen zwei Händen kein
+ * erreichbares nächstes Ziel mehr (L3 vorher Silber 25.1 → Gold 12.8 s, × 1.96). Warnung. Gold → VELOCITY ist ausgenommen
+ * (nur Log): VELOCITY ist die Krone des perfekten Bots, der Abstand misst, wie viel Präzision das Level über der 1°-Hand
+ * belohnt (L1: die 1°-Hand zerfällt in zwei Moden, 20.0–20.6 s ohne und 24.5–27.8 s mit Einbruch an der Crouch-Kante).
+ */
+export const MEDAL_MAX_STEP = 1.2;
+
+/** Staffel: von oben (VELOCITY) nach unten jede Stufe ≥ MEDAL_MIN_STEP × die nächstbessere; Rückgabe samt Log-Zeilen. */
+export function staggerMedals(raw: LevelMedals): { readonly medals: LevelMedals; readonly notes: readonly string[] } {
+  const notes: string[] = [];
+  const m = { ...raw };
+  const pairs: ReadonlyArray<readonly [keyof LevelMedals, keyof LevelMedals]> = [
+    ['gold', 'velocity'],
+    ['silver', 'gold'],
+    ['bronze', 'silver'],
+  ];
+  for (const [easy, hard] of pairs) {
+    const min = up01(MEDAL_MIN_STEP * m[hard]);
+    if (m[easy] < min) {
+      notes.push(`${easy} ${m[easy]} s < ${MEDAL_MIN_STEP} × ${hard} ${m[hard]} s → ${min} s`);
+      m[easy] = min;
+    }
+  }
+  return { medals: m, notes };
+}
+
+/** Abstände benachbarter Medaillen als Faktoren (Bronze/Silber, Silber/Gold, Gold/VELOCITY, VELOCITY/Autor). */
+export function medalSteps(m: LevelMedals): { readonly bs: number; readonly sg: number; readonly gv: number; readonly va: number } {
+  return { bs: m.bronze / m.silver, sg: m.silver / m.gold, gv: m.gold / m.velocity, va: m.velocity / m.author };
+}
 
 /** Auf 0.1 s aufrunden (die Anzeige hat zwei Nachkommastellen, die Ziele sollen glatt sein). */
 function up01(t: number): number {
@@ -88,48 +144,64 @@ function withTimes(level: LevelFile, log: (line: string) => void, warn: (line: s
   const c = compileLevel(level);
   const lines: Record<RouteChoice, CompiledLevel> = { route: c, safeRoute: withRoute(c, 'safeRoute') };
   const median = new Map<string, number>();
-  const time = (key: keyof LevelMedals): number => {
-    const { model, factor, line, jitter } = MEDAL_MODELS[key];
-    const id = `${JSON.stringify(model)}|${line}|${jitter}`;
-    let m = median.get(id);
-    if (m === undefined) {
-      const j = jitter ? jitterMedian(lines[line], model) : null;
-      const r = j ?? timedMedian(lines[line], model, MEDAL_SEEDS);
-      if (r.median === null) throw new Error(`${level.id}: Bot ${JSON.stringify(model)} (${line}) kommt in der Mehrheit der Läufe nicht ins Ziel — keine Medaille ${key}`);
-      const mm = r.median;
-      m = mm;
-      median.set(id, mm);
-      if (j) log(`  ${level.id}: ${JSON.stringify(model)} über ${j.runs.length} Start-Jitter [${j.runs.map((x) => (x.time === null ? 'x' : x.time.toFixed(2))).join(' ')}] → Median ${mm.toFixed(2)} s`);
-      else log(`  ${level.id}: ${JSON.stringify(model)} (${line}) über ${r.runs.length} Seeds, ${r.runs.filter((x) => x.time === null).length} ohne Ziel → Median ${mm.toFixed(2)} s`);
-      if (j?.branches) {
-        const side = j.branches.fast.some((x) => x.time === mm) ? 'schnellen' : 'langsamen';
-        warn(
-          `${level.id}: perfekter Bot zerfällt über den Start-Kasten in zwei Zweige — ${describeBranches(j.branches)}. Der Median ${mm.toFixed(2)} s ` +
-            `liegt im ${side} Zweig und hängt davon ab, wie viele Starts dort landen: Gold/VELOCITY/Autor nicht belastbar — Chaos-Stelle im Level entschärfen`,
-        );
-      }
-      // Zweites Modell (Surf-Grundtechnik): zählt, wenn es schneller ist — die Medaille steht für die Technik, nicht den Bot.
-      const ref = reference?.runs(lines[line], model, line, jitter, MEDAL_SEEDS) ?? null;
-      const rm = ref ? medianOf(ref.runs) : null;
-      if (ref && reference) {
-        log(`  ${level.id}: Referenz ${reference.name}, ${JSON.stringify(model)}: ${ref.detail} → Median ${rm === null ? '–' : rm.toFixed(2)} s${rm !== null && rm < mm ? ` < RouteFollower ${mm.toFixed(2)} s → zählt` : ''}`);
-        const rb = ref.overJitter ? jitterBranches(ref.runs) : null;
-        if (rb && rm !== null && rm < mm) warn(`${level.id}: Referenz ${reference.name} zerfällt über den Start-Kasten in zwei Zweige — ${describeBranches(rb)}`);
-      }
-      if (rm !== null && rm < mm) {
-        m = rm;
-        median.set(id, rm);
-      }
+  /** Median eines Medaillen-Modells: der schnellere aus RouteFollower und Referenz (gleiche Hand, gleiche Linie). */
+  const measure = ({ model, line, jitter, look }: MedalModel, key: keyof LevelMedals): number => {
+    const id = `${JSON.stringify(model)}|${line}|${jitter}|${look}`;
+    const cached = median.get(id);
+    if (cached !== undefined) return cached;
+    const j = jitter ? jitterMedian(lines[line], model) : null;
+    const r = j ?? timedMedian(lines[line], model, MEDAL_SEEDS);
+    const tag = `${JSON.stringify(model)} (${line})`;
+    if (j) log(`  ${level.id}: ${tag} über ${j.runs.length} Start-Jitter [${j.runs.map((x) => (x.time === null ? 'x' : x.time.toFixed(2))).join(' ')}] → Median ${j.median?.toFixed(2) ?? '–'} s`);
+    else log(`  ${level.id}: ${tag} über ${r.runs.length} Seeds, ${r.runs.filter((x) => x.time === null).length} ohne Ziel → Median ${r.median?.toFixed(2) ?? '–'} s`);
+    if (j?.branches && j.median !== null) {
+      const mm = j.median;
+      const side = j.branches.fast.some((x) => x.time === mm) ? 'schnellen' : 'langsamen';
+      warn(
+        `${level.id}: perfekter Bot zerfällt über den Start-Kasten in zwei Zweige — ${describeBranches(j.branches)}. Der Median ${mm.toFixed(2)} s ` +
+          `liegt im ${side} Zweig und hängt davon ab, wie viele Starts dort landen: Gold/VELOCITY/Autor nicht belastbar — Chaos-Stelle im Level entschärfen`,
+      );
     }
-    // Autor-Zeit auf 0.01 s (die Zahl, die man schlagen will), die anderen glatt auf 0.1 s.
-    return key === 'author' ? Number((Math.ceil(m * 100 - 1e-6) / 100).toFixed(2)) : up01(factor * m);
+    // Referenz (Surf-Grundtechnik) mit derselben Hand: zählt, wenn sie schneller ist — die Medaille steht für die Technik, nicht den Bot.
+    const ref = reference?.runs(lines[line], model, line, jitter, MEDAL_SEEDS, { look }) ?? null;
+    const rm = ref ? medianOf(ref.runs) : null;
+    const refWins = rm !== null && (r.median === null || rm < r.median);
+    if (ref && reference) {
+      log(`  ${level.id}: Referenz ${reference.name}, ${tag}: ${ref.detail} → Median ${rm === null ? '–' : rm.toFixed(2)} s${refWins ? ` < RouteFollower ${r.median?.toFixed(2) ?? '–'} s → zählt` : ''}`);
+      const rb = ref.overJitter ? jitterBranches(ref.runs) : null;
+      if (rb && refWins) warn(`${level.id}: Referenz ${reference.name} zerfällt über den Start-Kasten in zwei Zweige — ${describeBranches(rb)}`);
+    }
+    const m = refWins ? rm : r.median;
+    if (m === null) throw new Error(`${level.id}: ${tag} kommt weder als RouteFollower noch als Referenz in der Mehrheit der Läufe ins Ziel — keine Medaille ${key}`);
+    median.set(id, m);
+    return m;
   };
-  const medals: LevelMedals = { bronze: time('bronze'), silver: time('silver'), gold: time('gold'), velocity: time('velocity'), author: time('author') };
+  const time = (key: keyof LevelMedals): number => {
+    // Mehrere Modelle (Gold): die leichtere Grenze zählt — erreichbar für jede der genannten Hände.
+    const vals = MEDAL_RULES[key].map(({ m, factor }) => {
+      const t = measure(m, key);
+      // Autor-Zeit auf 0.01 s (die Zahl, die man schlagen will), die anderen glatt auf 0.1 s.
+      return key === 'author' ? Number((Math.ceil(t * 100 - 1e-6) / 100).toFixed(2)) : up01(factor * t);
+    });
+    if (vals.length > 1) log(`  ${level.id}: ${key} = max(${MEDAL_RULES[key].map(({ m, factor }, i) => `${JSON.stringify(m.model)} × ${factor} → ${vals[i]}`).join(', ')}) s`);
+    return Math.max(...vals);
+  };
+  const raw: LevelMedals = { bronze: time('bronze'), silver: time('silver'), gold: time('gold'), velocity: time('velocity'), author: time('author') };
+  const { medals, notes } = staggerMedals(raw);
+  for (const n of notes) log(`  ${level.id}: Staffel ${n}`);
   if (!(medals.bronze > medals.silver && medals.silver > medals.gold && medals.gold > medals.velocity && medals.velocity >= medals.author))
     throw new Error(`${level.id}: Medaillen nicht streng fallend: ${JSON.stringify(medals)}`);
+  const st = medalSteps(medals);
+  const pct = (f: number): string => `${((f - 1) * 100).toFixed(1)} %`;
+  log(`  ${level.id}: Abstände Bronze→Silber ${pct(st.bs)}, Silber→Gold ${pct(st.sg)}, Gold→VELOCITY ${pct(st.gv)}, VELOCITY→Autor ${pct(st.va)}`);
+  if (st.bs > MEDAL_MAX_STEP) warn(`${level.id}: Bronze → Silber ${pct(st.bs)} > ${pct(MEDAL_MAX_STEP)} — Spieler zwischen 3°- und 2°-Hand ohne erreichbares Ziel`);
+  if (st.sg > MEDAL_MAX_STEP) warn(`${level.id}: Silber → Gold ${pct(st.sg)} > ${pct(MEDAL_MAX_STEP)} — Spieler zwischen 2°- und 1°-Hand ohne erreichbares Ziel`);
   if (level.safeRoute) {
-    // Die Gabel soll sich lohnen: VELOCITY nur über die schnelle Linie.
-    const s = jitterMedian(lines.safeRoute, { sync: 1 }).median;
+    // Die Gabel soll sich lohnen: VELOCITY nur über die schnelle Linie — auch mit der Referenz-Technik.
+    const bot = jitterMedian(lines.safeRoute, { sync: 1 }).median;
+    const refRuns = reference?.runs(lines.safeRoute, { sync: 1 }, 'safeRoute', true, MEDAL_SEEDS) ?? null;
+    const ref = refRuns ? medianOf(refRuns.runs) : null;
+    const s = bot === null ? ref : ref === null ? bot : Math.min(bot, ref);
     if (s !== null && s <= medals.velocity) warn(`${level.id}: perfekter Bot auf safeRoute ${s.toFixed(2)} s ≤ VELOCITY ${medals.velocity} s — die schnelle Linie lohnt nicht`);
     else if (s !== null) log(`  ${level.id}: safeRoute sync 1.0 ${s.toFixed(2)} s > VELOCITY ${medals.velocity} s`);
   }

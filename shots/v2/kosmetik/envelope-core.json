@@ -1,190 +1,190 @@
 {
   "can": {
     "tilt": {
-      "up": 0.067,
-      "left": 0.157
+      "up": 0.058,
+      "left": 0.146
     },
     "sip": {
-      "up": -0.093,
-      "left": 0.055
+      "up": -0.118,
+      "left": 0.041
     },
     "flip": {
-      "up": -0.011,
-      "left": 0.137
+      "up": -0.024,
+      "left": 0.128
     },
     "highFlip": {
-      "up": -0.096,
-      "left": 0.112
+      "up": -0.107,
+      "left": 0.103
     },
     "twirl": {
-      "up": 0.001,
-      "left": 0.183
+      "up": -0.012,
+      "left": 0.172
     },
     "doubleFlip": {
-      "up": -0.123,
-      "left": 0.131
+      "up": -0.134,
+      "left": 0.121
     },
     "behindThrow": {
-      "up": -0.119,
-      "left": 0.149
+      "up": -0.127,
+      "left": 0.139
     },
     "surfBalance": {
       "up": -0.27,
-      "left": 0.149,
-      "down": 0.622,
+      "left": 0.144,
+      "down": 0.598,
       "inside": true,
       "seconds": 1.833
     }
   },
   "card": {
     "spin": {
-      "up": -0.062,
+      "up": -0.108,
       "left": 0.259
     },
     "turn": {
-      "up": -0.07,
+      "up": -0.117,
       "left": 0.228
     },
     "tossSpin": {
-      "up": -0.238,
+      "up": -0.284,
       "left": 0.253
     },
     "vanish": {
-      "up": -0.054,
-      "left": 0.137
+      "up": -0.099,
+      "left": 0.118
     },
     "surfFan": {
-      "up": -0.133,
+      "up": -0.182,
       "left": 0.259,
-      "down": 0.21,
+      "down": 0.166,
       "inside": true,
       "seconds": 1.833
     }
   },
   "knife": {
     "open": {
-      "up": -0.064,
-      "left": 0.107
+      "up": -0.25,
+      "left": 0.087
     },
     "close": {
-      "up": -0.165,
-      "left": 0.2
+      "up": -0.009,
+      "left": 0.168
     },
     "rollover": {
-      "up": -0.18,
-      "left": 0.184
-    },
-    "aerial": {
-      "up": -0.278,
+      "up": -0.24,
       "left": 0.126
     },
+    "aerial": {
+      "up": -0.322,
+      "left": 0.051
+    },
     "doubleAerial": {
-      "up": -0.315,
-      "left": 0.129
+      "up": -0.338,
+      "left": 0.011
     },
     "surfHeli": {
-      "up": -0.131,
-      "left": 0.1,
-      "down": 0.404,
+      "up": -0.199,
+      "left": 0.083,
+      "down": 0.237,
       "inside": true,
       "seconds": 2.767
     }
   },
   "approvedEnvelope": {
-    "up": -0.315,
-    "left": 0.055,
+    "up": -0.338,
+    "left": 0.011,
     "note": "höchster/linkester Punkt aller abgenommenen Tricks"
   },
   "spinner": {
     "flick": {
-      "up": -0.012,
-      "left": 0.23,
-      "down": 0.252,
+      "up": 0.145,
+      "left": 0.169,
+      "down": 0.425,
       "inside": true,
       "seconds": 0.433
     },
     "swap": {
-      "up": -0.056,
-      "left": 0.186,
-      "down": 0.221,
+      "up": -0.052,
+      "left": 0.181,
+      "down": 0.39,
       "inside": true,
       "seconds": 1.017
     },
     "toss": {
-      "up": -0.094,
-      "left": 0.252,
-      "down": 0.255,
+      "up": 0.052,
+      "left": 0.173,
+      "down": 0.429,
       "inside": true,
       "seconds": 0.817
     },
     "ufo": {
-      "up": -0.215,
-      "left": 0.188,
-      "down": 0.266,
+      "up": -0.151,
+      "left": 0.178,
+      "down": 0.437,
       "inside": true,
       "seconds": 1.117
     },
     "balance": {
       "up": -0.087,
-      "left": 0.163,
-      "down": 0.254,
+      "left": 0.138,
+      "down": 0.428,
       "inside": true,
       "seconds": 1.833
     }
   },
   "yoyo": {
     "sleeper": {
-      "up": 0.098,
-      "left": 0.218,
-      "down": 0.47,
+      "up": 0.101,
+      "left": 0.206,
+      "down": 0.471,
       "inside": true,
       "seconds": 1.283
     },
     "pass": {
       "up": 0.031,
       "left": 0.093,
-      "down": 0.402,
+      "down": 0.412,
       "inside": true,
       "seconds": 0.767
     },
     "snap": {
-      "up": 0.098,
-      "left": 0.224,
-      "down": 0.47,
+      "up": 0.101,
+      "left": 0.207,
+      "down": 0.471,
       "inside": true,
       "seconds": 0.633
     },
     "breakaway": {
       "up": -0.016,
       "left": 0.093,
-      "down": 0.41,
+      "down": 0.414,
       "inside": true,
       "seconds": 0.933
     },
     "around": {
-      "up": -0.035,
-      "left": 0.097,
-      "down": 0.444,
+      "up": -0.034,
+      "left": 0.111,
+      "down": 0.447,
       "inside": true,
       "seconds": 0.983
     },
     "aroundDouble": {
-      "up": -0.035,
-      "left": 0.097,
-      "down": 0.454,
+      "up": -0.034,
+      "left": 0.111,
+      "down": 0.456,
       "inside": true,
       "seconds": 1.483
     },
     "cradle": {
-      "up": 0.071,
+      "up": 0.072,
       "left": 0.111,
       "down": 0.497,
       "inside": true,
       "seconds": 2.133
     },
     "surfSleeper": {
-      "up": 0.096,
-      "left": 0.225,
+      "up": 0.099,
+      "left": 0.212,
       "down": 0.503,
       "inside": true,
       "seconds": 1.833
@@ -192,58 +192,58 @@
   },
   "lighter": {
     "flickOpen": {
-      "up": 0.053,
-      "left": 0.216,
-      "down": 0.37,
+      "up": 0.029,
+      "left": 0.232,
+      "down": 0.336,
       "inside": true,
       "seconds": 0.367
     },
     "strike": {
-      "up": 0.049,
-      "left": 0.217,
-      "down": 0.363,
+      "up": 0.025,
+      "left": 0.233,
+      "down": 0.329,
       "inside": true,
       "seconds": 0.583
     },
     "snapClose": {
-      "up": 0.099,
-      "left": 0.278,
-      "down": 0.355,
+      "up": 0.075,
+      "left": 0.296,
+      "down": 0.323,
       "inside": true,
       "seconds": 0.317
     },
     "lidFlick": {
-      "up": 0.054,
-      "left": 0.196,
-      "down": 0.381,
+      "up": 0.029,
+      "left": 0.208,
+      "down": 0.343,
       "inside": true,
       "seconds": 0.533
     },
     "twirl": {
-      "up": 0.05,
-      "left": 0.246,
-      "down": 0.352,
+      "up": 0.027,
+      "left": 0.266,
+      "down": 0.32,
       "inside": true,
       "seconds": 0.717
     },
     "tossOpen": {
-      "up": -0.133,
-      "left": 0.193,
-      "down": 0.387,
+      "up": -0.158,
+      "left": 0.21,
+      "down": 0.354,
       "inside": true,
       "seconds": 0.917
     },
     "finale": {
-      "up": 0.03,
-      "left": 0.217,
-      "down": 0.363,
+      "up": 0.007,
+      "left": 0.233,
+      "down": 0.329,
       "inside": true,
       "seconds": 2.033
     },
     "surfFlame": {
-      "up": -0.003,
-      "left": 0.225,
-      "down": 0.358,
+      "up": -0.028,
+      "left": 0.242,
+      "down": 0.325,
       "inside": true,
       "seconds": 1.833
     }
@@ -251,138 +251,138 @@
   "coin": {
     "knuckleRoll": {
       "up": 0.024,
-      "left": 0.304,
-      "down": 0.314,
+      "left": 0.297,
+      "down": 0.302,
       "inside": true,
       "seconds": 2.033
     },
     "roll": {
       "up": 0.026,
-      "left": 0.306,
-      "down": 0.313,
+      "left": 0.298,
+      "down": 0.3,
       "inside": true,
       "seconds": 0.817
     },
     "flip": {
-      "up": 0.07,
-      "left": 0.329,
-      "down": 0.304,
+      "up": 0.019,
+      "left": 0.308,
+      "down": 0.3,
       "inside": true,
       "seconds": 0.667
     },
     "highFlip": {
-      "up": -0.031,
-      "left": 0.33,
-      "down": 0.31,
+      "up": -0.08,
+      "left": 0.307,
+      "down": 0.306,
       "inside": true,
       "seconds": 1.2
     },
     "vanish": {
-      "up": 0.11,
-      "left": 0.306,
-      "down": 0.355,
+      "up": 0.083,
+      "left": 0.292,
+      "down": 0.331,
       "inside": true,
       "seconds": 1.45
     },
     "call": {
-      "up": 0.08,
-      "left": 0.331,
-      "down": 0.304,
+      "up": 0.028,
+      "left": 0.309,
+      "down": 0.3,
       "inside": true,
       "seconds": 0.85
     },
     "edgeSpin": {
-      "up": 0.054,
-      "left": 0.332,
-      "down": 0.336,
+      "up": 0.026,
+      "left": 0.302,
+      "down": 0.293,
       "inside": true,
       "seconds": 1.833
     }
   },
   "kendama": {
     "bigCup": {
-      "up": 0.046,
-      "left": 0.217,
-      "down": 0.551,
+      "up": -0.004,
+      "left": 0.161,
+      "down": 0.586,
       "inside": true,
       "seconds": 0.867
     },
     "smallCup": {
-      "up": -0.095,
-      "left": 0.242,
-      "down": 0.437,
+      "up": -0.161,
+      "left": 0.193,
+      "down": 0.46,
       "inside": true,
       "seconds": 0.867
     },
     "aroundJapan": {
-      "up": -0.091,
-      "left": 0.216,
-      "down": 0.457,
+      "up": -0.155,
+      "left": 0.16,
+      "down": 0.485,
       "inside": true,
       "seconds": 1.883
     },
     "spike": {
-      "up": -0.043,
-      "left": 0.277,
-      "down": 0.461,
+      "up": -0.103,
+      "left": 0.228,
+      "down": 0.485,
       "inside": true,
       "seconds": 1
     },
     "cupRide": {
-      "up": -0.035,
-      "left": 0.221,
-      "down": 0.523,
+      "up": -0.1,
+      "left": 0.164,
+      "down": 0.558,
       "inside": true,
       "seconds": 1.917
     }
   },
   "phone": {
     "scroll": {
-      "up": 0.154,
-      "left": 0.229,
-      "down": 0.403,
+      "up": 0.092,
+      "left": 0.236,
+      "down": 0.455,
       "inside": true,
       "seconds": 1.533
     },
     "tap": {
-      "up": 0.153,
-      "left": 0.23,
-      "down": 0.405,
+      "up": 0.09,
+      "left": 0.238,
+      "down": 0.46,
       "inside": true,
       "seconds": 0.617
     },
     "flipCatch": {
-      "up": 0.037,
-      "left": 0.226,
-      "down": 0.426,
+      "up": -0.025,
+      "left": 0.224,
+      "down": 0.479,
       "inside": true,
       "seconds": 0.817
     },
     "spinToss": {
-      "up": 0.008,
-      "left": 0.2,
-      "down": 0.433,
+      "up": -0.042,
+      "left": 0.191,
+      "down": 0.486,
       "inside": true,
       "seconds": 1.017
     },
     "buzz": {
-      "up": 0.152,
-      "left": 0.228,
-      "down": 0.404,
+      "up": 0.09,
+      "left": 0.235,
+      "down": 0.456,
       "inside": true,
       "seconds": 0.533
     },
     "photo": {
-      "up": 0.049,
-      "left": 0.202,
-      "down": 0.404,
+      "up": 0.012,
+      "left": 0.193,
+      "down": 0.455,
       "inside": true,
       "seconds": 2.233
     },
     "gimbal": {
-      "up": 0.149,
-      "left": 0.211,
-      "down": 0.41,
+      "up": 0.088,
+      "left": 0.203,
+      "down": 0.463,
       "inside": true,
       "seconds": 1.833
     }

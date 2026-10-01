@@ -849,9 +849,9 @@ function exitTiers(level: CompiledLevel, cfg: MovementConfig, r: DesignReport): 
   const hangs = stuck.filter((x) => !pit.containsPoint(x.end));
   const where = (xs: readonly AutoHopFail[]): string => [...new Set(xs.map((x) => `${f0(x.end.x)},${f0(x.end.y)},${f0(x.end.z)}`))].slice(0, 3).join('; ');
   if (deaths.length) r.errors.push(`Design: Ausfahrt-Rand (Versatz ${EXIT_EDGE.join('/')}) tödlich: ${deaths.length}/${edge.runs} Läufe (z. B. ${deaths.slice(0, 3).map((x) => x.text).join('; ')})`);
-  // Hänger in der Kerbe S0-Flanke/E1-Westwand (x ≈ 1200) sind ein Physik-Befund (fallen.md #98, Movement-Strang):
-  // keine Eingabe kommt heraus, nur F. Warnung mit dem dichten Zähler, bis die Wand-Tasche-Regel die Kerbe kennt.
-  if (hangs.length) r.warnings.push(`Design: Ausfahrt-Rand — ${hangs.length}/${edge.runs} Läufe (${EXIT_EDGE_STEP} u/s) hängen außerhalb der S0-Grube (bei ${where(hangs)}; Kerbe S0-Flanke/E1-Westwand, fallen.md #98)`);
+  // Hänger außerhalb der Grube sind ein Softlock: keine Eingabe kommt heraus, nur F. In der Kerbe S0-Flanke/E1-Westwand
+  // (x ≈ 1200) hingen 24/5676, bis das Sims (level2 buildS0Notch) den Knick zum Stand machte — seitdem 0, also Fehler.
+  if (hangs.length) r.errors.push(`Design: Ausfahrt-Rand — ${hangs.length}/${edge.runs} Läufe (${EXIT_EDGE_STEP} u/s) bleiben außerhalb der S0-Grube stecken (bei ${where(hangs)}; Knick Flanke + Wand, fallen.md #98/#156)`);
   if (!deaths.length) r.info.push(`Design: Ausfahrt-Rand ohne Tod — ${edge.runs} Läufe (Versatz bis ±${EXIT_EDGE[EXIT_EDGE.length - 1]}, ${EXIT_EDGE_STEP} u/s), ${edge.runs - edge.fails.length} bis CP3, ${inPit.length} in der S0-Grube, ${hangs.length} Hänger`);
 }
 

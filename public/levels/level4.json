@@ -12,7 +12,7 @@
     "root": "G",
     "bpm": 132
   },
-  "parTime": 29,
+  "parTime": 30,
   "environment": {
     "skyTop": "#050814",
     "skyHorizon": "#2a4a7a",
@@ -1747,10 +1747,10 @@
     "t8"
   ],
   "medals": {
-    "bronze": 28.7,
+    "bronze": 29.2,
     "silver": 27.3,
-    "gold": 26.2,
-    "velocity": 25,
-    "author": 23.76
+    "gold": 26.1,
+    "velocity": 24.9,
+    "author": 23.64
   }
 }

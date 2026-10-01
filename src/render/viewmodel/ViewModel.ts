@@ -612,12 +612,34 @@ export class ViewModel {
     setHexVec(st.color, view.stringColor);
   }
 
+  /**
+   * Nur Dev-Viewer (Plan 008, Griff-Audit): Kamera kreist um Gegenstand oder Hand — Seiten-/Unteransicht
+   * zeigt, ob ein Gegenstand wirklich in der Hand liegt (Kontakt, Durchdringung, Schweben). null = Spielkamera.
+   * yaw/pitch in rad um den Zielpunkt, dist in Hand-Einheiten.
+   */
+  debugOrbit: { yaw: number; pitch: number; dist: number; target: 'item' | 'hand' } | null = null;
+  private readonly orbitTmp = new Vector3();
+
   /** Nach der Welt ins aktuelle Render-Target: Tiefe leeren, Farbe behalten. */
   render(r: WebGLRenderer): void {
     const auto = r.autoClear;
     r.autoClear = false;
     r.clearDepth();
-    r.render(this.scene, this.camera);
+    const o = this.debugOrbit;
+    if (o) {
+      this.scene.updateMatrixWorld(true);
+      const t = this.orbitTmp;
+      if (o.target === 'item') this.socket.getWorldPosition(t);
+      else this.wrist.localToWorld(t.set(0, 6, -1));
+      const c = this.camera;
+      c.position.set(t.x + o.dist * Math.sin(o.yaw) * Math.cos(o.pitch), t.y + o.dist * Math.sin(o.pitch), t.z + o.dist * Math.cos(o.yaw) * Math.cos(o.pitch));
+      c.lookAt(t);
+      c.updateMatrixWorld(true);
+      r.render(this.scene, c);
+      c.position.set(0, 0, 0);
+      c.rotation.set(0, 0, 0);
+      c.updateMatrixWorld(true);
+    } else r.render(this.scene, this.camera);
     r.autoClear = auto;
   }
 

@@ -386,6 +386,12 @@ export class Game {
   private lessonEndIn = -1;
   private progressDirty = false;
   private tipSerial = 0;
+  /**
+   * tip.serial beim letzten Stufenwechsel (lessonStage, Überspringen, Lektion neu). Ein Tipp mit höchstens dieser
+   * Nummer gehört zur alten Stufe: fiel er in einem früheren Tick desselben Frames, zeigte updateLesson ihn NACH dem
+   * Verwerfen durch das HUD (Session zeigt im Abschluss-Tick selbst keinen Tipp mehr, siehe TrainingSession.tick).
+   */
+  private stageTipSerial = 0;
   private lessonResult: LessonResult | null = null;
   private showKeysSetting = true;
   /** Lektion mit TrainingDef.hud.forceKeys (beim Laden gesetzt). */
@@ -1022,6 +1028,7 @@ export class Game {
     // "GESCHAFFT!": kein Blitz, kein Akkord, keine Faust. onTick fängt je Überspringen genau ein Ereignis ab.
     this.skipPending++;
     s.skipStage();
+    this.stageTipSerial = s.tip.serial;
     // Das 'lessonStage' des Überspringens erreicht das HUD nicht — Tipp und Geschafft-Blitz der alten Stufe hier verwerfen.
     this.hud.lessonJump();
     this.respawn('manual');
@@ -1320,6 +1327,7 @@ export class Game {
     this.lessonResult = null;
     this.progressDirty = false;
     this.tipSerial = session ? session.tip.serial : 0;
+    this.stageTipSerial = this.tipSerial;
     this.movement.setWorld(world);
     this.run = new RunState(level);
     // Lektionen: keine Bestzeit, kein Ghost (Plan 007).
@@ -1504,6 +1512,7 @@ export class Game {
         this.progressDirty = true;
         this.startFlash(this.cpFlashRgb, FLASH_CP, FLASH_CP_TIME);
         const s = this.session;
+        if (s !== null) this.stageTipSerial = s.tip.serial;
         // Letzte Stufe geschafft → kurz feiern, dann das Ergebnis. Nach "bestanden" mit offenen
         // Bonus-/Meisterstufen geht es weiter (Enter zeigt das Ergebnis jederzeit).
         if (s !== null && s.hud.stageIndex >= s.hud.stageTotal) this.lessonEndIn = LESSON_RESULT_DELAY;
@@ -1875,13 +1884,14 @@ export class Game {
     }
     if (s.tip.serial !== this.tipSerial) {
       this.tipSerial = s.tip.serial;
+      const stale = s.tip.serial <= this.stageTipSerial;
       // Tipps der Lektion im Coach-Band; "[H]" zeigt die echte Vorführungs-Taste. Ist keine belegt,
       // entfällt ein Tipp, der auf sie verweist (er würde auf eine tote Taste zeigen). Selten: darf bauen.
       const text = s.tip.text;
       const refersDemo = text.includes('[H]');
       // Urteils-Tipps nur, wo Strafen bewertet wird ("W LOSLASSEN" in T2 LENKEN widersprach dem Stufentext).
       const off = s.tip.kind === 'verdict' && !this.lessonJudge;
-      if (!s.suspended && !off && !(refersDemo && this.demoKey === null)) {
+      if (!stale && !s.suspended && !off && !(refersDemo && this.demoKey === null)) {
         this.hud.showNotice(refersDemo && this.demoKey !== null && this.demoKey !== 'H' ? text.split('[H]').join(`[${this.demoKey}]`) : text, 'coach');
       }
     }
@@ -2007,6 +2017,7 @@ export class Game {
     // skipPending bleibt: restartLesson leert die Warteschlange der Session nicht — ein vorher übersprungenes
     // 'lessonStage' kommt trotzdem mit dem nächsten Tick und darf nicht gefeiert werden.
     s.restartLesson();
+    this.stageTipSerial = s.tip.serial;
     this.hud.lessonJump();
     const sp = s.respawnPoint();
     this.placeAt(sp.pos, sp.yaw);

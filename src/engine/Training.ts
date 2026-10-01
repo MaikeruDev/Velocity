@@ -495,10 +495,11 @@ export class TrainingSession implements TrainingSessionApi {
         if (judged) {
           const r = this.judge.last;
           const early = r.sideShare >= (t.minSideShare ?? COUNT_SIDE_SHARE);
-          let sideOk = true;
-          if (t.side === 'left') sideOk = r.side < 0;
-          else if (t.side === 'right') sideOk = r.side > 0;
-          else if (t.side === 'alternate') sideOk = r.side !== 0 && (this.lastSide === 0 || r.side === -this.lastSide);
+          // Seite = Taste UND Drehrichtung der Maus (StrafeJudge.turnSide): gemischte Hops zählen nur, wenn beide passen.
+          let sideOk = r.side === r.turnSide || t.side === 'any';
+          if (t.side === 'left') sideOk = sideOk && r.side < 0;
+          else if (t.side === 'right') sideOk = sideOk && r.side > 0;
+          else if (t.side === 'alternate') sideOk = sideOk && r.side !== 0 && (this.lastSide === 0 || r.side === -this.lastSide);
           if (r.verdict === 'good' && early && sideOk) {
             this.lastSide = r.side;
             counted = true;
@@ -506,7 +507,8 @@ export class TrainingSession implements TrainingSessionApi {
             finish = this.count >= t.count;
           } else if (r.verdict === 'good') {
             // Gelobt, aber ohne Pip: sagen, warum (sonst sieht der Anfänger "GUT" und keinen Fortschritt).
-            if (!sideOk && t.side === 'alternate' && r.side !== 0) miss = this.lastSide < 0 ? MISS_NEXT_RIGHT : MISS_NEXT_LEFT;
+            if (!sideOk && r.side !== r.turnSide && t.side !== 'any') miss = MISS_AGAINST;
+            else if (!sideOk && t.side === 'alternate' && r.side !== 0) miss = this.lastSide < 0 ? MISS_NEXT_RIGHT : MISS_NEXT_LEFT;
             else if (!sideOk && t.side === 'left') miss = MISS_LEFT;
             else if (!sideOk && t.side === 'right') miss = MISS_RIGHT;
             else if (!early) miss = MISS_EARLY;
@@ -1054,7 +1056,8 @@ const DUCK_LOOK_MIN = 48;
  * - route ohne style in einer Lektion OHNE Drehbalken (hud.turnBand; T1/T2/T6 lehren kein Strafen): 'jump' — W mit
  *   Sprint, Sprung an jedem `jump`-Knoten, bei `crouch` in der Luft ducken, vor einer niedrigen Decke ducken statt
  *   springen (T1 Tunnel: Sprint + C = Rutschen). Vorher strafte dort der RouteFollower mit A/D bis 640 u/s, während
- *   die Stufe "NORMAL SPRINGEN" bzw. "W HALTEN" sagte (Review rv-tc3).
+ *   die Stufe "NORMAL SPRINGEN" bzw. "W HALTEN" sagte (Review rv-tc3). Ist die Stufe ein Kurs in der Luft (T6 FLUSS):
+ *   'flow' — dieselbe Technik, aber die Hop-Phase geplant, nie länger als 0.2 s am Boden (FlowDemo).
  * - route sonst (Strafe-Lektion, T5): SteerDemo — die fehlerfreie Demo-Hand fliegt von Knoten zu Knoten wie ein Mensch,
  *   der das nächste Tor sieht: je Landung die Seite zum Ziel, A bzw. D die ganze Luft und die Maus mit (Rate aus der
  *   Kursabweichung, HAND_MODELS.demoLenker). Vorher der RouteFollower: A/D wechselte alle 0.03–0.1 s (Showkeys
@@ -1073,6 +1076,10 @@ export function createDemo(demo: DemoDef, level: CompiledLevel, cfg: MovementCon
   }
   const route = (level.def.route ?? []).slice(demo.from, demo.to + 1);
   const style = routeStyle(demo, level, route);
+  if (style === 'flow') {
+    const flow = new FlowDemo(route, cfg);
+    return { seconds: demo.seconds, next: (s) => flow.next(s) };
+  }
   if (style === 'walk' || style === 'hold' || style === 'jump') {
     // 'hold' lehrt Auto-Hop: ohne Auto-Hop (nur, wenn doch eine Spieler-Config durchschlägt) hüpft sie einmal —
     // frisch drücken je Landung hüpfte auf der Stelle ohne Anlauf (Info-Zeile in check.ts).
@@ -1134,7 +1141,7 @@ class SteerDemo {
 }
 
 /** Wer eine Vorführung spielt (createDemo). */
-export type DemoStyle = 'hand' | 'prestrafe' | 'surf' | 'route' | 'walk' | 'hold' | 'jump';
+export type DemoStyle = 'hand' | 'prestrafe' | 'surf' | 'route' | 'walk' | 'hold' | 'jump' | 'flow';
 
 /** Welcher Bot eine Vorführung spielt (wie createDemo entscheidet) — für Werkzeuge und Tests. */
 export function demoStyle(demo: DemoDef, level: CompiledLevel): DemoStyle {
@@ -1152,7 +1159,201 @@ function routeStyle(demo: Extract<DemoDef, { kind: 'route' }>, level: CompiledLe
   if (demo.style) return demo.style;
   if (surfAxis(route) !== null) return 'surf';
   // Ohne Drehbalken lehrt die Lektion kein Strafen (dieselbe Grenze wie die Urteile, hudLogic.stageJudges).
-  return level.def.training?.hud?.turnBand === true ? 'route' : 'jump';
+  if (level.def.training?.hud?.turnBand === true) return 'route';
+  // Kurs in der Luft ohne Strafen (T6 FLUSS): 'jump' läuft zwischen den Absprüngen am Boden — der Kurs begänne neu.
+  const st = level.def.training?.stages.find((s) => s.demo === demo);
+  return st !== undefined && st.task.kind === 'course' && st.task.airborne === true ? 'flow' : 'jump';
+}
+
+/**
+ * 'flow': Absprungfenster des Crouch-Jumps relativ zum Absprung-Knoten (u entlang der Fahrt, + = dahinter). T6: Knoten
+ * 140 vor der Wand → Absprung 170 … 80 u vor der Wand. Hochkommen geht 20–180, aber knapp vor der Wand streift die Hull
+ * sie (gemessen 41 u: Tempo kurz 0 → der Kurs beginnt neu, < 200 u/s). Raster FLOW_O_STEP.
+ */
+const FLOW_O_MIN = -30;
+const FLOW_O_MAX = 60;
+const FLOW_O_STEP = 15;
+/** 'flow': höchstens so lange (s) am Boden je Landung (T6 FLUSS erlaubt 0.25 am Stück). */
+const FLOW_WAIT_MAX = 0.2;
+/** 'flow': darunter (u/s) läuft sie erst an (Start aus dem Stand, vor dem Kurs). */
+const FLOW_RUN_SPEED = 300;
+/** 'flow': höchstens so viele Zwischenhops je Abschnitt (Suche). */
+const FLOW_MAX_HOPS = 3;
+
+/**
+ * Vorführung eines Kurses in der Luft ohne Strafen (T6 FLUSS, Review training-ui: Meisterstufe ohne Vorführung): W +
+ * Sprint, nie A/D, nie länger als FLOW_WAIT_MAX am Boden, an jedem Absprung-Knoten ein Crouch-Jump (C 0.1 s nach dem
+ * Absprung bis zur Landung). Die Hop-Phase wird GEPLANT: ein flacher Hop trägt v·T (T = 2·jumpImpulse/g), ein Crouch-Jump
+ * auf die Kante v·Tc (Füße +duckLift nach dem Ducken), je Landung darf sie bis v·FLOW_WAIT_MAX weiterlaufen. Mit festem
+ * Absprungpunkt geht das nicht auf (T6, 320 u/s: Landung oben → nächstes Ziel 437 u = 1 Hop + 196 u Laufen oder 2 Hops
+ * − 45 u) — der Absprungpunkt je Kante wandert im Fenster: 1 Hop braucht einen frühen Absprung an der nächsten Kante,
+ * 2 Hops einen späten. Je Bodenkontakt sucht sie (Tiefensuche über die restlichen Kanten, Raster FLOW_O_STEP)
+ * Zwischenhops und Absprungpunkt so, dass auch alle folgenden Abschnitte aufgehen; gelaufen wird gleichmäßig verteilt.
+ * Vor der ersten Landung (Anlauf vom Spawn) gilt keine Bodengrenze. Tick-Pfad ohne Allokation.
+ */
+class FlowDemo {
+  /** Index des nächsten Absprung-Knotens (jump) in der Route; ≥ Länge = keiner mehr (zum letzten Knoten laufen). */
+  private ti = 0;
+  private airT = D0;
+  private landed = false;
+  private duckJump = false;
+  /** Plan des laufenden Bodenkontakts: Zwischenhops und Absprungpunkt (u hinter dem Knoten). */
+  private planned = false;
+  private planN = 0;
+  private planO = D0;
+  /** Weg bis zum Knoten beim Planen und Laufweg (u) dieses Kontakts vor dem Zwischenhop. */
+  private planD = D0;
+  private planRun = D0;
+  /** Suche: Ergebnis der obersten Ebene. */
+  private bestN = 0;
+  private bestO = D0;
+  private readonly hopTime: number;
+  private readonly g: number;
+  private readonly vy0: number;
+  private readonly duckLift: number;
+  private readonly dt: number;
+  private readonly out = makeBotInput();
+
+  constructor(
+    private readonly route: readonly RouteNode[],
+    cfg: MovementConfig,
+  ) {
+    this.hopTime = (2 * cfg.jumpImpulse) / cfg.gravity;
+    this.g = cfg.gravity;
+    this.vy0 = cfg.jumpImpulse;
+    this.duckLift = cfg.hull.standHeight - cfg.hull.duckHeight;
+    this.dt = 1 / cfg.tickRate;
+    this.airT = 0;
+    this.planO = 0;
+    this.bestO = 0;
+    this.ti = this.nextJump(0);
+  }
+
+  private nextJump(from: number): number {
+    for (let i = from; i < this.route.length - 1; i++) if (this.route[i].jump === true) return i;
+    return this.route.length;
+  }
+
+  /** Luftzeit (s) eines Crouch-Jumps vom Knoten k auf die Höhe des Folgeknotens (Füße +duckLift nach dem Ducken). */
+  private crouchTime(k: number): number {
+    const h = this.route[k + 1].pos[1] - this.route[k].pos[1] - this.duckLift;
+    const disc = this.vy0 * this.vy0 - 2 * this.g * h;
+    return disc > 0 ? (this.vy0 + Math.sqrt(disc)) / this.g : this.hopTime;
+  }
+
+  /**
+   * Geht der Rest ab Absprung-Knoten k auf? `start` = Weg (u) vom Bodenpunkt bis zum Knoten k, `first` = Laufweg, der im
+   * ersten Kontakt noch erlaubt ist. `top` = oberste Ebene: deren Wahl landet in bestN/bestO.
+   */
+  private solve(k: number, start: number, first: number, v: number, top: boolean): boolean {
+    const hop = v * this.hopTime;
+    const run = v * FLOW_WAIT_MAX;
+    const kn = this.nextJump(k + 1);
+    const steps = (FLOW_O_MAX - FLOW_O_MIN) / FLOW_O_STEP;
+    for (let n = 0; n <= FLOW_MAX_HOPS; n++) {
+      for (let j = 0; j <= steps; j++) {
+        const o = FLOW_O_MIN + j * FLOW_O_STEP;
+        const rest = start + o - n * hop;
+        if (rest < 0 || rest > first + n * run) continue;
+        let ok = kn >= this.route.length;
+        if (!ok) {
+          const a = this.route[k].pos;
+          const b = this.route[kn].pos;
+          const gap = Math.sqrt((b[0] - a[0]) * (b[0] - a[0]) + (b[2] - a[2]) * (b[2] - a[2]));
+          ok = this.solve(kn, gap - o - v * this.crouchTime(k), run, v, false);
+        }
+        if (ok) {
+          if (top) {
+            this.bestN = n;
+            this.bestO = o;
+          }
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  next(s: PlayerSnapshot): PlayerInput {
+    const r = this.route;
+    const o = this.out;
+    const last = r.length - 1;
+    if (s.onGround) {
+      if (this.airT > 0) {
+        this.landed = true;
+        this.duckJump = false;
+        this.planned = false;
+      }
+      this.airT = 0;
+    } else {
+      this.airT += this.dt;
+      this.planned = false;
+    }
+    let jump = false;
+    let ax = 0;
+    let az = 0;
+    let done = false;
+    if (this.ti < r.length) {
+      const n = r[this.ti].pos;
+      const m = r[this.ti + 1].pos;
+      let ux = m[0] - n[0];
+      let uz = m[2] - n[2];
+      const ul = Math.sqrt(ux * ux + uz * uz) || 1;
+      ux /= ul;
+      uz /= ul;
+      ax = m[0] - s.pos.x;
+      az = m[2] - s.pos.z;
+      // Weg entlang der Absprungrichtung bis zum Knoten (negativ = schon dahinter).
+      const d = (n[0] - s.pos.x) * ux + (n[2] - s.pos.z) * uz;
+      const v = s.speed;
+      if (s.onGround && v >= FLOW_RUN_SPEED) {
+        if (!this.planned) {
+          this.planned = true;
+          const first = this.landed ? v * FLOW_WAIT_MAX : Number.POSITIVE_INFINITY;
+          if (this.solve(this.ti, d, first, v, true)) {
+            this.planN = this.bestN;
+            this.planO = this.bestO;
+          } else {
+            // Kein Plan (Tempo weit daneben): kürzester Weg, Absprung in der Mitte des Fensters.
+            this.planN = 0;
+            this.planO = (FLOW_O_MIN + FLOW_O_MAX) / 2;
+          }
+          this.planD = d;
+          this.planRun = (d + this.planO - this.planN * v * this.hopTime) / (this.planN + 1);
+        }
+        const rest = d + this.planO;
+        if (this.planN === 0) {
+          if (rest <= 0) {
+            jump = true;
+            this.duckJump = true;
+            this.ti = this.nextJump(this.ti + 1);
+          }
+        } else if (this.planD - d >= this.planRun) {
+          // Laufen gleichmäßig auf die n + 1 Kontakte verteilt: der Anteil dieses Kontakts ist gelaufen → Zwischenhop.
+          jump = true;
+        }
+      } else if (s.onGround && d + FLOW_O_MIN <= 0) {
+        // Anlauf aus dem Stand erreicht das Fenster, bevor das Tempo da ist: trotzdem hinauf.
+        jump = true;
+        this.duckJump = true;
+        this.ti = this.nextJump(this.ti + 1);
+      }
+    } else {
+      const t = r[last].pos;
+      ax = t[0] - s.pos.x;
+      az = t[2] - s.pos.z;
+      done = ax * ax + az * az <= PLAIN_REACH * PLAIN_REACH;
+    }
+    o.yaw = yawOf(ax, az);
+    o.pitch = 0;
+    o.forward = done ? 0 : 1;
+    o.side = 0;
+    o.sprint = true;
+    o.crouch = !s.onGround && this.duckJump && this.airT >= PLAIN_DUCK_AFTER;
+    o.jumpHeld = jump;
+    o.jumpPressed = jump;
+    return o;
+  }
 }
 
 /** Schlichte Vorführung: nächster Knoten gilt als erreicht unter so viel Abstand (u, waagrecht). */

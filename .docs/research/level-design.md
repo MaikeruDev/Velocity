@@ -20,7 +20,10 @@ levels:build && npm run levels:check` — die Level ziehen mit.
 ## Stand nach Plan 007 (Phase 3, 29.09.)
 
 Voller Build (`npm run levels:build`, Physik A1–A8) — `levels:check`: 13 Level (4 + Sandbox + 8 Lektionen),
-0 Fehler, 3 begründete Warnungen (L2-Kerbe, zwei T3-Judge-Quoten):
+0 Fehler, 3 begründete Warnungen (L2-Kerbe, zwei T3-Judge-Quoten). **Stand 01.10. (Medaillen-Runde, voller Build):**
+0 Fehler, 2 Warnungen (die zwei T3-Judge-Quoten, Lead-Abnahme), Selbsttest 35/35; Medaillen L1 33/28.9/26.1/19.8/18.81,
+L2 21.3/19.2/17.3/16.5/15.71, L3 16.6/14.6/12.6/12.1/11.44 (Par 17), L4 29.2/27.3/26.1/24.9/23.64 (Par 30) — Regel 10.
+Die Tabelle darunter ist der Stand vom 29.09.:
 
 | Level | Par | Bronze | Silber | Gold | VELOCITY | Autor | prepLessons |
 |---|---|---|---|---|---|---|---|
@@ -30,7 +33,8 @@ Voller Build (`npm run levels:build`, Physik A1–A8) — `levels:check`: 13 Lev
 | 04 TURM | 34 | 33.7 | 30.6 | 29.6 | 28.2 | 26.83 | T6, T7, T8 |
 
 - **Medaillen (Regel 10 neu):** Bronze/Silber = Median über **48 Seeds** (`build.ts MEDAL_SEEDS`, auf safeRoute,
-  falls vorhanden); Gold/VELOCITY/Autor = Median über 49 Start-Jitter. Mit 8 Seeds schaffte die Bronze-Hand
+  falls vorhanden); Gold/VELOCITY/Autor = Median über 49 Start-Jitter. **Seit der Medaillen-Runde (01.10.)** ein
+  Modell für alle Stufen (Hand je Stufe, Referenz mit derselben Hand, Staffel 4–20 %) — Regel 10 unten. Mit 8 Seeds schaffte die Bronze-Hand
   L3-Bronze nur in 21/48 Läufen (zwei Zeit-Moden auf Türkis, fallen.md #124). Alle vier Level fahren EINEN Zweig.
 - **Echtzeit** (`npm run playtest`, sync 1.0): L1 20.27 s, L2 15.73 s, L3 17.09 s, L4 26.35 s, je 0 Respawns,
   60 fps. Freischalt-Leiter über die Bot-Spielertypen (24 Seeds): 3 → 6 → 7 → 8 → 9 → 11 → 14, monoton.
@@ -48,9 +52,10 @@ Voller Build (`npm run levels:build`, Physik A1–A8) — `levels:check`: 13 Lev
   Banden, die Tod verhindern, ≥ 128 u bzw. sichtbar niedrig + Clip; Treppen mit 32–40-u-Setzstufen nur mit
   Auftritt ≥ Hop-Weite; Surf-Gehrungen ≤ 4° je Fuge; Proben dicht fahren (Fehlerzahl monoton auf 0), nicht an
   Glückspunkten parken; Gabeln mit safeRoute und Aussetzer-Risiko-Probe.
-- **Offen für den Lead / Playtest S6:** L1-Tempo für Langsame (Hand 3° 35.6 statt 32.5 s vor Plan 007; Silber →
-  Gold 11.1 s), L3-Gabel (innen für jeden, der die Kurve hält, schneller UND todesfrei), L4-K2-Anprall in den
-  Medaillen (~1.8 s), L2-Kerbe Surf-Flanke/Wand (Physik, 3/720 Hänger).
+- **Offen für den Lead / Playtest S6:** L1-Tempo für Langsame (Hand 3° 35.6 statt 32.5 s vor Plan 007),
+  L3-Gabel (innen für jeden, der die Kurve hält, schneller UND todesfrei), L4-K2-Anprall in den Medaillen (~0.5 s,
+  level4.md). Erledigt: L1 Silber → Gold (Medaillen-Runde: Gold 26.1 s für die 1°-Hand), L2-Kerbe Surf-Flanke/Wand
+  (Sims `s0Notch`, 0 Warnungen, fallen.md #188).
 
 ## Retuning auf Cap 24 + Kanten-Bevels (26.09.)
 
@@ -323,6 +328,57 @@ Strafe-Kurven ab Sprint (320 u/s), Tempo nach Hop 1/2/4/6/10/15/20:
    24.5/23.4/22.25 → **25.4/24.2/23.03 s** (zweigeteilt, Warnung), L2 17.5/16.7/15.86 → **17.9/17.1/16.2 s**;
    Bronze, Silber, Par gleich. **Phase 3 (29.09.):** alle Medaillen neu gebaut (Tabelle oben); Bronze/Silber
    jetzt Median über **48 Seeds** (`MEDAL_SEEDS`) statt der 8 Validator-Seeds (fallen.md #124).
+   **Einheitliches Medaillen-Modell (Medaillen-Runde, 01.10.; gilt, wo es dem Text oben widerspricht).** Vorher
+   zählte die Surf-Referenz nur für Gold/VELOCITY/Autor (L3), Bronze/Silber kamen vom RouteFollower, der an jedem
+   Surf-Drop 150–190 u/s verliert: L3 Silber 25.1 → Gold 12.8 s (× 1.96), die 3°-Hand holte über Koralle Silber.
+   L1 Silber 28.9 → Gold 20.7 s (40 %): die 1°-Hand (Median 24.8 s) erreichte den Neon-Handschuh nie. Jetzt:
+
+   | Stufe | Hand | Linie | Surf-Referenz | Aufschlag |
+   |---|---|---|---|---|
+   | Bronze | 3°-Hand, 48 Seeds | safeRoute | σ 3°, Blick 0° (T8 wörtlich) | × 1.05 |
+   | Silber | 2°-Hand, 48 Seeds | safeRoute | σ 2°, bester Blick | × 1.05 |
+   | Gold | die LEICHTERE von 1°-Hand (48 Seeds) × 1.05 und perfekt × 1.10 | route | σ 1° bzw. 0.5°, bester Blick | |
+   | VELOCITY | perfekt (sync 1.0, 49 Start-Jitter) | route | σ 0.5°, bester Blick | × 1.05 |
+   | Autor | perfekt | route | σ 0.5°, bester Blick | × 1 |
+
+   - **Je Modell zählt der schnellere Median aus RouteFollower und Referenz mit DERSELBEN Hand**
+     (`physics.surfSigma`: Rauschen der Referenz = aimNoiseDeg, AR(1) τ 0.15 s wie StrafeController). L3: Grundtechnik
+     vom Brett (route = Koralle x −160, safeRoute = Türkis x +160), L4: Hybrid (klettert als RouteFollower, surft ab
+     CP4). Freischalt-Leiter, Validator-Par und L3-Medaillen-Stichprobe rechnen genauso.
+   - **Gold = die leichtere von zwei Grenzen:** erreichbar für die 1°-Hand (L1 26.1 s, sie fährt 24.8 s) und nie enger
+     als 4.8 % über VELOCITY — auf L2 läge die 1°-Hand × 1.05 (16.9 s) 2 % über VELOCITY 16.5 s.
+   - **Blick je Stufe (nur L3, L4 fährt immer 0°):** Bronze surft wie gelehrt (0°): wer die Lektion wörtlich anwendet,
+     kommt durch (Türkis σ 3°: 15.78 s, 48/48 im Ziel). Ab Silber der beste Versatz aus −3…+1°, der ≥ 80 % der Läufe
+     ins Ziel bringt (`REFERENCE_FINISH`; ohne die Schwelle wählte der Median Koralle −3° bei 25/48 im Ziel). Mit bestem
+     Blick auch für Bronze trennte die Referenz 3°- und 2°-Hand nur um 2.6 % (14.20/13.84 s) — Surfen verzeiht Rauschen.
+   - **Perfekt surft mit σ 0.5°** (`PERFECT_SURF_SIGMA`, die beste Hand der Medaillen-Proben). Rauschfrei über die 49
+     Start-Jitter starben auf Koralle −2.5° 7/49, Median 11.75 s — langsamer als die 1°-Hand; mit σ 1° lag die 2°-Hand
+     (12.19 s) unter VELOCITY.
+   - **Staffel** (`build.staggerMedals`): jede Stufe ≥ **4 %** über der nächstbesseren (`MEDAL_MIN_STEP`), sonst wird
+     die LEICHTERE gelockert — das nimmt keiner Hand ihre Medaille. Unter 4 % ist die bessere Stufe kein eigenes Ziel:
+     Hand-Mediane streuen um 1–3 % (L4: 1.5°-Hand 26.07 s langsamer als 2°-Hand 25.91 s). Bronze → Silber und
+     Silber → Gold höchstens **20 %** (`MEDAL_MAX_STEP`, Warnung in build und levels:check): darüber hat die Gruppe
+     zwischen zwei Händen kein erreichbares nächstes Ziel. **Gold → VELOCITY ist ausgenommen**: VELOCITY ist die
+     Krone (perfekt + 5 %); der Abstand misst, wie viel Präzision das Level über der 1°-Hand belohnt.
+
+   Ergebnis (Median-Grundlage in Klammern; Abstände B→S / S→G / G→V / V→A):
+
+   | Level | Bronze | Silber | Gold | VELOCITY | Autor | Abstände |
+   |---|---|---|---|---|---|---|
+   | L1 | 33 (3° 31.41) | 28.9 (2° 27.50) | 26.1 (1° 24.81) | 19.8 | 18.81 | 14.2 / 10.7 / **31.8** / 5.3 % |
+   | L2 | 21.3 (20.21) | 19.2 (18.26) | 17.3 (perfekt 15.70 × 1.1) | 16.5 | 15.71 | 10.9 / 11.0 / 4.8 / 5.0 % |
+   | L3 | 16.6 (Türkis-Surfer 15.78) | 14.6 (13.84) | 12.6 (Surfer 11.44 × 1.1) | 12.1 | 11.44 | 13.7 / 15.9 / 4.1 / 5.8 % |
+   | L4 | 29.2 (Hybrid 27.77) | 27.3 (25.91) | 26.1 (1° 24.77) | 24.9 | 23.64 | 7.0 / 4.6 / 4.8 / 5.3 % |
+
+   Vorher L1 33/28.9/20.7/19.8/18.81, L3 27.3/25.1/12.8/12.2/11.6 (Par 28 → **17**), L4 28.7/27.3/26.2/25/23.76.
+   **L1 Gold → VELOCITY 31.8 %** ist der Median einer zweigeteilten Hand: die 1°-Hand fährt 15/48 Läufe in 20.0–20.6 s
+   und 33/48 in 24.5–27.8 s (Einbruch CP1 → CP3, ohne Tod; Crouch-Kanten-Lotterie, fallen.md #178). Wer eine saubere
+   Runde schafft, steht 1–4 % vor VELOCITY; die 0.75°-Hand fährt 47/48 in 19.5–20.4 s.
+   Freischalt-Leiter (48 Seeds, `unlock-ladder.ts`): **2 → 6 → 7 → 8 → 11 → 11 → 14**, monoton, jeder Typ unter
+   Top mit nächstem Ziel. 3°-Hand: Bronze überall (Münze), nicht mehr L3-Silber über Koralle. 1°-Hand: L1-Gold
+   (Neon-Handschuh) und Gold überall (Gold-Handschuh). 1.5°-Hand: L2-Gold genau auf der Grenze (17.30 s = 17.3).
+   Auf L3 trennt Surfen die Hände kaum: die 2°-Hand holt über Koralle Gold (12.19 s), die 1.5°-Hand VELOCITY (11.84 s)
+   — L3-VELOCITY schaltet allein nichts frei, die Katzenpfote braucht VELOCITY in allen vier Leveln.
 11. **Gabeln haben eine sichere Linie** (`LevelFile.safeRoute`, Plan 007): gleicher Start und gleiches
    Ziel wie `route`. Der Validator prüft beide Linien (Berichtszeilen `[route]`/`[safeRoute]`): Surf-Raster,
    Surf-Übergang bei 320 u/s und Respawn-Surfer sind auf safeRoute Fehler, auf route Warnung (die schnelle

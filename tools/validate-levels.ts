@@ -64,7 +64,7 @@ import type { MutablePlayerInput } from '../src/player/types';
 import { hasGlyph } from '../src/ui/glyphs';
 import { MIN_GROUND_NORMAL_Y } from '../src/world/collision/types';
 import { OVERSHOOT, PHYS, RESERVE, airTime } from './levels/ballistics';
-import { LEVELS } from './levels/build';
+import { LEVELS, MEDAL_MAX_STEP, MEDAL_MIN_STEP, medalSteps } from './levels/build';
 import { designProbes, type DesignReport } from './levels/designProbes';
 import { checkTrainingLevel } from './levels/training/check';
 import { isParallelogram } from '../src/render/trims';
@@ -1395,6 +1395,16 @@ export function validateLevel(file: string, def: LevelFile, opts: ValidateOption
     if (!vals.every((x) => Number.isFinite(x) && x > 0)) r.errors.push(`Medaillen ungültig: ${JSON.stringify(m)}`);
     else if (!(m.bronze > m.silver && m.silver > m.gold && m.gold > m.velocity && m.velocity >= m.author)) r.errors.push(`Medaillen nicht streng fallend (bronze > silver > gold > velocity ≥ author): ${JSON.stringify(m)}`);
     if (def.parTime !== undefined && def.parTime !== Math.ceil(m.bronze)) r.warnings.push(`Par ${def.parTime} s ≠ Bronze ${m.bronze} s aufgerundet`);
+    // Staffel (build.ts staggerMedals, level-design.md Regel 10): jede Stufe ≥ 4 % über der nächstbesseren; Bronze → Silber →
+    // Gold ≤ 20 %, sonst fehlt einer Spielergruppe das erreichbare nächste Ziel. Gold → VELOCITY nur als Zahl (die Krone).
+    const st = medalSteps(m);
+    const pct = (f: number): string => `${((f - 1) * 100).toFixed(1)} %`;
+    const stepText = `Bronze→Silber ${pct(st.bs)}, Silber→Gold ${pct(st.sg)}, Gold→VELOCITY ${pct(st.gv)}, VELOCITY→Autor ${pct(st.va)}`;
+    const tight = ([['Bronze→Silber', st.bs], ['Silber→Gold', st.sg], ['Gold→VELOCITY', st.gv]] as const).filter(([, f]) => f < MEDAL_MIN_STEP - 1e-9);
+    const wide = ([['Bronze→Silber', st.bs], ['Silber→Gold', st.sg]] as const).filter(([, f]) => f > MEDAL_MAX_STEP);
+    if (tight.length) r.errors.push(`Medaillen-Staffel unter ${pct(MEDAL_MIN_STEP)}: ${tight.map(([n]) => n).join(', ')} — ${stepText} (npm run levels:build)`);
+    else if (wide.length) r.warnings.push(`Medaillen-Staffel über ${pct(MEDAL_MAX_STEP)}: ${wide.map(([n]) => n).join(', ')} — ${stepText}`);
+    else r.info.push(`Medaillen-Staffel: ${stepText}`);
   } else if (route.length > 0 && !training) r.warnings.push('Keine Medaillen (npm run levels:build misst sie)');
 
   // Statistik
@@ -1426,15 +1436,21 @@ export function validateLevel(file: string, def: LevelFile, opts: ValidateOption
           (safeBots && safeBots.hand3Timed !== null ? `, mit Spiel-Uhr ${fmt(safeBots.hand3Timed, 1)} s (Bronze/Par)` : ''),
       );
     const par = def.parTime;
-    if (par !== undefined && bots.perfect !== null && par < bots.perfect) r.warnings.push(`Par ${par} s liegt unter der Zeit des perfekten Bots (${fmt(bots.perfect, 1)} s)`);
+    const refEntry = physics && par !== undefined ? LEVELS.find((e) => e.id === def.id) : undefined;
+    const ref = refEntry?.reference ? refEntry.reference() : null;
+    // Perfekt wie in build.ts: der schnellere aus RouteFollower und Referenz (L3: der Surfer ist 6 s schneller als der Bot).
+    const perfRuns = ref && par !== undefined && bots.perfect !== null && par < bots.perfect ? ref.runs(level, { sync: 1 }, 'route', true, FULL_RUN_SEEDS) : null;
+    const perfRef = perfRuns ? medianOf(perfRuns.runs) : null;
+    const perfect = bots.perfect === null ? null : perfRef === null ? bots.perfect : Math.min(bots.perfect, perfRef);
+    if (par !== undefined && perfect !== null && par < perfect)
+      r.warnings.push(`Par ${par} s liegt unter der Zeit des perfekten Bots (${fmt(perfect, 1)} s${perfRef !== null ? `, Referenz ${fmt(perfRef, 1)} s` : ''})`);
     // Par = Ansage für Gelegenheitsspieler (3°-Hand + ~5 %, build.ts, Spiel-Uhr): darunter unerreichbar, weit darüber bedeutungslos.
     // Mit Gabel misst build.ts Bronze auf der sicheren Linie — also auch hier.
     // Hat das Level eine Medaillen-Referenz (build.ts LEVELS[].reference, L4: Hybrid mit Surf-Grundtechnik), zählt wie
     // in build.ts die schnellere Technik der 3°-Hand.
     const h3bot = safeBots ? safeBots.hand3Timed : bots.hand3Timed;
-    const refEntry = physics && par !== undefined ? LEVELS.find((e) => e.id === def.id) : undefined;
-    const ref = refEntry?.reference ? refEntry.reference() : null;
-    const refRuns = ref ? ref.runs(safe ?? level, { aimNoiseDeg: 3 }, safe ? 'safeRoute' : 'route', false, FULL_RUN_SEEDS) : null;
+    // Wie Bronze in build.ts: surfend wie gelehrt (Blick 0°).
+    const refRuns = ref ? ref.runs(safe ?? level, { aimNoiseDeg: 3 }, safe ? 'safeRoute' : 'route', false, FULL_RUN_SEEDS, { look: 'lesson' }) : null;
     const h3ref = refRuns ? medianOf(refRuns.runs) : null;
     const h3 = h3bot === null ? h3ref : h3ref === null ? h3bot : Math.min(h3bot, h3ref);
     if (par !== undefined && h3 !== null && par < h3)

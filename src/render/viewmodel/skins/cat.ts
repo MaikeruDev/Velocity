@@ -27,6 +27,8 @@ import type { SkinFrameFx, SkinView, VmBuildCtx, VmRig } from '../vmBuild';
  * am Rand der Silhouette, die Fläche zur Kamera blieb glatt. Jetzt zwei versetzte Büschel-Reihen, deren Spitzen
  * Richtung Unterarm hängen (Ring.furDrop, Silhouette sägt entlang des Beins), und auf jeder Reihen-Kante eine
  * Zickzack-Linie je Pixel im Shader (RuffPattern, Schatten unter den Büscheln) — liest sich als Fell-Stulpe.
+ * Sechste Runde: die Zickzack-Linien in voller Streifenfarbe lasen sich mit der Tinte an den Zacken-Facetten als
+ * Schuppen/Tannenzapfen → Schatten nur halb (RuffPattern.mix 0.45); gezackte Kontur bleibt, Linien werden Haar-Striche.
  *
  * Krallen sind in die Endglied-Geometrie eingebacken (Vertex-Attribut aClaw) und fahren im Shader
  * aus (uClaw = skinFx: in Ruhe 0.3 = halb sichtbar, 1 = ganz draußen) — 0 zusätzliche Draw Calls.
@@ -83,6 +85,7 @@ const RUFF_PATTERN: RuffPattern = {
   teeth: LEG_SEG / 2,
   aspect: RUFF_ROWS[0].rz / RUFF_ROWS[0].rx,
   band: 0.3,
+  mix: 0.45,
 };
 
 /**

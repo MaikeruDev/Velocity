@@ -105,6 +105,9 @@ export interface LessonPauseInfo {
   showResult(): void;
 }
 
+/** Grundlagen-Lektionen, die das Ergebnis ohne Medaille anbietet (nach den prepLessons des Levels): Strafen, Tempo. */
+const TIP_LESSONS: readonly string[] = ['t3', 't4'];
+
 const STAR_ON = '★';
 const STAR_OFF = '☆';
 
@@ -376,8 +379,12 @@ export class Menu {
       case 'finish': {
         const r = this.finishResult;
         if (a === 'restart') this.emit('restart', undefined);
-        else if (a === 'confirm') this.emit(r?.hasNext ? 'nextLevel' : 'restart', undefined);
-        else if (a === 'pause') this.emit('toTitle', undefined);
+        else if (a === 'confirm') {
+          // Trainings-Tipp ist der Primärknopf: Enter führt dorthin, nicht ins nächste Level.
+          const tip = r ? this.trainingTip(r) : null;
+          if (tip) this.emit('play', { levelId: tip.id });
+          else this.emit(r?.hasNext ? 'nextLevel' : 'restart', undefined);
+        } else if (a === 'pause') this.emit('toTitle', undefined);
         return true;
       }
       case 'settings':
@@ -790,6 +797,26 @@ export class Menu {
     return `Empfohlen: ${open.map(short).join('/')}`;
   }
 
+  /**
+   * Trainings-Tipp im Ergebnis (E2E-Review v2final): Wer ein Level ohne jede Medaille beendet (auch die Bestzeit hat
+   * keine), bekommt die erste Lektion ohne Stern angeboten — erst die Vorbereitung des Levels (prepLessons, L3/L4),
+   * dann Air-Strafe und Speed. Ein Neuling mit W + Leertaste kam auf L1 in 50–58 s an (Bronze 33) und landete per
+   * Enter im nächsten Level; der einzige Hinweis aufs Training war ein Coach-Satz 5 s nach dem Start.
+   */
+  private trainingTip(r: FinishResult): TrainingIndexEntry | null {
+    const t = this.training;
+    if (!t?.playable || !r.medals) return null;
+    const best = r.isBest || r.previousBest === null ? r.time : Math.min(r.time, r.previousBest);
+    if (medalFor(best, r.medals) !== null) return null;
+    const prep = this.levels.find((l) => l.id === r.levelId)?.prepLessons ?? [];
+    const lessons = t.lessons();
+    for (const id of [...prep, ...TIP_LESSONS]) {
+      const e = lessons.find((l) => l.id === id);
+      if (e && t.stars(id) === 0) return e;
+    }
+    return null;
+  }
+
   /** Neuling: keine Bestzeit in irgendeinem Level und kein Trainingsfortschritt. */
   private isNewbie(): boolean {
     if (this.training?.started) return false;
@@ -1009,6 +1036,7 @@ export class Menu {
   // ------------------------------------------------------------------ Ergebnis
 
   private buildFinish(r: FinishResult): HTMLElement {
+    const tip = this.trainingTip(r);
     const stats = h('div', 'vel-stats');
     const bestNow = r.isBest ? r.time : r.previousBest;
     const bestDiff = r.previousBest !== null ? r.time - r.previousBest : null;
@@ -1042,6 +1070,7 @@ export class Menu {
         ),
       );
       if (dev) box.append(dev);
+      if (tip) box.append(h('div', 'vel-hint vel-train-tip', `Mehr Tempo: Training ${tip.short} · ${tip.name}`));
       stats.append(box);
     }
 
@@ -1070,9 +1099,12 @@ export class Menu {
     }
 
     // Letztes Level: "Nochmal" ist das Ziel (Primärknopf, Enter) statt eines ausgegrauten "Nächstes Level".
-    const next = r.hasNext ? this.btn('Nächstes Level', 'vel-btn--primary', () => this.emit('nextLevel', undefined), 'Enter') : null;
+    // Trainings-Tipp (ohne Medaille, Lektion ohne Stern): das Training ist der Primärknopf, der Rest bleibt erreichbar.
+    const train = tip ? this.btn(`Training ${tip.short}`, 'vel-btn--primary vel-train-go', () => this.emit('play', { levelId: tip.id }), 'Enter') : null;
+    if (train) train.dataset.lock = '1';
+    const next = r.hasNext ? this.btn('Nächstes Level', tip ? '' : 'vel-btn--primary', () => this.emit('nextLevel', undefined), tip ? undefined : 'Enter') : null;
     if (next) next.dataset.lock = '1';
-    const again = r.hasNext
+    const again = r.hasNext || tip
       ? this.btn('Nochmal', '', () => this.emit('restart', undefined), 'R')
       : this.btn('Nochmal', 'vel-btn--primary vel-again', () => this.emit('restart', undefined), 'Enter');
     again.dataset.lock = '1';
@@ -1096,6 +1128,7 @@ export class Menu {
       h(
         'div',
         'vel-row',
+        train,
         again,
         next,
         this.btn('Menü', '', () => this.emit('toTitle', undefined), 'Esc'),

@@ -66,11 +66,13 @@ npm test               # Vitest: Kollision + Movement + Bots
 npm run sim            # Movement-Sim: Bots vergleichen, Tuning-Report (-- --section arcade | -- --preset cs2)
 npm run levels:build   # tools/levels/*.ts → public/levels/*.json + index.json, Lektionen → public/levels/training/
                        #   (-- <id>|training|<Lektions-id>: nur diese Dateien, NIE index.json → danach ohne Filter bauen!)
-                       #   Medaillen: Bronze/Silber Median über 48 Seeds (safeRoute), Gold/VELOCITY/Autor über 49 Start-Jitter;
-                       #   L3/L4 zusätzlich Surf-Referenz (LevelEntry.reference): je Medaille zählt der schnellere Median
+                       #   Medaillen (Regel 10): Bronze 3°-Hand, Silber 2°-Hand (48 Seeds, safeRoute), Gold = max(1°-Hand × 1.05,
+                       #   perfekt × 1.1), VELOCITY/Autor perfekt (49 Start-Jitter); je Modell der schnellere Median aus
+                       #   RouteFollower und Surf-Referenz MIT DERSELBEN HAND (L3/L4); Staffel ≥ 4 % je Stufe (staggerMedals)
 npm run levels:check   # Level + Lektionen validieren (statisch, Bot-Durchläufe, Raster, Design-Proben, Selbsttest; ~3 min)
                        #   (-- <id>|<datei>|training: auch Level außerhalb des Index; jedes Argument muss treffen)
-npm run shot           # Hero-Shots aus dem echten Spiel + Ablauf-Checks (eigener Server, Port 5190, SHOT_PORT=…)
+npm run shot           # Hero-Shots aus dem echten Spiel + Ablauf-Checks (eigener Server, Port 5190, SHOT_PORT=…; -- --check nur Checks)
+                       #   inkl. Kanten-Assist live (L1-Crouch-Kante, mit/ohne Assist) und Trainings-Tipp im Ergebnis ohne Medaille
 npm run playtest       # Bot spielt L1–L4 + Sandbox in Echtzeit im Browser → shots/playtest/report.json (Port 5191, PLAYTEST_PORT=…)
 node tools/training-shots.mjs [tN …]    # Trainingsmodus im Spiel: Lektionen, Vorführung, Tore, HUD (erzwungenes Layout 216/270/360 Zeilen,
                        #   Stufenwechsel, Neuling ohne Anlauf), Admin-Sterne → shots/training/ (Port 5348, TRAIN_PORT=…; TRAIN_LESSONS=<dir>)
@@ -80,7 +82,7 @@ npx tsx tools/cosmetics/envelope.ts [item]    # Bild-Hülle der Tricks (Exit 1 b
 npx tsx tools/cosmetics/event-probe.ts [--levels l1,… --seeds N]  # Trick-Takt je Gegenstand auf L1–L4 → shots/v2/kosmetik/
                        #   (Exit 1 bei Verstoß gegen Plan-007-Grenzen; ohne Filter laufen lassen, sonst schreibt sie nur die gewählten Items)
 npx tsx tools/cosmetics/rope-hang.ts    # Schnur framerate-unabhängig (Pendel-Abweichung je Framerate, px)
-npx tsx tools/cosmetics/unlock-ladder.ts [--seeds N]  # Freischalt-Leiter über Bot-Spielertypen mit den gebauten Medaillen (Default 24 Seeds)
+npx tsx tools/cosmetics/unlock-ladder.ts [--seeds N]  # Freischalt-Leiter über Bot-Spielertypen mit den gebauten Medaillen (Default 48 = MEDAL_SEEDS)
 node tools/alloc-probe.mjs [level] [s]  # Heap-Sampling im echten Spiel (Port 5199, ALLOC_PORT=…; --warmup 60 = Dauerbetrieb, fallen.md #65)
 node tools/ghost-check.mjs [level]      # Ghost der Bestzeit: Bot gegen eigenen Ghost (Port 5232, GHOST_PORT=…)
 npm run audio:check    # Musik offline rendern + spektral prüfen
@@ -88,6 +90,12 @@ node tools/viewmodel-shots.mjs [filter] # 3D-View-Hand im Spiel → shots/viewmo
                        #   finish: Ergebnis ohne Handy (kein Foto) und mit Handy (HUD-Stempel FOTO, Polaroid finish-phone.png)
 node tools/admin-shots.mjs              # Admin-Menü: Screenshots + Ablauf-Checks (Sperren überleben Neuladen, Medaille setzen, Ghost weg) → shots/admin/ (Port 5290, ADMIN_PORT=…)
 node tools/viewmodel-sheet.mjs <spec.json> <out.png>  # Viewmodel-Kacheln ohne Spiel über dev/viewmodel.html (Posen, Griffe, festgehaltene Tricks; Port 5282, VMSHEET_PORT=…)
+                       #   Zellen: view {yaw, pitch, dist, target} = Orbit-Kamera (Seiten-/Unteransicht), live.play = Trick frei bis `at`
+node tools/hand-audit.mjs <out> rest|skins|tricks|knife|all [item …]   # Plan 008: Griff-Kontaktblätter (Spielbild + 6 Winkel, alle Skins) und
+                       #   Zeitlupen-Blätter (trick <item> <trick> [s] [open]); Port 5500 (VMSHEET_PORT=…). Live: dev/viewmodel.html?live&item=knife&trick=open&speed=0.25
+npx tsx tools/hand-contact.ts [item] [--glove g]      # Griff in Zahlen: Abstand je Handteil (Durchdringung/Kontakt/Schweben)
+npx tsx tools/hand-grips.ts <item> [--from|--open|--to pose] [--mask 31] [--pos|--view …]  # Griff-Pose mit Finger-Kontakt backen
+npx tsx tools/knife-tune.ts open|close [--iters N] [--seed s] [--probe p…]  # Butterfly: Handgelenk-Flick per Physik-Suche
 npx tsx tools/levels/medalProbe.ts      # Spiel-Uhr-Median mehrerer Bot-Modelle je Level (Grundlage der Medaillen)
 npm run build
 ```
@@ -424,6 +432,14 @@ Plan 007 Review-Fixrunden + Integration (Phase 2/3, 29.09.) — alle Nutzer nach
   ersten Boden-/Flankenkontakt nach CP4 mit der Grundtechnik; alle Medaillen). validate-levels (Par gegen 3°-Hand)
   und unlock-ladder rechnen genauso (fallen.md #163). Wächter: L3 `medalsVsHuman` (Warnung, wenn die Grundtechnik den
   Autor um > 3 % unterbietet oder Türkis VELOCITY schafft), L4 `surfMedal` (Test "Medaillen-Wächter").
+  **Medaillen-Runde (01.10.)** — ein Modell für alle Stufen (level-design.md Regel 10, Plan 007 §10), alle Nutzer
+  (build, validate-levels, unlock-ladder, `probes/level3.medalSample`) nachgezogen: `MedalReference.runs(…, seeds,
+  opts?: ReferenceOptions)` mit `{ cfg?, look?: SurfLook }` ('lesson' = Blick 0° für Bronze, 'best' sonst) statt `cfg`
+  an 6. Stelle; `physics.surfSigma(model)` (Hand = aimNoiseDeg, perfekt `PERFECT_SURF_SIGMA` 0.5°); L3-Referenz für
+  JEDES Modell (route = Koralle, safeRoute = Türkis, `bestLook`, `REFERENCE_FINISH` 0.8); L4 `hybridRace(…, riderSigma)`
+  (exportiert, Surfer = `HumanSurfer` aus probes/level3); `build.MEDAL_MIN_STEP` 1.04, `MEDAL_MAX_STEP` 1.2,
+  `staggerMedals`, `medalSteps`; validate-levels prüft die Staffel (Fehler < 4 %, Warnung Bronze→Silber/Silber→Gold
+  > 20 %) und Par gegen den perfekten Bot mit Referenz.
 - **Training (engine)**: `StrafeJudge` urteilt die Technik vor dem Gewinn (ohne A/D bzw. Maus gegen die Taste nie
   'good'), misst Surf-Abschnitte nicht, `BAND_LO` 60 °/s. `TrainingSession`: Urteils-/Erklär-Tipps nur, wenn
   `turnBand() ≠ null`; in Strafe-Lektionen zählen speed (ohne ground) und course nur mit A/D (≥ 25 % des Luftabschnitts,
@@ -447,6 +463,17 @@ Plan 007 Review-Fixrunden + Integration (Phase 2/3, 29.09.) — alle Nutzer nach
   `HumanSurfer`/`humanCtx`/`humanRun` (Mensch-Band, 584 Läufe), `bankGlide`; L4-Proben `dropIn` → {spawn, approach},
   `descentAxis`, `duckMarkJumps` (zweistufiges Absprungband), `lanePath`, `surfMedal`. Lektions-Werkzeug:
   `check.runDemo` → `sideTicks`/`maxSpeed`, `demoTeachesStage`/`DEMO_PLAIN_MAX`, `probes.DIAGNOSES[].strict`.
+
+Hand-Overhaul Schritt 1 (Plan 008, 01.10.) — alle Nutzer nachgezogen, tsc 0, Vitest 651/651:
+- **Renderer** (`render/types`): neu `VM_KNIFE` (Butterfly-Maße: Griffe, zwei Stifte im Abstand `pinGap` am Klingen-Tang,
+  Klinge) und `VM_PARAM.knife = { latch }` (Riegel 0..1). `items/knife` baut Tang und Riegel (Klinge, Spitze, Tang in einer
+  Geometrie; Gruppen `knifeBlade`/`knifeBite` benannt für Werkzeuge). `ViewModel.debugOrbit` (nur Dev-Viewer: Orbit-Kamera).
+- **UI** (kein Vertrag): `PropOut.jointAdd` (Gelenk-Versatz auf die Pose: Handgelenk-Flick, Finger-Kontakt; × motionFx, im
+  Abbruch-Überblenden), neue Posen `spin`, `balisong`, `lighter`, `ken`, `flick`, `yoyo`, `roll` (hinten angehängt; geändert:
+  `grip`, `pinch`, `crack`, `phone`, `phoneTap`). Fundament `ui/hand/{curves,secondary,rigid,chain,knifeRig,handShape,
+  propShape,propShapes,fingerContact}.ts` (API: `.docs/plans/008`). Haltelagen neu: Dose, Karte, Spinner, Münze, Feuerzeug,
+  Kendama (Ken 1.5×, Kugel r 2.5), Handy (×1.45), Messer (Kniff am Safe-Handle-Ende, Physik statt Zeitleiste).
+- **Tests/Werkzeuge**: `tests/handFoundation.test.ts`; `tools/lib/{handContact,handLive}.ts`; vm-hash-Baseline bewusst neu.
 
 ### 3.5 Musik folgt dem Movement
 Der Techno-Track (132 BPM) ist aus Oszillatoren und Rauschen gebaut. Er bekommt

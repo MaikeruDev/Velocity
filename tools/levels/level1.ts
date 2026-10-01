@@ -28,7 +28,8 @@
  * flüssig): vier Inseln (SL_N), ein Tor vor der Rutsche sperrt die Gerade der
  * Gegenspalte, flache Zungen an den Innenecken statt der 32°-Nase (außer an der
  * Phasen-Insel) — Hände 1°–3° 1.1–2.6 s schneller, Tempo-Einbrüche im Slalom
- * ~80 % weniger, perfekter Bot 19.5 → 18.8 s, über die Balken 17.7 s.
+ * ~80 % weniger, perfekter Bot 19.5 → 18.8 s, über die Balken 17.7 s. Viertes Review: flache Lippe vor Insel 1
+ * (kein Anprall an ihrer Stirn nach einem zu kurzen Hop von der Wende).
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -669,6 +670,10 @@ function layout(m: Probe, final: boolean): LevelFile {
    * In dieser Spalte führt die Gerade legal in die Rutsche; Wende → Phasen-Insel → letzte Insel verlangt bei
    * EINEM Tempo zwei unvereinbare Weiten (die Wende legt fest, wo man auf der Phasen-Insel landet), und wer die
    * Nase trifft, springt mit ~55 % Tempo ab — die Gerade reißt. Die andere Spalte sperrt das Tor vor der Rutsche.
+   * Die Nase kostet Hände ~40 % ihrer Einbrüche, fängt aber auch, wer von der Wende mittig über die Spaltenfuge
+   * hüpft (der Anprall wirft ihn hoch, er kommt weiter). Viertes Review: Sperr-Finne in der Gegenspalte + Zunge an
+   * der Phasen-Insel, oder 16/20/25°-Nase — Einbrüche Hand 1.5°/2° fast 0, aber ab CP3-Stand (nach jedem Respawn)
+   * Tode Hand 2°/3° 2/1 → 4–13/6–9 von 96; verworfen.
    */
   let phaseIsland = 1;
   while (colOf(phaseIsland) !== lastCol) phaseIsland++;
@@ -705,6 +710,15 @@ function layout(m: Probe, final: boolean): LevelFile {
         const tl = SL_TONGUE_D / Math.tan((SL_TONGUE_DEG * Math.PI) / 180);
         L.ramp(G, [su - tl, su], span(inner, split), 192 - SL_TONGUE_D, 192, { ...style, tag: `slalom${k + 1}Tongue`, thick: SL_NOSE_H - SL_TONGUE_D });
       }
+    } else {
+      // Insel 1: flache Lippe (SL_TONGUE_DEG) über die 48-u-Lücke zur Wende. Ein knapp zu kurzer Hop von der Wende
+      // kam 1–2 u unter der Oberkante an die Stirn (533 → 11 u/s, Tod "nach turn"); auf der Lippe landet er.
+      // Gemessen (96 Seeds, Hände 1.5°/2°/3°): Tode 5 → 3 (die "turn"-Tode entfallen), Einbrüche je Lauf
+      // 91/121/153 → 73/120/138 u/s, Lenkprobe 0/7020, CP3-Stand-Starts unverändert. Eine 32°-Nase hier war
+      // schlechter (Hand 1° Ø 0 → 63 u/s: sie trifft der steigende Hop von der Wende). 1 u Abstand zur Wende
+      // (keine koplanare Stirn).
+      const drop = (SL_GAP - 1) * Math.tan((SL_TONGUE_DEG * Math.PI) / 180);
+      L.ramp(G, [su - SL_GAP + 1, su], [sv - SL_W / 2, sv + SL_W / 2], 192 - drop, 192, { ...style, tag: 'slalom1Lip', thick: SL_NOSE_H - drop });
     }
     su += slPitch(k);
   }
