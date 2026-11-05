@@ -8,3 +8,13 @@ shots/*
 tools/out
 .tmp-ui
 .claude/settings.local.json
+# Trailer-Footage (tools/trailer): MP4s + Frames, groß
+media/footage/
+# Lokale Umgebung (Supabase-URL/Keys) — nie committen
+.env.local
+.env.*.local
+# Trailer-Ausgaben (groß, reproduzierbar über tools/trailer)
+media/*.mp4
+media/audio/
+media/trailer_check/
+media/trailer_contact*.png

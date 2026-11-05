@@ -4,6 +4,7 @@ import { isBindableCode } from './InputState';
 import type { RenderSettings } from '../render/types';
 import { MOVEMENT_PRESETS, withMovement } from '../player/MovementConfig';
 import type { MovementConfig, MovementPresetId } from '../player/MovementConfig';
+import { sanitizeName } from '../online/types';
 
 /**
  * Persistenz für Einstellungen und Bestzeiten. localStorage kann fehlen oder
@@ -301,6 +302,8 @@ export function sanitizeSettings(raw: unknown, base: GameSettings): GameSettings
     heldItem: oneOf<HeldItemId>(o.heldItem, HELD_ITEM_IDS, base.heldItem),
     ghost: bool(o.ghost, base.ghost),
     fullscreenOnStart: bool(o.fullscreenOnStart, base.fullscreenOnStart),
+    // Fehlt in Ständen vor Plan 009 → '' (automatischer Name).
+    playerName: typeof o.playerName === 'string' ? sanitizeName(o.playerName) : base.playerName,
     keybinds: sanitizeKeybinds(o.keybinds, base.keybinds),
     render: {
       pixelHeight,

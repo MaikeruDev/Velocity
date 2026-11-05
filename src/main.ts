@@ -5,6 +5,7 @@ import { Game } from './engine/Game';
 import { InputManager } from './engine/Input';
 import { BestTimes, SettingsStore, movementConfigFor } from './engine/Settings';
 import { UnlockStore } from './engine/Unlocks';
+import { createOnlineService, onlineBackend } from './online';
 import { PS2Renderer } from './render/PS2Renderer';
 import { Hud } from './ui/Hud';
 import { Menu } from './ui/Menu';
@@ -15,6 +16,7 @@ import { TuningPanel } from './ui/TuningPanel';
  *   ?level=<id>   startet das Level direkt (Dev; ohne Geste erst Pause → "Weiter")
  *   &lockless     dabei ohne Pointer Lock spielen (Playwright)
  *   ?debug        FPS-Anzeige + Event-Log ab Start
+ *   ?online=off|mock|firebase   Online-Schicht (Plan 009) statt VITE_ONLINE (Default mock)
  */
 
 const TOAST_MS = 6000;
@@ -90,6 +92,13 @@ async function main(): Promise<void> {
   const menu = new Menu(byId('menu-root'), settings, best, unlocks);
   const tuning = new TuningPanel(settings, movementConfigFor(settings.get()));
 
+  const q = new URLSearchParams(location.search);
+  // Online-Schicht (Plan 009). Die Prüfung braucht kompilierte Level — aus dem Cache des Spiels (spät gebunden).
+  let gameRef: Game | null = null;
+  const online = createOnlineService(onlineBackend(q.get('online')), {
+    loadLevel: (id) => (gameRef ? gameRef.levelById(id) : Promise.reject(new Error('Spiel startet noch'))),
+  });
+
   const game = new Game({
     canvas,
     renderer,
@@ -103,9 +112,10 @@ async function main(): Promise<void> {
     tuning,
     notify: makeToast(byId('vel-toast')),
     baseUrl: import.meta.env.BASE_URL,
+    online,
   });
+  gameRef = game;
 
-  const q = new URLSearchParams(location.search);
   const debug = q.has('debug');
   installDebug({ game, audio, settings, unlocks, record: debug });
   if (debug) installFpsOverlay(game, byId('vel-debug'));

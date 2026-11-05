@@ -1,6 +1,7 @@
 import { Vector3 } from 'three';
 import type { CollisionWorld, TraceResult } from '../world/collision/types';
 import { DIST_EPSILON, MIN_GROUND_NORMAL_Y, makeTraceResult } from '../world/collision/types';
+import { datan2, dcos, dhypot, dsin } from './detMath';
 import { airSpeedCapAt, type MovementConfig } from './MovementConfig';
 import type { MovementEvent, MutablePlayerSnapshot, PlayerInput, PlayerSnapshot } from './types';
 
@@ -157,7 +158,9 @@ function clamp(v: number, lo: number, hi: number): number {
 
 /**
  * Horizontale Länge für die Arcade-Pfade. Nicht Math.hypot: V8 inlinet es nicht, jeder Aufruf boxt das
- * Ergebnis als Heap-Zahl (gemessen +200 B/Tick Müll). Die Source-Pfade behalten hypot (bitgleich zu CS2).
+ * Ergebnis als Heap-Zahl (gemessen +200 B/Tick Müll). Die Source-Pfade behalten hypot (bitgleich zu CS2) —
+ * als `dhypot` (detMath): Winkel und hypot laufen über deterministische Ports, damit Replays in jeder
+ * Engine gleich nachgespielt werden (Plan 009; Node und Chrome rechnen Math.sin verschieden).
  */
 function hLen(x: number, z: number): number {
   return Math.sqrt(x * x + z * z);
@@ -178,17 +181,17 @@ function opposesFlight(n: Vector3, v: Vector3): boolean {
 function turnTowardYaw(v: Vector3, yaw: number, maxRad: number): number {
   const sp = hLen(v.x, v.z);
   if (sp < 1e-3 || !(maxRad > 0)) return 0;
-  const fx = -Math.sin(yaw);
-  const fz = -Math.cos(yaw);
+  const fx = -dsin(yaw);
+  const fz = -dcos(yaw);
   if (fx * v.x + fz * v.z <= 0) return 0;
-  let d = Math.atan2(fx, fz) - Math.atan2(v.x, v.z);
+  let d = datan2(fx, fz) - datan2(v.x, v.z);
   if (d > Math.PI) d -= 2 * Math.PI;
   else if (d < -Math.PI) d += 2 * Math.PI;
   const step = clamp(d, -maxRad, maxRad);
   if (step === 0) return 0;
-  const a = Math.atan2(v.x, v.z) + step;
-  v.x = Math.sin(a) * sp;
-  v.z = Math.cos(a) * sp;
+  const a = datan2(v.x, v.z) + step;
+  v.x = dsin(a) * sp;
+  v.z = dcos(a) * sp;
   return Math.abs(step);
 }
 
@@ -505,7 +508,7 @@ export class PlayerMovement {
     this.stuckRetryTick = 0;
     if (this.world.testBox(s.pos, this.mins, this.maxs)) this.unstick();
     this.categorize(false, false);
-    s.speed = Math.hypot(s.vel.x, s.vel.z);
+    s.speed = dhypot(s.vel.x, s.vel.z);
     this.invalidStreak = 0;
     this.saveValid();
   }
@@ -560,7 +563,7 @@ export class PlayerMovement {
       const z0 = s.pos.z;
       this.walkMove(this.wishdir, wishspeed);
       // Rutschen hat keine Schritte (kein Head-Bob, keine Schritt-Events).
-      if (!this.slideOn) this.advanceStride(Math.hypot(s.pos.x - x0, s.pos.z - z0));
+      if (!this.slideOn) this.advanceStride(dhypot(s.pos.x - x0, s.pos.z - z0));
     } else {
       this.airMove(this.wishdir, wishspeed);
     }
@@ -597,7 +600,7 @@ export class PlayerMovement {
     this.steepAgo = s.surfing || this.steepBelow || this.surfTouch ? 0 : this.steepAgo + this.dt;
     this.updateSurf();
     this.pushSync(this.syncSample);
-    s.speed = Math.hypot(s.vel.x, s.vel.z);
+    s.speed = dhypot(s.vel.x, s.vel.z);
     // Gestundeter Hang-Verlust verfällt, soweit das Tempo aufs Lauftempo fällt (Reibung, Wand).
     if (this.slopeDebt > 0) this.slopeDebt = Math.min(this.slopeDebt, Math.max(0, s.speed - this.maxGroundSpeed()));
 
@@ -629,8 +632,8 @@ export class PlayerMovement {
    * Luftphysik (Surf-Druck, Luftbremse) soll nicht an einer Bodentaste hängen.
    */
   private computeWish(): void {
-    const sy = Math.sin(this.inYaw);
-    const cy = Math.cos(this.inYaw);
+    const sy = dsin(this.inYaw);
+    const cy = dcos(this.inYaw);
     // Strafe-Assist (Abweichung, movement-tuning.md): in der Luft zählt W/S nicht,
     // solange A/D gedrückt ist — W dreht die wishdir zur Flugrichtung und frisst
     // zwei Drittel des Gewinns. Auch beim Surfen: dort nahm W+A sonst jeden Druck
@@ -639,7 +642,7 @@ export class PlayerMovement {
     // forward = (-sin, 0, -cos), right = (cos, 0, -sin)
     let wx = -sy * fwd + cy * this.inSide;
     let wz = -cy * fwd - sy * this.inSide;
-    const len = Math.hypot(wx, wz);
+    const len = dhypot(wx, wz);
     if (len < 1e-6) {
       this.wishdir.set(0, 0, 0);
       this.wishspeed = 0;
@@ -775,7 +778,7 @@ export class PlayerMovement {
   private doJump(coyote: boolean): void {
     const s = this.s;
     const cfg = this.cfg;
-    const speed = Math.hypot(s.vel.x, s.vel.z);
+    const speed = dhypot(s.vel.x, s.vel.z);
     const perfect = !coyote && this.frictionTicks === 0;
     // Verlustfrei: jeder Bodentick davor lag in der Lande-Gnade (keine Reibung).
     const clean = perfect || (!coyote && this.graceArmed && this.frictionTicks <= this.graceTicks);
@@ -898,7 +901,7 @@ export class PlayerMovement {
     this.lastAirSync = this.airStrafeTicks > 0 ? this.airGainTicks / this.airStrafeTicks : 0;
     const e = this.landPool.next();
     e.impact = Math.max(0, -preMoveVelY);
-    e.speed = Math.hypot(s.vel.x, s.vel.z);
+    e.speed = dhypot(s.vel.x, s.vel.z);
     e.airTime = s.airTime + this.dt;
     this.landAirTime = e.airTime;
     // Nur echte Luftphasen: Treppen-Holpern und Kanten-Abrollen bekommen keine reibungsfreie Zeit.
@@ -1003,8 +1006,8 @@ export class PlayerMovement {
     if (this.inForward === 0 && this.inSide === 0) return true;
     if (groundTicks * this.dt >= cfg.autoHopGroundTime - 1e-9) return true;
     const v = this.s.vel;
-    const speed = Math.hypot(v.x, v.z);
-    const wish = this.groundWishSpeed(Math.hypot(this.inForward, this.inSide));
+    const speed = dhypot(v.x, v.z);
+    const wish = this.groundWishSpeed(dhypot(this.inForward, this.inSide));
     if (this.inSide !== 0 && groundTicks <= 1 && this.landAirTime >= cfg.autoHopLandAirTime - 1e-9 && speed >= cfg.autoHopLandShare * wish) return true;
     return speed >= cfg.autoHopSpeedShare * wish;
   }
@@ -1051,7 +1054,7 @@ export class PlayerMovement {
     // Schub — nur in freier Luft. An Surf-Flanken gilt der Basis-Cap: Halten/Klettern ist auf
     // ihn abgestimmt (fallen.md #28), mit 32 drückte man langsam zu stark in die Rampe.
     const surf = this.steepBelow || this.s.surfing;
-    const wishspd = Math.min(wishspeed, surf ? this.cfg.airSpeedCap : airSpeedCapAt(this.cfg, Math.hypot(v.x, v.z)));
+    const wishspd = Math.min(wishspeed, surf ? this.cfg.airSpeedCap : airSpeedCapAt(this.cfg, dhypot(v.x, v.z)));
     const current = v.dot(wishdir);
     const add = wishspd - current;
     if (add <= 0) return;
@@ -1134,7 +1137,7 @@ export class PlayerMovement {
   private airMove(wishdir: Vector3, wishspeed: number): void {
     const vel = this.s.vel;
     this.airControl();
-    const before = Math.hypot(vel.x, vel.z);
+    const before = dhypot(vel.x, vel.z);
     // Kriech-Schutz, Teil 1: Falllinien-Speed vor dem Schub merken.
     let creepU = Number.NaN;
     const t = this.tmp;
@@ -1158,7 +1161,7 @@ export class PlayerMovement {
       if (u > limit) vel.addScaledVector(t, limit - u);
     }
     if (this.inSide !== 0) {
-      this.syncSample = Math.hypot(vel.x, vel.z) > before + GAIN_EPSILON ? SYNC_GAIN : SYNC_MISS;
+      this.syncSample = dhypot(vel.x, vel.z) > before + GAIN_EPSILON ? SYNC_GAIN : SYNC_MISS;
     }
     this.airSlideMove();
   }
@@ -1699,7 +1702,7 @@ export class PlayerMovement {
   private advanceStride(dist: number): void {
     if (dist <= 1e-6) return;
     const s = this.s;
-    const speed = Math.hypot(s.vel.x, s.vel.z);
+    const speed = dhypot(s.vel.x, s.vel.z);
     const t = clamp((speed - 150) / Math.max(1, this.cfg.sprintSpeed - 150), 0, 1);
     const stride = STRIDE_MIN + (STRIDE_MAX - STRIDE_MIN) * t;
     const prev = s.stridePhase;
@@ -1736,6 +1739,6 @@ export class PlayerMovement {
     else s.vel.copy(this.validVel);
     s.eyeHeight = this.validEye;
     this.setHull(this.validDucked);
-    s.speed = Math.hypot(s.vel.x, s.vel.z);
+    s.speed = dhypot(s.vel.x, s.vel.z);
   }
 }

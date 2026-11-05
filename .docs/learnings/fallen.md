@@ -2081,3 +2081,44 @@ Puffer (tb, gp), settle-Formel inline; (3) `homogeneous(y0, v0, ω, ζ, h, out)`
 `--trace-turbo-inlining` = Bytecode-Limit), fünf Kommazahl-Argumente → Puffer (Feuerzeug-Flammennachlauf 80 B/Frame).
 Ergebnis 250 → 68 B/Frame (tossOpen), Würfe allgemein ~50 B/Frame, alle Tricks 0 Scavenges; bitgleich (vm-hash 0 und
 Bit-Hash aller ViewHand-Ausgaben × 65 Gegenstand/Trick gegen eine Vorher-Kopie, Gegenprobe mit 1e-15-Störung schlägt an).
+
+## 201. Trailer-Aufnahme: Route-Bot zuckt im Bild, Canvas nur im selben Task lesbar, Headless ohne Beat
+**Falle 1:** Der perfekte Route-Bot (Default `band` 8°, unbegrenzte Drehrate) wedelt den Blick ±9° mit ~6 Hz (10–13
+Wenden/s) — als Video Kamera-Zittern. **Richtig:** `useBot('route', {sync: 1, band: 30, maxTurnRate: 360})` (neu:
+`BotOptions.band`) → 4–8 Wenden/s, ≤ 6°/Frame, schafft L1–L4 (L1 19.5 s, L2 14.1, L3 14.5, L4 25.7) — Messung
+`node tools/trailer/probe.mjs <level> '<opts>'`. Für das Bild zusätzlich `__vel.film({yawTau: 0.07})`: Tiefpass NUR auf
+den Kamera-Yaw (Physik unberührt). L4 prallt mit JEDER Bot-Variante an der ersten ↑C-Kante (~11.5 s, −800 u/s) — nicht filmen.
+**Falle 2:** `preserveDrawingBuffer` ist aus — `canvas.toDataURL()` muss im SELBEN `page.evaluate` direkt nach
+`__vel.advanceFrame` laufen, sonst leer. 480×270 holen und in ffmpeg `scale=…:flags=neighbor` hochziehen ist ~10× schneller
+als `page.screenshot` in 1080p (~25 Frames/s Aufnahme).
+**Falle 3:** Headless gibt es keine Audio-Engine → `beat().kick` = 0, Trims pulsen nicht. Film-Modus simuliert die Kick
+(132 BPM, Kick auf Film-Frame 0, 27.27 …); `film()` setzt die Uhr zurück — Vorlauf-Frames verschieben das Raster
+(tools/trailer/cut.mjs `CLOCK_OFFSET`).
+
+## 202. Trailer-Schnitt: Pixel-Typo im Canvas, Szenen-Check, ffmpeg-Eigenheiten
+**Falle 1:** Silkscreen/Pixelify in großer Font-Größe + Alpha-Schwellwert ergibt kaputte Glyphen („B“ wird „D“, „2“ wird
+„8“); Silkscreen **Bold** hat zudem ein zugelaufenes „W“. Auch 8 px nativ verliert mit Schwellwert dünne Pixel (Chrome
+glättet Kanten). **Richtig:** Silkscreen 400 hat ein em/8-Raster (1 Font-Pixel = em/8, Versalhöhe 5). Text in 80 px
+rendern, je 10×10-Zelle die MITTE abtasten → exakte 1-px-Bitmap, dann ganzzahlig Nearest hochziehen
+(`tools/trailer/overlay.js` `glyphLine`). Pixelify Sans ist vertikal nicht rasterbündig (Versalhöhe 5.18 Einheiten).
+**Falle 2:** `select='gt(scene,x)'` mit festem Schwellwert verfehlt Schnitte zwischen ähnlichen Bildern (04b↔07a, beide
+L4-Surf: Score 0.125). Zum Prüfen lieber Score je Frame (`metadata=print:key=lavfi.scene_score`) und „lokales Maximum
+±4 Frames liegt auf dem Soll-Frame“.
+**Falle 3:** Der Spot läuft komplett frame-genau, wenn Segmente einzeln mit `trim=start_frame/end_frame` + `-frames:v N`
+(x264 `-qp 0`) gerendert und per concat-Demuxer `-c copy` verbunden werden; die Grafik kommt als PNG-Folge aus Playwright
+(`canvas.toDataURL`, leere Frames als Kopie einer transparenten PNG — 1800 Frames in ~25 s).
+
+## 203. Determinismus: Node und Chrome sind beide V8 — und rechnen `Math.sin` trotzdem verschieden
+
+Für Replays (Plan 009) sollte "Browser nimmt auf, Node prüft" bitgleich laufen. Messung über 465 000 Eingaben, Hash über
+die Bits: Node 22.11 (V8 12.4) gegen Chromium 153 → `sin, cos, atan2, tan, exp` **anders**, nur `hypot` und `sqrt` gleich
+(ECMAScript verlangt für Transzendente keine korrekte Rundung; Chrome ist von der fdlibm-Fassung abgerückt, Node 22 nicht).
+Gegenprobe im Spiel: vier Node-Bot-Replays im Chromium nachgespielt → alle Desync (L3 nach 3 s, 0.05–0.9 u am Keyframe).
+Toleranz + Resync wäre Einladung zum Mogeln. **Richtig:** die Funktionen selbst aus IEEE-Grundoperationen bauen
+(`player/detMath.ts`: fdlibm sin/cos/atan2, V8s Kahan-hypot) — `+ − × ÷ √` rundet jede Engine exakt, FMA-Zusammenziehen
+ist in JS verboten. Port-Treue gegen Node testen (bitgleich zu `Math.*` dort → Sim/Medaillen unverändert), dann ist
+Chromium bitgleich (online-check). Auch die Level-Kompilierung zählt (`compileLevel` rotY, `convexHull` atan2): der
+Level-Hash geht über die kompilierten Ebenen-Bits, damit eine Abweichung als 'level' auffällt statt als Desync mitten im
+Lauf. Allokation: die Ports boxen nur im JIT-Anlauf (Probe mit Bot, 10 s: +25 KiB/s), im Dauerbetrieb 0 (`--no-bot
+--warmup 40`). Zweite Falle: die Physik muss AUCH LIVE mit den quantisierten Eingaben laufen (Yaw-Raster), und der Yaw
+darf nicht gewickelt werden — `sin(x + 2πk)` ist nicht bitgleich zu `sin(x)`, und Coach/Showkeys brauchen den stetigen Blick.

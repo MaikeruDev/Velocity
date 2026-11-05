@@ -130,6 +130,22 @@ export interface FinishResult {
   readonly unlocked?: readonly string[];
   /** Ziel-Foto des Handys (Plan 007, RendererApi.snapshot/selfie) — Polaroid im Ergebnis. Fehlt = keins. */
   readonly photo?: HTMLCanvasElement;
+  /** Online-Einreichung dieses Laufs (Plan 009). Fehlt = keine Online-Schicht. Menu.setOnlineStatus zieht nach. */
+  readonly online?: OnlineStatus;
+}
+
+/**
+ * Stand der Online-Einreichung eines Laufs (Plan 009) für den Ergebnis-Screen. pending = läuft noch,
+ * accepted = verifiziert und gerankt, rejected = Verifier lehnt ab (text = Grund), skipped = nicht
+ * eingereicht (Tuning, Debug-Teleport …), offline/error = kein Backend erreichbar.
+ */
+export interface OnlineStatus {
+  readonly state: 'pending' | 'accepted' | 'rejected' | 'skipped' | 'offline' | 'error';
+  /** Kurzer Text für die Statuszeile. */
+  readonly text: string;
+  readonly rank?: number | null;
+  readonly total?: number;
+  readonly personalBest?: boolean;
 }
 
 /** Ergebnis einer Lektion (Plan 007) für den Bildschirm 'lessonDone'. */
@@ -164,8 +180,13 @@ export interface MenuEvents {
   demo: void;
   /** Aktuelle Stufe überspringen (Pause-Menü/Admin einer Lektion, Plan 007). */
   skipStage: void;
+  /**
+   * Gegen einen Ghost fahren (Bestenliste, Plan 009) — User-Geste wie 'play'. runId = Lauf aus der
+   * Bestenliste (Ghost aus dessen Replay), null = eigene Bestzeit (lokaler Ghost). label fürs HUD/Toast.
+   */
+  raceGhost: { readonly levelId: string; readonly runId: string | null; readonly label: string };
 }
 
 export type MenuEventName = keyof MenuEvents;
 
-export type MenuScreen = 'title' | 'pause' | 'settings' | 'controls' | 'finish' | 'cosmetics' | 'admin' | 'training' | 'lessonDone';
+export type MenuScreen = 'title' | 'pause' | 'settings' | 'controls' | 'finish' | 'cosmetics' | 'admin' | 'training' | 'lessonDone' | 'leaderboard';

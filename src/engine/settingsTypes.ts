@@ -94,6 +94,11 @@ export interface GameSettings {
   readonly ghost: boolean;
   /** Start/Weiter/Nochmal gehen ins Vollbild mit Keyboard Lock (Strg duckt, Strg+W bleibt im Spiel). */
   readonly fullscreenOnStart: boolean;
+  /**
+   * Spielername für die Bestenliste (Plan 009): 2–16 Zeichen (Buchstaben, Ziffern, Leerzeichen, _-.),
+   * '' = automatischer Name "SPIELER-xxxx". Bereinigt über online/types.sanitizeName.
+   */
+  readonly playerName: string;
   readonly keybinds: KeyBinds;
   readonly render: RenderSettings;
 }
@@ -123,6 +128,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   heldItem: 'none',
   ghost: true,
   fullscreenOnStart: true,
+  playerName: '',
   keybinds: DEFAULT_KEYBINDS,
   render: DEFAULT_RENDER_SETTINGS,
 };

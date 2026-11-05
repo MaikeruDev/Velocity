@@ -24,7 +24,10 @@ import { formatDiff, formatTime } from './format';
 import { MEDAL_NAMES, MEDAL_ORDER, adminTimeFor, medalFor, nextMedal } from './medals';
 import type { MedalId } from './medals';
 import { effectiveLines } from '../render/lowres';
-import type { FinishResult, LessonResult, MenuEvents, MenuScreen, RawMouseStatus } from './types';
+import type { FinishResult, LessonResult, MenuEvents, MenuScreen, OnlineStatus, RawMouseStatus } from './types';
+import type { LeaderboardEntry, LeaderboardPage } from '../online/types';
+import { NAME_MAX, sanitizeName } from '../online/types';
+import type { LevelMedals } from '../world/level/LevelFormat';
 
 /**
  * HTML-Overlays: Titel, Pause, Einstellungen, Steuerung, Ergebnis — und das Training (Plan 007):
@@ -89,6 +92,20 @@ export interface MenuTraining extends TrainingProgressView {
   reset(lessonId: string): void;
 }
 
+/**
+ * Was das Menü von der Online-Schicht braucht (Plan 009) — Game reicht es durch (setOnline). null =
+ * offline: Bestenliste und Statuszeilen sagen das, statt zu laden.
+ */
+export interface MenuOnline {
+  /** 'mock' (lokal) oder 'firebase' — nur Anzeige. */
+  readonly backend: string;
+  /** Eigene Spieler-ID/Anzeigename (null = noch nicht angemeldet). */
+  myUid(): string | null;
+  myName(): string | null;
+  /** Top 10 und der Ausschnitt um mich herum. Wirft bei Netzfehlern. */
+  board(levelId: string): Promise<{ readonly top: LeaderboardPage; readonly around: LeaderboardPage }>;
+}
+
 /** Laufende Lektion für die Pause (Plan 007). Aktionen ohne MenuEvent laufen über die Rückrufe. */
 export interface LessonPauseInfo {
   readonly name: string;
@@ -134,6 +151,7 @@ export class Menu {
     adminBest: new Set(),
     demo: new Set(),
     skipStage: new Set(),
+    raceGhost: new Set(),
   };
 
   private current: MenuScreen | null = null;
@@ -164,6 +182,12 @@ export class Menu {
   private lessonPause: LessonPauseInfo | null = null;
   /** Taste der Vorführung (Anzeige im Pause-Menü), z. B. 'H'. */
   private demoKey = 'H';
+  /** Online-Schicht (Plan 009), null = offline. */
+  private online: MenuOnline | null = null;
+  /** Bestenliste: gewähltes Level, Rückweg, Lade-Zähler (veraltete Antworten verwerfen). */
+  private boardLevel: string | null = null;
+  private boardReturn: 'title' | 'finish' = 'title';
+  private boardSeq = 0;
 
   constructor(root: HTMLElement, settings: SettingsStore, best: BestTimes, unlocks: UnlockStore) {
     this.settings = settings;
@@ -232,6 +256,30 @@ export class Menu {
     if (this.current === 'title') this.showTitle();
     else if (this.current === 'training') this.showTraining();
     else if (this.current === 'admin') this.adminRefresh?.();
+  }
+
+  /** Online-Schicht (Plan 009) setzen; null = offline. Offene Bestenliste lädt neu. */
+  setOnline(o: MenuOnline | null): void {
+    this.online = o;
+    if (this.current === 'leaderboard') this.showLeaderboard();
+  }
+
+  /**
+   * Bestenliste eines Levels (Plan 009): Top 10, um mich herum, Ghost-Auswahl. Ohne levelId das zuletzt
+   * gezeigte bzw. das in der Titel-Liste gewählte Level. Aus dem Ergebnis führt "Zurück" wieder dorthin.
+   */
+  showLeaderboard(levelId?: string): void {
+    if (this.current !== 'leaderboard') this.boardReturn = this.current === 'finish' ? 'finish' : 'title';
+    this.boardLevel = levelId ?? this.boardLevel ?? this.selectedLevelId;
+    this.render('leaderboard', this.buildLeaderboard());
+    void this.loadBoard();
+  }
+
+  /** Stand der Online-Einreichung im Ergebnis nachziehen (kommt asynchron nach showFinish). */
+  setOnlineStatus(st: OnlineStatus): void {
+    if (this.finishResult) this.finishResult = { ...this.finishResult, online: st };
+    const el = this.el.querySelector<HTMLElement>('.vel-online-status');
+    if (el && this.current === 'finish') el.replaceWith(onlineLine(st));
   }
 
   /** Beschriftung der Vorführungs-Taste (KeyBinds.demo) für Pause und Liste. */
@@ -400,6 +448,9 @@ export class Menu {
       case 'training':
         if (a === 'pause') this.showTitle();
         else if (a === 'confirm') this.playSelectedLesson();
+        return true;
+      case 'leaderboard':
+        if (a === 'pause' || a === 'confirm') this.leaveBoard();
         return true;
       case 'lessonDone': {
         const r = this.lessonResult;
@@ -761,6 +812,7 @@ export class Menu {
       'vel-panel vel-side',
       h('h2', 'vel-h2', 'System'),
       trainingBtn,
+      this.btn('Bestenliste', 'vel-board-btn', () => this.showLeaderboard(this.selectedLevelId ?? undefined)),
       this.btn('Einstellungen', '', () => this.showSettings()),
       this.btn('Kosmetik', 'vel-cosmetics-btn', () => this.showCosmetics()),
       this.btn('Steuerung', '', () => this.showControls()),
@@ -1113,6 +1165,8 @@ export class Menu {
       h('h1', 'vel-h1', 'Ziel', h('span', 'vel-dim', `· ${r.levelName}`)),
       h('p', 'vel-finish-time', formatTime(r.time)),
       r.isBest ? h('div', 'vel-record', 'NEUE BESTZEIT!') : null,
+      // Online-Status im Kopf (neben dem Freischalt-Banner ist dort Platz) — eine eigene Zeile schob die Knöpfe bei 720p aus dem Bild.
+      r.online ? onlineLine(r.online) : null,
     ];
     // Ziel-Foto (Handy, Plan 007 I3): Polaroid rechts neben der Zeit, sonst wie bisher.
     const headBlock = r.photo ? h('div', 'vel-finish-head', h('div', 'vel-finish-head-main', ...head), polaroid(r, r.photo)) : h('div', 'vel-finish-headcol', ...head);
@@ -1131,6 +1185,7 @@ export class Menu {
         train,
         again,
         next,
+        r.online ? this.btn('Bestenliste', 'vel-board-btn', () => this.showLeaderboard(r.levelId)) : null,
         this.btn('Menü', '', () => this.emit('toTitle', undefined), 'Esc'),
       ),
     );
@@ -1789,6 +1844,21 @@ export class Menu {
       h('div', 'vel-setting-hint', 'Mit Vollbild duckt ', mono('Strg'), ' sofort, und ', mono('Strg'), '+', mono('W'), ' schließt nicht den Tab.'),
     );
 
+    const online = h(
+      'div',
+      'vel-panel vel-online-panel',
+      h('h2', 'vel-h2', 'Online'),
+      this.textField('Spielername', (v) => v.playerName, (v) => ({ playerName: v })),
+      h('div', 'vel-setting-hint', 'Steht in der Bestenliste. 2–16 Zeichen; leer = automatischer Name.'),
+      h(
+        'div',
+        'vel-setting-hint vel-online-backend',
+        this.online
+          ? `Bestenliste: ${this.online.backend === 'mock' ? 'lokal (Mock, nur dieser Browser)' : this.online.backend}. Jeder Lauf ins Ziel wird geprüft und eingereicht.`
+          : 'Offline — Läufe werden nicht eingereicht.',
+      ),
+    );
+
     const gfx = h(
       'div',
       'vel-panel',
@@ -1827,7 +1897,7 @@ export class Menu {
           this.btn('Zurück', 'vel-btn--small', () => this.back(), 'Esc'),
         ),
       ),
-      h('div', 'vel-settings-grid', h('div', 'vel-col', mouse, movement, keys), h('div', 'vel-col', camera, audio, gfx)),
+      h('div', 'vel-settings-grid', h('div', 'vel-col', mouse, movement, keys, online), h('div', 'vel-col', camera, audio, gfx)),
     );
   }
 
@@ -1906,6 +1976,156 @@ export class Menu {
     refresh(this.settings.get());
     this.refreshers.push(refresh);
     return row(o.label, input, valueEl);
+  }
+
+  /** Textfeld (Spielername): übernimmt beim Verlassen/Enter, bereinigt über sanitizeName. */
+  private textField(label: string, get: (s: GameSettings) => string, set: (v: string) => SettingsPatch): HTMLElement {
+    const input = h('input', 'vel-text-input');
+    input.type = 'text';
+    input.maxLength = NAME_MAX;
+    input.spellcheck = false;
+    input.autocomplete = 'off';
+    input.placeholder = 'SPIELER-…';
+    input.setAttribute('aria-label', label);
+    const refresh = (s: GameSettings): void => {
+      if (document.activeElement !== input) input.value = get(s);
+    };
+    input.addEventListener('change', () => {
+      this.settings.update(set(sanitizeName(input.value)));
+      input.value = get(this.settings.get());
+    });
+    refresh(this.settings.get());
+    this.refreshers.push(refresh);
+    return row(label, input, null);
+  }
+
+  // ------------------------------------------------------------------ Bestenliste (Plan 009)
+
+  private leaveBoard(): void {
+    this.boardSeq++;
+    if (this.boardReturn === 'finish' && this.finishResult) this.render('finish', this.buildFinish(this.finishResult));
+    else this.showTitle();
+  }
+
+  private boardMedals(levelId: string): LevelMedals | null {
+    return this.levels.find((l) => l.id === levelId)?.medals ?? null;
+  }
+
+  /** Gerüst: Level-Reiter, zwei Tabellen (gefüllt von loadBoard), Ghost-Knöpfe. */
+  private buildLeaderboard(): HTMLElement {
+    const id = this.boardLevel;
+    const tabs = h('div', 'vel-seg vel-board-tabs');
+    for (const lv of this.levels) {
+      const b = h('button', 'vel-btn', lv.name);
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(lv.id === id));
+      b.addEventListener('click', () => this.showLeaderboard(lv.id));
+      tabs.append(b);
+    }
+    const me = this.online?.myName() ?? null;
+    const who = this.online
+      ? h('p', 'vel-hint vel-board-who', 'Du: ', h('b', 'vel-mono', me ?? '—'), ` · ${this.online.backend === 'mock' ? 'lokale Bestenliste (Mock)' : this.online.backend}`)
+      : h('p', 'vel-hint vel-board-who', 'Offline — keine Bestenliste.');
+    const top = h('div', 'vel-panel vel-board-panel', h('h2', 'vel-h2', 'Top 10'), h('div', 'vel-board-top', h('p', 'vel-hint', this.online ? 'Lade …' : 'Offline.')));
+    const around = h('div', 'vel-panel vel-board-panel', h('h2', 'vel-h2', 'Um dich herum'), h('div', 'vel-board-around', h('p', 'vel-hint', this.online ? 'Lade …' : '—')));
+    const wr = this.btn('Gegen Weltrekord', 'vel-btn--primary vel-board-wr', () => undefined);
+    wr.dataset.lock = '1';
+    wr.dataset.off = '1';
+    wr.disabled = true;
+    const own = this.btn('Gegen eigene Bestzeit', 'vel-board-own', () => {
+      if (id) this.emit('raceGhost', { levelId: id, runId: null, label: 'Eigene Bestzeit' });
+    });
+    own.dataset.lock = '1';
+    return h(
+      'section',
+      'vel-screen vel-leaderboard-screen',
+      h('div', 'vel-head-row', h('h1', 'vel-h1', 'Bestenliste'), this.btn('Zurück', 'vel-btn--small', () => this.leaveBoard(), 'Esc')),
+      tabs,
+      who,
+      h('div', 'vel-board-grid', top, around),
+      h('div', 'vel-row', wr, own),
+      this.lockHint(''),
+    );
+  }
+
+  private async loadBoard(): Promise<void> {
+    const seq = ++this.boardSeq;
+    const id = this.boardLevel;
+    const on = this.online;
+    if (!on) return;
+    if (!id) {
+      this.el.querySelector('.vel-board-top')?.replaceChildren(h('p', 'vel-hint', 'Level werden geladen …'));
+      return;
+    }
+    try {
+      const data = await on.board(id);
+      if (seq !== this.boardSeq || this.current !== 'leaderboard') return;
+      this.fillBoard(id, data.top, data.around, on.myUid());
+    } catch (err) {
+      if (seq !== this.boardSeq || this.current !== 'leaderboard') return;
+      const msg = err instanceof Error ? err.message : String(err);
+      for (const sel of ['.vel-board-top', '.vel-board-around']) {
+        this.el.querySelector(sel)?.replaceChildren(h('p', 'vel-hint vel-bad', `Offline — ${msg}`));
+      }
+    }
+  }
+
+  private fillBoard(levelId: string, top: LeaderboardPage, around: LeaderboardPage, meUid: string | null): void {
+    const medals = this.boardMedals(levelId);
+    const table = (rows: readonly LeaderboardEntry[]): HTMLElement =>
+      h(
+        'table',
+        'vel-splits vel-board',
+        h('thead', '', h('tr', '', h('th', '', '#'), h('th', '', 'Name'), h('th', '', 'Zeit'), h('th', '', 'Medaille'), h('th', '', 'Ghost'))),
+        h('tbody', '', ...rows.map((e) => this.boardRow(levelId, e, meUid, medals))),
+      );
+    const topEl = this.el.querySelector('.vel-board-top');
+    topEl?.replaceChildren(
+      top.entries.length > 0 ? table(top.entries) : h('p', 'vel-hint', 'Noch niemand im Ziel.'),
+      h('p', 'vel-hint vel-board-total', `${top.total} ${top.total === 1 ? 'Spieler' : 'Spieler'} in der Wertung`),
+    );
+    const aroundEl = this.el.querySelector('.vel-board-around');
+    aroundEl?.replaceChildren(
+      around.me
+        ? table(around.entries)
+        : h('p', 'vel-hint', 'Noch kein Lauf von dir. Fahr das Level bis ins Ziel — der Lauf wird geprüft und automatisch eingereicht.'),
+    );
+    const wrEntry = top.entries[0];
+    const wr = this.el.querySelector<HTMLButtonElement>('.vel-board-wr');
+    if (wr && wrEntry) {
+      const label = `Weltrekord · ${wrEntry.name} ${formatTime(wrEntry.time)}`;
+      wr.dataset.off = '0';
+      wr.disabled = this.lockStatus.pending;
+      const fresh = this.btn('Gegen Weltrekord', 'vel-btn--primary vel-board-wr', () => this.emit('raceGhost', { levelId, runId: wrEntry.runId, label }));
+      fresh.dataset.lock = '1';
+      fresh.title = label;
+      wr.replaceWith(fresh);
+    }
+  }
+
+  private boardRow(levelId: string, e: LeaderboardEntry, meUid: string | null, medals: LevelMedals | null): HTMLElement {
+    const mine = e.uid === meUid;
+    const medal = medals ? medalFor(e.time, medals) : null;
+    const ghost = this.btn('Ghost', 'vel-btn--small vel-board-ghost', () =>
+      this.emit('raceGhost', { levelId, runId: e.runId, label: `Rang ${e.rank} · ${e.name} ${formatTime(e.time)}` }),
+    );
+    ghost.dataset.lock = '1';
+    ghost.dataset.rank = String(e.rank);
+    return h(
+      'tr',
+      mine ? 'is-me' : '',
+      h('td', '', `${e.rank}.`),
+      h(
+        'td',
+        'vel-board-name',
+        h('span', 'vel-board-nm', e.name),
+        e.bot ? h('small', 'vel-board-tag', 'BOT') : null,
+        mine ? h('small', 'vel-board-tag vel-board-tag--me', 'DU') : null,
+      ),
+      h('td', '', formatTime(e.time)),
+      h('td', '', medal !== null ? medalBadge(medal) : h('span', 'vel-dim', '—')),
+      h('td', '', ghost),
+    );
   }
 
   private percent(label: string, get: (s: GameSettings) => number, set: (v: number) => SettingsPatch): HTMLElement {
@@ -2040,7 +2260,8 @@ function isMenuEvent(k: string): k is keyof MenuEvents {
     k === 'fullscreen' ||
     k === 'adminBest' ||
     k === 'demo' ||
-    k === 'skipStage'
+    k === 'skipStage' ||
+    k === 'raceGhost'
   );
 }
 
@@ -2063,6 +2284,14 @@ function polaroid(r: FinishResult, photo: HTMLCanvasElement): HTMLElement {
       got !== null ? h('span', `vel-medal vel-medal--${got}`, MEDAL_NAMES[got]) : h('span', 'vel-polaroid-level', listName(r.levelName)),
     ),
   );
+}
+
+/** Statuszeile der Online-Einreichung im Ergebnis (Plan 009). */
+function onlineLine(st: OnlineStatus): HTMLElement {
+  const el = h('div', `vel-online-status vel-online-status--${st.state}`, h('span', 'vel-online-label', 'Online'), h('span', 'vel-online-text', st.text));
+  el.dataset.state = st.state;
+  el.setAttribute('role', 'status');
+  return el;
 }
 
 /** Index der empfohlenen Lektion: die erste ohne Stern (−1 = alle bestanden oder keine). */

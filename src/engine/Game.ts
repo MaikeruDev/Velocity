@@ -50,6 +50,18 @@ import type { GameSettings } from './settingsTypes';
 import type { UnlockStore } from './Unlocks';
 import { gloveUnlock, itemUnlock, unlockDef, unlockPatch } from './Unlocks';
 import { nextMedal } from '../ui/medals';
+import type { OnlineStatus } from '../ui/types';
+import type { OnlineService, SubmitResult } from '../online/types';
+import { OnlineError } from '../online/types';
+import type { MenuOnline } from '../ui/Menu';
+import { packReplay, unpackReplay } from './replay/codec';
+import type { Replay } from './replay/format';
+import { InputQuantizer } from './replay/format';
+import { configHash, levelHash } from './replay/hash';
+import { ReplayRecorder } from './replay/recorder';
+import { placeFeet } from './replay/runSim';
+import { replayToGhost, verifyReplay } from './replay/verify';
+import { movementConfigFor } from './Settings';
 
 /**
  * Spielablauf: verbindet Loop, Input, Movement, Kamera, Lauf-Logik, Audio,
@@ -84,8 +96,20 @@ export interface BotOptions {
   /** route: Lauf vorher neu starten (Default true). */
   readonly restart?: boolean;
   readonly maxTurnRate?: number;
+  /** route/strafe: Hysterese beim Kurshalten (Grad) — größer = weniger, weitere Strafe-Schwünge (Trailer). */
+  readonly band?: number;
   readonly timeout?: number;
   readonly stallTimeout?: number;
+}
+
+/** Freie Kamera des Film-Modus (Radiant, Euler YXZ wie die Spielerkamera). */
+export interface FilmCamera {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly yaw: number;
+  readonly pitch: number;
+  readonly roll: number;
 }
 
 export interface BotInfo {
@@ -115,6 +139,34 @@ export interface GameDeps {
   readonly baseUrl: string;
   /** Trainings-Fortschritt (Plan 007). Fehlt = Game legt ihn selbst an (localStorage). */
   readonly training?: TrainingProgress;
+  /** Online-Schicht (Plan 009): Einreichen, Bestenliste, Ghosts. null/fehlt = offline. */
+  readonly online?: OnlineService | null;
+}
+
+/** Gewählter Fremd-Ghost (Bestenliste, Plan 009): gilt für dieses Level, bis man ins Menü geht. */
+interface RaceGhost {
+  readonly levelId: string;
+  readonly label: string;
+  /** null, solange das Replay noch lädt. */
+  track: GhostTrack | null;
+}
+
+/** Online-Zustand für Tools (__vel.online). */
+export interface OnlineDebugInfo {
+  readonly backend: string;
+  readonly uid: string | null;
+  readonly name: string | null;
+  /** Einreichung des letzten Ziels (null = keins seit dem Laden). */
+  readonly status: OnlineStatus | null;
+  /** Gepacktes Replay des letzten Ziels als Base64 (null = keins/noch nicht gepackt). */
+  readonly replay: string | null;
+  readonly replayTicks: number;
+  /** Laufende Aufnahme: Ticks und Grund, warum sie nicht einreichbar wäre. */
+  readonly recording: boolean;
+  readonly recordedTicks: number;
+  readonly invalid: string | null;
+  /** Gewählter Fremd-Ghost: Beschriftung und ob sein Replay schon geladen ist. */
+  readonly race: { readonly levelId: string; readonly label: string; readonly loaded: boolean } | null;
 }
 
 export interface GhostDebugInfo {
@@ -183,6 +235,9 @@ const FLASH_FINISH_TIME = 0.8;
 const FINISH_RGB: readonly [number, number, number] = [1, 0.25, 0.82];
 /** So lange nach dem Ziel fliegt man weiter und sieht die Zeit im HUD, bevor das Ergebnis-Menü kommt. */
 const FINISH_MENU_DELAY = 1.1;
+/** Film-Modus: Abklingzeit der simulierten Kick (s) wie Music.kickEnvelope, Anschlag wie ein normaler Takt. */
+const FILM_KICK_DECAY = 0.12;
+const FILM_KICK_VEL = 0.95;
 /** Lektion: nach der letzten Stufe so lange "ALLES GESCHAFFT!" im HUD, dann das Ergebnis (s). */
 const LESSON_RESULT_DELAY = 1.4;
 /** Lektion: durchs Portal (Ziel-Trigger der Lektion) → so lange Blitz, dann das Ergebnis (s). */
@@ -204,8 +259,6 @@ const SPEED01_HI = 1100;
 /** Titel-Hintergrund: langsamer Schwenk um den Spawn des zuletzt geladenen Levels (rad/s). */
 const BACKDROP_TURN = 0.05;
 const BACKDROP_LIFT = 72;
-/** Spawn anheben und per Trace absetzen: Füße exakt auf der Fläche gelten als "im Solid" (fallen.md #14). */
-const SPAWN_LIFT = 1;
 const FPS_WINDOW = 0.5;
 /** Strafe-Spiegel: erst ab dieser Drehrate (rad/s) zählt die Maus als "dreht". */
 const MIRROR_MIN_TURN = 5 * (Math.PI / 180);
@@ -316,6 +369,16 @@ export class Game {
   private botOpts: BotOptions = {};
   private frozen = false;
   private stepping = false;
+  // Film-Modus (tools/trailer, __vel.film): rAF-Loop aus, Frames nur über filmFrame(dt). Uhr und
+  // Kick laufen auf Spielzeit — headless gibt es keine Audio-Uhr, und Echtzeit-Aufnahmen ruckeln.
+  private film = false;
+  private filmClock = 0;
+  private filmBpm = 0;
+  private filmHud = true;
+  private filmCam: FilmCamera | null = null;
+  /** Nur Bild: Kamera-Yaw tiefpassen (s, 0 = aus) — rundet die harten Wenden des Strafe-Bots, Physik unberührt. */
+  private filmYawTau = 0;
+  private filmYaw = Number.NaN;
   private readonly tr = makeTraceResult();
   private readonly placeA = new Vector3();
   private readonly placeB = new Vector3();
@@ -331,6 +394,17 @@ export class Game {
   /** Debug/Messung: Proben abschaltbar (__vel.setNearProbe). */
   nearProbeEnabled = true;
   // Ghost der Bestzeit (S7)
+  // Replays + Online (Plan 009): die Physik bekommt quantisierte Eingaben, jeder Lauf wird aufgenommen.
+  private readonly quant = new InputQuantizer();
+  private readonly replayRec = new ReplayRecorder();
+  private readonly levelHashes = new WeakMap<CompiledLevel, string>();
+  private readonly online: OnlineService | null;
+  private submitToken = 0;
+  private lastReplay: Replay | null = null;
+  private lastReplayBytes: Uint8Array | null = null;
+  private lastOnline: OnlineStatus | null = null;
+  private raceGhost: RaceGhost | null = null;
+  private raceToken = 0;
   private readonly ghostStore = new GhostStore();
   private readonly ghostRec = new GhostRecorder();
   private ghostTrack: GhostTrack | null = null;
@@ -469,6 +543,7 @@ export class Game {
     this.tuning = deps.tuning;
     this.notify = deps.notify;
     this.baseUrl = deps.baseUrl;
+    this.online = deps.online ?? null;
 
     this.config = deps.tuning.getConfig();
     this.playerConfig = this.config;
@@ -567,6 +642,7 @@ export class Game {
     this.tuning.onChange((c) => this.applyConfig(c));
     this.input.onNotice((n) => this.hud.onInputNotice(n));
     this.wireMenu();
+    this.wireOnline();
 
     window.addEventListener('resize', this.onResize);
     document.addEventListener('visibilitychange', this.onVisibility);
@@ -716,6 +792,8 @@ export class Game {
     // Freischaltungen aus den Bestzeiten nachtragen (verlorener Unlock-Stand kostet nichts).
     this.unlocks.sync(this.levels, (id) => this.best.get(id), this.progress);
     this.menu.setLevels(this.levels);
+    // Online anmelden (anonym, im Hintergrund) — ohne Verbindung läuft alles offline weiter.
+    void this.online?.auth(this.settings.get().playerName).catch(() => undefined);
     const first = this.levels[0];
     if (first && this.gameState === 'title') void this.prepareBackdrop(first.id);
     await this.loadLessons();
@@ -844,6 +922,7 @@ export class Game {
     this.loadGhost();
     if (this.bot?.route) this.bot = this.makeBot(this.bot.kind, this.botOpts);
     this.placeAt(level.spawnPos, level.spawnYaw);
+    this.beginReplay();
     this.bus.emit(RESPAWN_RESTART);
     this.startFade();
     this.gameState = 'playing';
@@ -853,6 +932,9 @@ export class Game {
   /** Zurück ins Titelmenü — aus einer Lektion in die Lektionsliste. */
   toTitle(): void {
     const fromLesson = this.session !== null;
+    // Fremd-Ghost (Bestenliste) gilt nur bis zurück ins Menü.
+    this.raceGhost = null;
+    this.raceToken++;
     if (fromLesson) {
       // Verdientes nachtragen (z. B. Lektion bestanden und über die Pause verlassen), still.
       this.saveProgress();
@@ -915,6 +997,7 @@ export class Game {
   teleport(pos: Vector3, yawDeg?: number): void {
     const yaw = yawDeg !== undefined ? yawDeg : this.viewYaw / DEG;
     this.placeAt(pos, yaw);
+    this.replayRec.invalidate('Teleport (Debug)');
   }
 
   setVelocity(v: Vector3): void {
@@ -922,6 +1005,7 @@ export class Game {
     this.movement.state.vel.copy(v);
     this.movement.copySnapshot(this.cur);
     copySnap(this.cur, this.prev);
+    this.replayRec.invalidate('Geschwindigkeit gesetzt (Debug)');
   }
 
   setView(yaw: number, pitch: number): void {
@@ -1072,6 +1156,39 @@ export class Game {
     this.frozen = on;
   }
 
+  /**
+   * Film-Modus an/aus (Tools): an = Echtzeit-Loop stoppen, Spielzeit nur noch per filmFrame; Uhr auf 0
+   * (die Kick fällt auf Frame 0). bpm > 0 = Kick-Puls der Trims aus dieser Uhr statt aus dem Audio.
+   * hud = false blendet HUD und Hand aus (Establishing-Shots). Ändert kein Spielverhalten.
+   */
+  setFilmMode(on: boolean, bpm: number, hud: boolean, yawTau = 0): void {
+    this.filmClock = 0;
+    this.filmBpm = bpm > 0 ? bpm : 0;
+    this.filmHud = hud;
+    this.filmYawTau = yawTau > 0 ? yawTau : 0;
+    this.filmYaw = Number.NaN;
+    if (on === this.film) return;
+    this.film = on;
+    if (on) this.loop.stop();
+    else {
+      this.filmCam = null;
+      this.loop.start();
+    }
+  }
+
+  /** Einen Frame mit genau dt Sekunden Spielzeit simulieren und rendern (nur im Film-Modus). */
+  filmFrame(dt: number): void {
+    if (!this.film) return;
+    // Uhr erst danach weiter: Frame k zeigt den Beat-Zeitpunkt k·dt (Kick genau auf Frame 0, 27.3, …).
+    this.loop.advance(dt, this.filmClock);
+    this.filmClock += dt;
+  }
+
+  /** Freie Kamera im Film-Modus (ersetzt die Spielerkamera nach dem Rig), null = Spielerkamera. */
+  setFilmCamera(cam: FilmCamera | null): void {
+    this.filmCam = cam;
+  }
+
   stepTicks(n: number): void {
     this.stepping = true;
     try {
@@ -1135,6 +1252,7 @@ export class Game {
       this.skipStage();
       this.requestResume();
     });
+    m.on('raceGhost', ({ levelId, runId, label }) => this.startGhostRace(levelId, runId, label));
   }
 
   /** Pause-Info der laufenden Lektion (null = normales Level). */
@@ -1343,6 +1461,7 @@ export class Game {
       const sp = session.respawnPoint();
       this.placeAt(sp.pos, sp.yaw);
     } else this.placeAt(level.spawnPos, level.spawnYaw);
+    this.beginReplay();
     this.fadeT = FADE_TIME;
     this.flashTime = this.flashDur;
 
@@ -1370,13 +1489,8 @@ export class Game {
    * berühren = startSolid), Blick = yaw (Grad), Pitch 0, Kamera-Effekte neu.
    */
   private placeAt(pos: Vector3, yawDeg: number): void {
-    const world = this.level ? this.world : undefined;
-    this.placeA.set(pos.x, pos.y + SPAWN_LIFT, pos.z);
-    if (world) {
-      this.placeB.set(pos.x, pos.y - SPAWN_LIFT, pos.z);
-      const tr = world.traceBox(this.placeA, this.placeB, this.standMins, this.standMaxs, this.tr);
-      if (!tr.startSolid && !tr.allSolid) this.placeA.copy(tr.endPos);
-    }
+    // Derselbe Helfer wie im Verifier (replay/runSim) — Replays starten exakt hier.
+    placeFeet(this.level ? this.world : null, pos, this.standMins, this.standMaxs, this.tr, this.placeA, this.placeB);
     // teleport schiebt selbst frei, falls der Punkt doch im Solid liegt (fallen.md #17).
     this.movement.teleport(this.placeA);
     this.movement.copySnapshot(this.cur);
@@ -1413,7 +1527,14 @@ export class Game {
 
   private readonly onTick = (dt: number, i: number, n: number, u: number): void => {
     if (!this.ticking || (this.frozen && !this.stepping)) return;
-    const cmd = this.input.tickInput(i, n, u);
+    // Plan 009: die Physik sieht nur quantisierte Eingaben (Yaw in 1/65536 Umdrehung) — live wie im Replay.
+    const q = this.quant;
+    const cmd = q.apply(this.input.tickInput(i, n, u));
+    const rec = this.replayRec;
+    if (rec.recording) {
+      rec.record(q.buttons, q.yawQ, q.pitchQ);
+      if (this.overrideActive) rec.markAssisted();
+    }
     const dYaw = cmd.yaw - this.lastYaw;
     this.lastYaw = cmd.yaw;
     this.lastPitch = cmd.pitch;
@@ -1451,6 +1572,8 @@ export class Game {
       }
     }
     this.runTick(dt);
+    // Positions-Probe NACH einem Respawn (wie der Verifier: RunSimulator.step setzt ab, dann wird verglichen).
+    rec.after(this.cur.pos);
     const run = this.run;
     if (session === null && run !== null && run.running) this.ghostRec.sample(run.time ?? 0, this.cur.pos, this.lastYaw);
     if (++this.nearTick >= NEAR_EVERY) {
@@ -1499,10 +1622,12 @@ export class Game {
     switch (e.type) {
       case 'runStart':
         this.ghostRec.reset();
+        this.replayRec.markStart();
         this.hudData.ghostDiff = null;
         break;
       case 'checkpoint':
-        if (this.ghostTrack && this.ghostOn) this.hudData.ghostDiff = ghostDiff(this.ghostTrack, e.index, e.time);
+        this.replayRec.markSplit();
+        if (this.ghostTrack && this.ghostVisible) this.hudData.ghostDiff = ghostDiff(this.ghostTrack, e.index, e.time);
         break;
       case 'respawn':
         if (e.reason === 'restart') this.hudData.ghostDiff = null;
@@ -1534,9 +1659,18 @@ export class Game {
 
   /** Ghost des aktuellen Levels laden (Levelstart, Neustart — nach einer neuen Bestzeit ist es die neue). */
   private loadGhost(): void {
-    this.ghostTrack = this.levelId ? this.ghostStore.load(this.levelId, this.levelSig) : null;
+    const race = this.raceGhost;
+    if (race !== null && race.levelId !== this.levelId) this.raceGhost = null;
+    // Fremd-Ghost aus der Bestenliste (Plan 009) vor dem eigenen; lädt sein Replay noch, kommt er nach.
+    if (this.raceGhost !== null) this.ghostTrack = this.raceGhost.track;
+    else this.ghostTrack = this.levelId ? this.ghostStore.load(this.levelId, this.levelSig) : null;
     this.ghostRec.stop();
     this.hudData.ghostDiff = null;
+  }
+
+  /** Ghost sichtbar: Einstellung "Ghost" — ein bewusst gewählter Fremd-Ghost immer. */
+  private get ghostVisible(): boolean {
+    return this.ghostOn || (this.raceGhost !== null && this.raceGhost.levelId === this.levelId);
   }
 
   /**
@@ -1609,10 +1743,14 @@ export class Game {
       return;
     }
     if (reason !== 'manual') this.bot?.route?.fail(reason === 'kill' ? 'kill' : 'fell', this.movement.state);
-    // Vor dem ersten Checkpoint zurück an den Start = neuer Versuch, Timer aus.
-    if (run.checkpoint === 0) run.reset(this.bestSplitsAtStart);
+    // Vor dem ersten Checkpoint zurück an den Start = neuer Versuch, Timer aus — und eine neue Aufnahme.
+    // Ab CP 1 bleibt die Aufnahme; Taste F ist dann ein Ereignis (Absturz/Kill rechnet der Verifier selbst).
+    const fresh = run.checkpoint === 0;
+    if (fresh) run.reset(this.bestSplitsAtStart);
+    else if (reason === 'manual') this.replayRec.respawn();
     const sp = run.respawnPoint();
     this.placeAt(sp.pos, sp.yaw);
+    if (fresh) this.beginReplay();
     this.bus.emit(reason === 'kill' ? RESPAWN_KILL : reason === 'manual' ? RESPAWN_MANUAL : RESPAWN_FALL);
     this.startFade();
   }
@@ -1637,7 +1775,8 @@ export class Game {
     }
     // Ghost: Abstand im Ziel zum alten Ghost, dann bei neuer Bestzeit diesen Lauf als neuen Ghost ablegen.
     this.ghostRec.sample(time, this.cur.pos, this.lastYaw);
-    if (this.ghostTrack && this.ghostOn) this.hudData.ghostDiff = ghostDiff(this.ghostTrack, 0, time);
+    if (this.ghostTrack && this.ghostVisible) this.hudData.ghostDiff = ghostDiff(this.ghostTrack, 0, time);
+    const online = this.submitRun(time);
     const track = this.ghostRec.finish(this.levelSig, time, splits);
     if (res.best && track) this.ghostStore.save(this.levelId, track);
     else if (res.best) this.ghostStore.clear(this.levelId);
@@ -1665,7 +1804,180 @@ export class Game {
       topSpeed: run.topSpeed,
       medals: level.def.medals ?? null,
       unlocked: fresh.map((id) => unlockDef(id).name),
+      online,
     };
+  }
+
+  // ================================================================== Replays + Online (Plan 009)
+
+  /** Level-Hash je kompiliertem Level (alle Ebenen — einmal rechnen). */
+  private levelHashOf(level: CompiledLevel): string {
+    let h = this.levelHashes.get(level);
+    if (h === undefined) {
+      h = levelHash(level);
+      this.levelHashes.set(level, h);
+    }
+    return h;
+  }
+
+  /**
+   * Neue Aufnahme ab dem gerade gesetzten Level-Spawn (Levelstart, R, Tod/F vor CP 1). In Lektionen keine.
+   * Weicht die Config von der aus den Einstellungen ab (F1-Tuning), ist der Lauf nicht einreichbar — der
+   * Verifier rechnet die Config aus den Einstellungen nach und lehnte ihn ohnehin ab.
+   */
+  private beginReplay(): void {
+    const level = this.level;
+    if (!level || this.session !== null) {
+      this.replayRec.stop();
+      return;
+    }
+    const s = this.settings.get();
+    const hash = configHash(this.config);
+    this.quant.reset();
+    this.replayRec.begin({
+      levelId: level.def.id,
+      levelHash: this.levelHashOf(level),
+      configHash: hash,
+      tickRate: this.config.tickRate,
+      settings: { preset: s.movementPreset, autoHop: s.autoHop, strafeAssist: s.strafeAssist, airControl: s.airControl },
+    });
+    if (hash !== configHash(movementConfigFor(s))) this.replayRec.invalidate('Physik per Tuning-Panel verändert');
+  }
+
+  /** Ziel: Aufnahme abschließen und (ohne Warten) einreichen. Rückgabe = Stand für den Ergebnis-Screen. */
+  private submitRun(time: number): OnlineStatus | undefined {
+    const rec = this.replayRec;
+    const invalid = rec.invalid;
+    const rep = rec.recording ? rec.finish(time, this.cur.pos) : null;
+    const token = ++this.submitToken;
+    this.lastReplay = rep;
+    this.lastReplayBytes = null;
+    const on = this.online;
+    let st: OnlineStatus;
+    if (!on) st = { state: 'offline', text: 'Offline — Lauf nicht eingereicht.' };
+    else if (!rep) st = { state: 'skipped', text: 'Keine Aufnahme dieses Laufs.' };
+    else if (invalid !== null) st = { state: 'skipped', text: `Nicht eingereicht: ${invalid}.` };
+    else st = { state: 'pending', text: 'Wird geprüft und eingereicht …' };
+    this.lastOnline = st;
+    if (rep) void this.sendRun(rep, token, st.state === 'pending' ? on : null);
+    return st;
+  }
+
+  private async sendRun(rep: Replay, token: number, on: OnlineService | null): Promise<void> {
+    let st: OnlineStatus | null = null;
+    try {
+      const bytes = await packReplay(rep);
+      if (token === this.submitToken) this.lastReplayBytes = bytes;
+      if (!on) return;
+      const res = await on.submitRun(bytes);
+      st = res.status === 'accepted'
+        ? { state: 'accepted', text: acceptedText(res), rank: res.rank, total: res.total, personalBest: res.personalBest }
+        : { state: 'rejected', text: `Abgelehnt: ${rejectText(res)}` };
+    } catch (err) {
+      const offline = err instanceof OnlineError && (err.code === 'offline' || err.code === 'timeout' || err.code === 'unavailable');
+      st = { state: offline ? 'offline' : 'error', text: `Nicht eingereicht — ${errorText(err)}` };
+    }
+    if (token !== this.submitToken || st === null) return;
+    this.lastOnline = st;
+    if (this.finishResult) this.finishResult = { ...this.finishResult, online: st };
+    this.menu.setOnlineStatus(st);
+  }
+
+  /** Menü und Spielername an die Online-Schicht hängen. */
+  private wireOnline(): void {
+    const on = this.online;
+    if (!on) {
+      this.menu.setOnline(null);
+      return;
+    }
+    const provider: MenuOnline = {
+      backend: on.backend,
+      myUid: () => on.identity?.uid ?? null,
+      myName: () => on.identity?.name ?? null,
+      board: async (levelId) => {
+        if (!on.identity) await on.auth(this.settings.get().playerName);
+        const [top, around] = await Promise.all([on.getLeaderboard(levelId, { kind: 'top', limit: 10 }), on.getLeaderboard(levelId, { kind: 'around', radius: 3 })]);
+        return { top, around };
+      },
+    };
+    this.menu.setOnline(provider);
+    this.settings.subscribe((s, prev) => {
+      if (s.playerName !== prev.playerName) void on.setName(s.playerName).catch(() => undefined);
+    });
+  }
+
+  /**
+   * "Gegen Ghost fahren" (Bestenliste): Level sofort starten (User-Geste → Pointer Lock), das Replay
+   * parallel laden, prüfen und als Ghost nachfahren. runId null = eigene Bestzeit (lokaler Ghost).
+   */
+  startGhostRace(levelId: string, runId: string | null, label: string): void {
+    const token = ++this.raceToken;
+    this.raceGhost = runId === null ? null : { levelId, label, track: null };
+    void this.startLevel(levelId, { gesture: true, lockless: this.lockless });
+    if (runId === null) return;
+    const on = this.online;
+    if (!on) {
+      this.raceGhost = null;
+      this.notify('Offline — Ghost nicht verfügbar.');
+      return;
+    }
+    void (async () => {
+      try {
+        const rep = await unpackReplay(await on.getGhost(runId));
+        const level = await this.getLevel(levelId);
+        // Nur ein gültiges Replay ergibt die echte Bahn (andere Physik-/Level-Version liefe woanders hin).
+        const res = verifyReplay(rep, level);
+        if (!res.valid) throw new Error(`Replay passt nicht zu diesem Level-Stand (${res.reason ?? '?'})`);
+        const track = replayToGhost(rep, level);
+        if (!track) throw new Error('Replay ohne Ziel');
+        const race = this.raceGhost;
+        if (token !== this.raceToken || race === null) return;
+        race.track = track;
+        if (this.levelId === levelId && this.session === null) {
+          this.ghostTrack = track;
+          this.hudData.ghostDiff = null;
+          this.hud.showNotice(`GHOST: ${label.toUpperCase()}`);
+        }
+      } catch (err) {
+        if (token !== this.raceToken) return;
+        this.raceGhost = null;
+        if (this.levelId === levelId) this.loadGhost();
+        this.notify(`Ghost konnte nicht geladen werden: ${errorText(err)}`);
+      }
+    })();
+  }
+
+  /** Bestenliste im Menü öffnen (Tools). */
+  showLeaderboard(levelId: string): void {
+    this.menu.showLeaderboard(levelId);
+  }
+
+  /** Online-Zustand für Tools (__vel.online). */
+  onlineInfo(): OnlineDebugInfo {
+    const on = this.online;
+    const race = this.raceGhost;
+    return {
+      backend: on ? on.backend : 'off',
+      uid: on?.identity?.uid ?? null,
+      name: on?.identity?.name ?? null,
+      status: this.lastOnline,
+      replay: this.lastReplayBytes ? bytesToB64(this.lastReplayBytes) : null,
+      replayTicks: this.lastReplay?.header.ticks ?? 0,
+      recording: this.replayRec.recording,
+      recordedTicks: this.replayRec.ticks,
+      invalid: this.replayRec.invalid,
+      race: race ? { levelId: race.levelId, label: race.label, loaded: race.track !== null } : null,
+    };
+  }
+
+  /** Online-Schicht (Tools: Bestenliste lesen). */
+  get onlineService(): OnlineService | null {
+    return this.online;
+  }
+
+  /** Level laden (Cache wie beim Spielen) — Tools/Verifier im Browser. */
+  levelById(id: string): Promise<CompiledLevel> {
+    return this.getLevel(id);
   }
 
   /**
@@ -1724,6 +2036,21 @@ export class Game {
 
     this.updateLeaveGuard();
     this.updateCamera(alpha, frameDt);
+    const fc = this.filmCam;
+    if (fc !== null) {
+      this.camera.position.set(fc.x, fc.y, fc.z);
+      this.camera.rotation.set(fc.pitch, fc.yaw, fc.roll, 'YXZ');
+    } else if (this.film && this.filmYawTau > 0) {
+      const target = this.camera.rotation.y;
+      if (Number.isNaN(this.filmYaw)) this.filmYaw = target;
+      else {
+        let d = (target - this.filmYaw) % (2 * Math.PI);
+        if (d > Math.PI) d -= 2 * Math.PI;
+        else if (d < -Math.PI) d += 2 * Math.PI;
+        this.filmYaw += d * (1 - Math.exp(-frameDt / this.filmYawTau));
+      }
+      this.camera.rotation.y = this.filmYaw;
+    }
     this.updateGhost(alpha);
     this.updateAudio(frameDt);
     this.updateHud(frameDt);
@@ -2106,7 +2433,7 @@ export class Game {
   private updateGhost(alpha: number): void {
     const track = this.ghostTrack;
     const run = this.run;
-    if (!track || !run || !this.ghostOn || this.gameState === 'title' || this.gameState === 'loading') {
+    if (!track || !run || !this.ghostVisible || this.gameState === 'title' || this.gameState === 'loading') {
       this.renderer.setGhost(null, 0);
       this.hudData.ghostOverHud = false;
       return;
@@ -2174,6 +2501,10 @@ export class Game {
     const beat = this.audio.beat();
     this.fx.kick = beat.kick;
     this.fx.energy = beat.energy;
+    if (this.film && this.filmBpm > 0) {
+      const beatDur = 60 / this.filmBpm;
+      this.fx.kick = FILM_KICK_VEL * Math.exp(-(this.filmClock % beatDur) / FILM_KICK_DECAY);
+    }
   }
 
   private updateHud(frameDt: number): void {
@@ -2197,7 +2528,7 @@ export class Game {
     this.updateHudKeys(frameDt);
     // HUD nur im Spiel und unter dem Pause-Menü — unter Titel/Einstellungen/Ergebnis schiene der Timer durch.
     const screen = this.menu.screen;
-    this.hud.visible = this.level !== null && this.gameState !== 'title' && (screen === null || screen === 'pause');
+    this.hud.visible = this.level !== null && this.gameState !== 'title' && (screen === null || screen === 'pause') && (!this.film || this.filmHud);
     this.hud.update(frameDt, d);
     this.updateHand(frameDt);
     this.hud.draw();
@@ -2389,6 +2720,8 @@ export class Game {
 
   /** Config wirksam machen: Movement, Coach, Session, HUD, Kamera, Bots, Tick-Rate. */
   private useConfig(c: MovementConfig): void {
+    // Physik mitten im Lauf geändert (Einstellungen, F1): der Replay ließe sich so nicht nachspielen.
+    if (c !== this.config) this.replayRec.invalidate('Physik-Einstellung im Lauf geändert');
     this.config = c;
     this.movement.setConfig(c);
     this.coach.setConfig(c);
@@ -2425,13 +2758,14 @@ export class Game {
           start: { x: level.spawnPos.x, z: level.spawnPos.z },
           world: this.world,
           maxTurnRate: opts.maxTurnRate,
+          band: opts.band,
           timeout: opts.timeout,
           stallTimeout: opts.stallTimeout,
         });
         return { kind, route: rf, next: () => rf.next(pm.state, pm.surfNormal), setConfig: (c) => rf.setConfig(c) };
       }
       case 'strafe': {
-        const b = new StrafeBot(cfg, { sync: opts.sync, aimNoiseDeg: opts.aimNoiseDeg, seed: opts.seed, heading });
+        const b = new StrafeBot(cfg, { sync: opts.sync, aimNoiseDeg: opts.aimNoiseDeg, seed: opts.seed, heading, band: opts.band, maxTurnRate: opts.maxTurnRate });
         return { kind, route: null, next: () => b.next(pm.state), setConfig: (c) => b.setConfig(c) };
       }
       case 'naive': {
@@ -2511,6 +2845,37 @@ function clamp01(v: number): number {
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** "Geprüft · Rang 3 von 12 · neue Online-Bestzeit". */
+function acceptedText(r: SubmitResult): string {
+  const rank = r.rank !== null ? `Rang ${r.rank} von ${r.total}` : 'gewertet';
+  return `Geprüft · ${rank}${r.personalBest ? ' · neue Online-Bestzeit' : ' · Online-Bestzeit bleibt'}`;
+}
+
+/** Verifier-Grund → Satz (Plan 009, VerifyReason). */
+function rejectText(r: SubmitResult): string {
+  const why: Record<string, string> = {
+    physics: 'andere Spielversion',
+    level: 'Level-Version passt nicht',
+    config: 'Physik verändert',
+    tickrate: 'Tickrate passt nicht',
+    ticks: 'Aufnahme unvollständig',
+    input: 'unmögliche Eingabe',
+    events: 'Respawn-Folge ungültig',
+    desync: 'Nachspielen weicht ab',
+    early: 'Ziel vor dem Ende der Aufnahme',
+    noFinish: 'Ziel beim Nachspielen nicht erreicht',
+    claim: 'Zeit stimmt nicht',
+    format: 'Replay unlesbar',
+  };
+  return why[r.reason ?? ''] ?? r.reason ?? 'unbekannt';
+}
+
+function bytesToB64(bytes: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 4096) s += String.fromCharCode(...bytes.subarray(i, i + 4096));
+  return btoa(s);
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {

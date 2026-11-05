@@ -3,6 +3,7 @@ import { computeHull } from '../geometry/convexHull';
 import { BrushWorld } from '../collision/BrushWorld';
 import type { BrushFace, CompiledBrush, Plane } from '../collision/types';
 import { MIN_GROUND_NORMAL_Y } from '../collision/types';
+import { dcos, dsin } from '../../player/detMath';
 import type { BrushDef, GateDef, LevelFile, TrainingZoneDef, TriggerDef, TriggerKind, Vec3Tuple } from './LevelFormat';
 
 export interface CompiledTrigger {
@@ -115,8 +116,9 @@ function applyRotation(points: Vector3[], def: BrushDef): void {
   const box = new Box3().setFromPoints(points);
   const pivot = def.pivot ? new Vector3(...def.pivot) : box.getCenter(new Vector3());
   const a = (def.rotY * Math.PI) / 180;
-  const c = Math.cos(a);
-  const s = Math.sin(a);
+  // Deterministisch (detMath): die Ebenen müssen in jeder Engine bitgleich sein (Level-Hash, Replays).
+  const c = dcos(a);
+  const s = dsin(a);
   for (const p of points) {
     const x = p.x - pivot.x;
     const z = p.z - pivot.z;

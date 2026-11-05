@@ -1,4 +1,5 @@
 import { Vector3 } from 'three';
+import { datan2 } from '../../player/detMath';
 
 /**
  * Konvexe Hülle kleiner Punktmengen (≤ ~32 Punkte) per Brute Force über alle
@@ -91,7 +92,7 @@ function faceVertices(plane: HullPlane, pts: readonly Vector3[]): Vector3[] {
   const sorted = on
     .map((p) => {
       tmp.subVectors(p, c);
-      return { p, a: Math.atan2(tmp.dot(v), tmp.dot(u)) };
+      return { p, a: datan2(tmp.dot(v), tmp.dot(u)) };
     })
     .sort((a, b) => a.a - b.a)
     .map((x) => x.p);

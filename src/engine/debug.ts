@@ -14,8 +14,12 @@ import type { AnyTrick } from '../ui/hand/ViewHand';
 import { HAND_POSES } from '../ui/hand/poses';
 import type { HandPose } from '../ui/hand/poses';
 import type { GameEvent } from './events';
-import type { BotInfo, BotKind, BotOptions, Game, GameState, GhostDebugInfo } from './Game';
-import type { SettingsStore } from './Settings';
+import type { BotInfo, BotKind, BotOptions, Game, GameState, GhostDebugInfo, OnlineDebugInfo } from './Game';
+import type { LeaderboardPage } from '../online/types';
+import { base64ToBytes, unpackReplay } from './replay/codec';
+import { verifyReplay } from './replay/verify';
+import type { VerifyResult } from './replay/verify';
+import type { SettingsPatch, SettingsStore } from './Settings';
 import type { UnlockId, UnlockStore } from './Unlocks';
 
 /**
@@ -243,6 +247,19 @@ export interface VelHandle {
   /** Echtzeit-Ticks anhalten/fortsetzen (Rendern läuft weiter). */
   freeze(on: boolean): void;
   stepTicks(n: number): VelState;
+  /**
+   * Film-Modus (tools/trailer): on = Echtzeit-Loop stoppen, Spielzeit nur noch per advanceFrame — Ticks,
+   * Interpolation, Kamera-Effekte, Hand, HUD laufen mit genau dt. Uhr startet bei 0; bpm > 0 = Kick-Puls
+   * der Trims aus dieser Uhr (Kick auf Frame 0); hud false = ohne HUD und Hand; yawTau > 0 = Kamera-Yaw nur im
+   * Bild tiefpassen (s). off = zurück zu Echtzeit.
+   */
+  film(opts: { readonly on: boolean; readonly bpm?: number; readonly hud?: boolean; readonly yawTau?: number }): void;
+  /** Film-Modus: einen Frame mit dt Sekunden simulieren und rendern (Canvas danach im selben Task lesen). */
+  advanceFrame(dt: number): void;
+  /** Film-Modus: freie Kamera (Grad), null = Spielerkamera. */
+  filmCamera(cam: { readonly x: number; readonly y: number; readonly z: number; readonly yawDeg: number; readonly pitchDeg: number; readonly rollDeg?: number } | null): void;
+  /** Einstellungen ändern wie das Menü (Kosmetik, HUD-Schalter …), persistiert. */
+  setSettings(patch: SettingsPatch): void;
   events(n?: number): RecordedEvent[];
   beat(): BeatInfo;
   setRenderSettings(patch: Partial<RenderSettings>): void;
@@ -300,6 +317,16 @@ export interface VelHandle {
   benchLesson(n?: number): { readonly updateMs: number; readonly tickMs: number; readonly hops: number } | null;
   /** Lektionsliste mit gespeicherten Sternen; loaded = Lektion schon geladen (Admin-Abhaken möglich). */
   lessons(): { readonly id: string; readonly name: string; readonly short: string; readonly stars: number; readonly loaded: boolean }[];
+  /** Online (Plan 009): Backend, Identität, Einreichung + gepacktes Replay (Base64) des letzten Ziels, Aufnahme, Fremd-Ghost. */
+  online(): OnlineDebugInfo;
+  /** Bestenliste eines Levels (Top 10 + um mich herum) direkt aus der Online-Schicht. null = offline. */
+  leaderboard(levelId: string): Promise<{ readonly top: LeaderboardPage; readonly around: LeaderboardPage } | null>;
+  /** Bestenliste im Menü öffnen. */
+  showLeaderboard(levelId: string): void;
+  /** Gegen Ghost fahren wie der Menü-Knopf (runId null = eigene Bestzeit). */
+  raceGhost(levelId: string, runId: string | null, label?: string): void;
+  /** Replay (Base64, packReplay) im Browser verifizieren — Determinismus-Gegenprobe zu Node. */
+  verifyReplay(b64: string): Promise<VerifyResult & { readonly levelId: string }>;
 }
 
 declare global {
@@ -418,6 +445,13 @@ export function installDebug(deps: DebugDeps): VelHandle {
       game.stepTicks(n);
       return state();
     },
+    film: (opts) => game.setFilmMode(opts.on, opts.bpm ?? 0, opts.hud ?? true, opts.yawTau ?? 0),
+    advanceFrame: (dt) => game.filmFrame(dt),
+    filmCamera: (cam) =>
+      game.setFilmCamera(cam === null ? null : { x: cam.x, y: cam.y, z: cam.z, yaw: cam.yawDeg * DEG, pitch: cam.pitchDeg * DEG, roll: (cam.rollDeg ?? 0) * DEG }),
+    setSettings: (patch) => {
+      settings.update(patch);
+    },
     events: (n) => {
       record(true);
       const k = n === undefined ? log.length : Math.max(0, Math.floor(n));
@@ -501,6 +535,21 @@ export function installDebug(deps: DebugDeps): VelHandle {
       return game.setDemo(on, opts?.play ?? false);
     },
     lessons: () => game.lessonList(),
+    online: () => game.onlineInfo(),
+    leaderboard: async (levelId) => {
+      const on = game.onlineService;
+      if (!on) return null;
+      if (!on.identity) await on.auth(settings.get().playerName);
+      const [top, around] = await Promise.all([on.getLeaderboard(levelId, { kind: 'top', limit: 10 }), on.getLeaderboard(levelId, { kind: 'around', radius: 3 })]);
+      return { top, around };
+    },
+    showLeaderboard: (levelId) => game.showLeaderboard(levelId),
+    raceGhost: (levelId, runId, label) => game.startGhostRace(levelId, runId, label ?? (runId ?? 'Eigene Bestzeit')),
+    verifyReplay: async (b64) => {
+      const rep = await unpackReplay(base64ToBytes(b64));
+      const level = await game.levelById(rep.header.levelId);
+      return { ...verifyReplay(rep, level), levelId: rep.header.levelId };
+    },
     frameCost: () => game.takeFrameCost(),
     benchHud: (n) => benchHud(game, n ?? 3000),
     benchLesson: (n) => game.benchLesson(n ?? 20000),

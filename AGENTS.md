@@ -19,7 +19,9 @@ Grafik, Content, Story sind zweitrangig. Wenn eine Entscheidung zwischen
 
 Bewusst **nicht** in dieser Version: Walljump, Wallrun, Double-Jump, Waffen,
 Stamina-/Landestrafe (würde Bhop töten), Multiplayer; seit Plan 007 außerdem Trail, Musik-Packs,
-Jump-Pads/Boosts/Ringe und Replays/Vorflieger-Ghost (kommen erst mit einer Datenbank).
+Jump-Pads/Boosts/Ringe. **Online (Plan 009, vorbereitet):** jeder Lauf wird als Replay aufgenommen, lokal (Mock) bzw.
+später serverseitig nachgespielt und gerankt; Bestenliste und "gegen Ghost fahren" im Menü — Backend (Firebase/Supabase)
+noch nicht eingebunden.
 
 **v2 (Plan 007, umgesetzt 29.09.):** Das Movement soll **Spaß machen, arcadig, smooth und befriedigend** sein,
 nicht 1:1 CS. Arcade-Pass: Lande-Gnade (8 Ticks), deterministische Hang-Landung (mit gestundetem Bergauf-
@@ -96,7 +98,12 @@ node tools/hand-audit.mjs <out> rest|skins|tricks|knife|all [item …]   # Plan 
 npx tsx tools/hand-contact.ts [item] [--glove g]      # Griff in Zahlen: Abstand je Handteil (Durchdringung/Kontakt/Schweben)
 npx tsx tools/hand-grips.ts <item> [--from|--open|--to pose] [--mask 31] [--pos|--view …]  # Griff-Pose mit Finger-Kontakt backen
 npx tsx tools/knife-tune.ts open|close [--iters N] [--seed s] [--probe p…]  # Butterfly: Handgelenk-Flick per Physik-Suche
+node tools/trailer/takes.mjs [take …]   # Trailer-Footage deterministisch (Film-Modus, 1/60 s je Frame) → media/footage/frames/<take>/
+node tools/trailer/cut.mjs [clip …]     #   (Port 5600, TRAILER_PORT=…); cut: Clips → media/footage/*.mp4 (1080p60, CRF 14), clips.json, contact.png
 npx tsx tools/levels/medalProbe.ts      # Spiel-Uhr-Median mehrerer Bot-Modelle je Level (Grundlage der Medaillen)
+npx tsx tools/replay/verify.ts <replay> | --bot <level> [--noise 1]   # Replay-Verifier (Plan 009) wie in der Cloud Function
+npx tsx tools/replay/online-check.ts    # Playwright (Port 5701, ONLINE_PORT=…): Lauf → Einreichen → Bestenliste → Ghost,
+                       #   Chromium ⇄ Node bitgleich, Offline-Fallback → shots/online/
 npm run build
 ```
 
@@ -121,6 +128,8 @@ src/
                      Viewmodel (render/viewmodel: 3D-Hand + Gegenstände, Plan 006)
   ui/                HUD (Bitmap-Font im Low-Res-Raster), View-Hand-Logik (ui/hand: Bewegung,
                      Posen, Tricks — DOM-/three-frei), Menüs (HTML), Tuning-Panel
+  engine/replay/     Replays (Plan 009): Quantisierung, Binärformat, Recorder, RunSimulator, Verifier, Ghost aus Replay
+  online/            OnlineService (anbieter-unabhängig), LocalMockService, FirebaseService-Platzhalter
 public/levels/       Level-JSON (generiert aus tools/levels/)
 tools/               Sim, Level-Build/-Check, Playwright-Harnesses
 tests/               Vitest
@@ -165,6 +174,7 @@ Die Module sprechen nur über diese Typen miteinander:
 | Spiel-Events | `src/engine/events.ts` |
 | Trainingsmodus (Session, Urteile, Fortschritt) | `src/engine/trainingTypes.ts` |
 | Einstellungen | `src/engine/settingsTypes.ts` |
+| Replay-Format, Online-Dienst | `src/engine/replay/format.ts`, `src/online/types.ts` |
 | Audio-API | `src/audio/types.ts` |
 | Renderer-API | `src/render/types.ts` |
 
@@ -474,6 +484,31 @@ Hand-Overhaul Schritt 1 (Plan 008, 01.10.) — alle Nutzer nachgezogen, tsc 0, V
   propShape,propShapes,fingerContact}.ts` (API: `.docs/plans/008`). Haltelagen neu: Dose, Karte, Spinner, Münze, Feuerzeug,
   Kendama (Ken 1.5×, Kugel r 2.5), Handy (×1.45), Messer (Kniff am Safe-Handle-Ende, Physik statt Zeitleiste).
 - **Tests/Werkzeuge**: `tests/handFoundation.test.ts`; `tools/lib/{handContact,handLive}.ts`; vm-hash-Baseline bewusst neu.
+
+Trailer-Footage (01.10.) — kein Vertrag, verhaltensneutral: **Debug-Handle** `film({on, bpm?, hud?, yawTau?})` (rAF-Loop
+aus, Spielzeit nur per `advanceFrame(dt)`; Kick der Trims aus simulierter BPM-Uhr; hud false = ohne HUD/Hand; yawTau =
+Kamera-Yaw nur im Bild tiefpassen), `advanceFrame(dt)`, `filmCamera({x,y,z,yawDeg,pitchDeg,rollDeg?} | null)`,
+`setSettings(patch)`; `BotOptions.band` (route/strafe, Hysterese), strafe reicht auch `maxTurnRate` durch.
+Game: `setFilmMode`, `filmFrame`, `setFilmCamera`, Typ `FilmCamera`.
+
+Online/Replays (Plan 009, 01.10.) — alle Nutzer nachgezogen, tsc 0, Vitest grün, `npm run sim` zeilengleich:
+- **Physik**: `player/detMath.ts` (`dsin/dcos/datan2/dhypot`, fdlibm-/V8-Ports aus IEEE-Grundoperationen) ersetzt
+  `Math.sin/cos/atan2/hypot` in PlayerMovement, `compileLevel` (rotY) und `convexHull` — in Node bitgleich zu `Math.*`,
+  in Chromium/Firefox/Safari dieselben Bits (Node und Chrome rechnen `Math.sin` verschieden, fallen.md #203).
+  **Game füttert die Physik mit quantisierten Eingaben** (`replay/format.InputQuantizer`: Tasten-Bits, Yaw ganzzahlig in
+  1/65536 Umdrehung ungewickelt); Bots/Sim/Werkzeuge in Node bleiben unquantisiert. `PHYSICS_VERSION` (replay/format) bei
+  jeder Physik-Code-Änderung erhöhen.
+- **Neu** `engine/replay/*` (format, codec, hash, recorder, runSim, verify, botRun) und `online/*` (types, LocalMockService,
+  FirebaseService, index). `replay/runSim.placeFeet` ist das Absetzen am Spawn für Game UND Verifier.
+- **Einstellungen**: `GameSettings.playerName` ('' = automatischer Name; `sanitizeSettings` über `online/types.sanitizeName`).
+- **UI** (`ui/types`): `OnlineStatus`, `FinishResult.online?`, `MenuEvents.raceGhost {levelId, runId|null, label}`,
+  `MenuScreen` 'leaderboard'. Menü: `MenuOnline`, `setOnline`, `showLeaderboard(levelId?)`, `setOnlineStatus`; Titel-Knopf
+  "Bestenliste", Ergebnis mit Status-Zeile + Knopf, Einstellungen → "Online" (Spielername).
+- **Engine**: `GameDeps.online?: OnlineService | null` (main.ts: `?online=off|mock|firebase` bzw. `VITE_ONLINE`, Default
+  mock), `Game.startGhostRace`, `showLeaderboard`, `onlineInfo()`, `levelById`. Aufnahme ungültig bei Config-Wechsel,
+  F1-Tuning, Debug-Teleport/-Geschwindigkeit; Bot/Override → `assisted`.
+- **Debug-Handle**: `online()`, `leaderboard(levelId)`, `showLeaderboard(levelId)`, `raceGhost(levelId, runId, label?)`,
+  `verifyReplay(b64)`.
 
 ### 3.5 Musik folgt dem Movement
 Der Techno-Track (132 BPM) ist aus Oszillatoren und Rauschen gebaut. Er bekommt

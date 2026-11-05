@@ -1765,3 +1765,151 @@
 .vel-train-tip {
   color: var(--magenta);
 }
+
+/* ------------------------------------------------------------------ Online / Bestenliste (Plan 009) */
+
+.vel-menu[data-screen='leaderboard'] {
+  background: rgba(7, 4, 18, 0.86);
+}
+
+.vel-leaderboard-screen {
+  width: min(1240px, 100%);
+  gap: 14px;
+  justify-content: safe center;
+}
+
+.vel-board-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.vel-board-panel {
+  padding: 14px 18px 10px;
+}
+
+.vel-board-who {
+  margin: 0;
+}
+
+.vel-board-who b {
+  color: var(--gold);
+  font-weight: 400;
+}
+
+.vel-board td {
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+/* Name links (vel-splits richtet sonst alle Spalten außer der ersten rechts aus). */
+.vel-board td.vel-board-name,
+.vel-board th:nth-child(2) {
+  text-align: left;
+}
+
+.vel-board-nm {
+  font-family: var(--font-body);
+  text-transform: none;
+}
+
+.vel-board tr.is-me td {
+  color: var(--gold);
+  background: rgba(255, 216, 74, 0.08);
+}
+
+.vel-board-tag {
+  margin-left: 8px;
+  padding: 0 4px;
+  font-family: var(--font-head);
+  font-size: 16px;
+  line-height: 20px;
+  color: var(--dim);
+  border: 1px solid currentColor;
+}
+
+.vel-board-tag--me {
+  color: var(--gold);
+}
+
+.vel-board .vel-btn--small {
+  min-height: 28px;
+  padding: 0 8px;
+}
+
+.vel-board-total {
+  margin: 6px 0 0;
+}
+
+.vel-board-tabs .vel-btn {
+  padding: 2px 12px;
+}
+
+/* Statuszeile der Einreichung im Ergebnis: ONLINE · Rang 3 von 12 … */
+.vel-online-status {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 14px;
+  background: var(--panel);
+  border-left: 3px solid var(--dim);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.55);
+}
+
+.vel-online-label {
+  font-family: var(--font-head);
+  letter-spacing: 2px;
+  color: var(--dim);
+}
+
+.vel-online-text {
+  font-family: var(--font-body);
+  text-transform: none;
+}
+
+.vel-online-status--accepted {
+  border-left-color: var(--gain);
+}
+
+.vel-online-status--accepted .vel-online-text {
+  color: var(--gain);
+}
+
+.vel-online-status--pending {
+  border-left-color: var(--cyan);
+}
+
+.vel-online-status--rejected,
+.vel-online-status--error {
+  border-left-color: var(--loss);
+}
+
+.vel-online-status--rejected .vel-online-text {
+  color: var(--loss);
+}
+
+.vel-text-input {
+  width: 100%;
+  padding: 4px 8px;
+  font-family: var(--font-body);
+  font-size: 16px;
+  color: var(--gold);
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.vel-text-input:focus {
+  outline: 2px solid var(--magenta);
+  outline-offset: 0;
+}
+
+@media (max-width: 900px) {
+  .vel-board-grid {
+    grid-template-columns: 1fr;
+  }
+}
