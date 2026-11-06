@@ -16,7 +16,12 @@ export const FRONT_DOOR_LOADERS: Readonly<Record<FrontDoorStyleId, () => Promise
 /** Karten im Menü-Labor, in dieser Reihenfolge. */
 export const MENU_STYLES: readonly MenuStyleInfo[] = [
   { id: 'classic', name: 'Klassik', description: 'Das bisherige Menü: Neon-Panels, Levelliste, System-Spalte.' },
-  { id: 'ps2', name: 'PS2-Konsole', description: 'Boot-Sequenz, Memory-Card-Screen fürs Profil, rotierende 3D-Objekte als Menüpunkte.' },
+  {
+    id: 'ps2',
+    name: 'PS2-Konsole',
+    description: 'Boot-Sequenz, Memory-Card-Screen fürs Profil, rotierende 3D-Objekte als Menüpunkte.',
+    views: ['training', 'leaderboard', 'cosmetics', 'profile', 'moderation'],
+  },
   { id: 'hub', name: 'Hub-Raum', description: 'Neon-Raum mit Stationen: Portale zu den Leveln, Spind für Kosmetik, Trophäenwand.' },
   { id: 'rave', name: 'Rave-Flyer', description: 'Riesige schräge Schrift, Club-Flyer-Look, alles pulst im Techno-Takt.' },
   { id: 'arcade', name: 'Arcade-Automat', description: 'INSERT COIN, Attract-Mode mit Highscore-Tabelle, gewölbte Röhre.' },

@@ -12,11 +12,32 @@
 import type { MenuStyleId } from '../../engine/settingsTypes';
 import type { LevelMedals } from '../../world/level/LevelFormat';
 import type { MedalId } from '../medals';
+import type { AdminService } from '../../online/adminTypes';
+import type { PlayerProfile } from '../../online/profileTypes';
 
 export type { MenuStyleId } from '../../engine/settingsTypes';
 export { MENU_STYLE_IDS } from '../../engine/settingsTypes';
 export type { MedalId } from '../medals';
 export type { LevelMedals } from '../../world/level/LevelFormat';
+export type { PlayerProfile, ProfileBest } from '../../online/profileTypes';
+export type { AdminService, AdminRun, AdminPlayer, AdminAuditEntry, AdminPage } from '../../online/adminTypes';
+
+/**
+ * Farben eines Levels (aus LevelFile.environment, Plan 010 Runde 4). Hex-Strings. Kommt erst, wenn Game die Level-Dateien
+ * im Hintergrund gelesen hat — bis dahin ist FrontDoorLevel.theme null (Stile nehmen eigene Ersatzfarben).
+ */
+export interface FrontDoorLevelTheme {
+  readonly trim: string;
+  /** Zweite Trim-Farbe, null = keine. */
+  readonly trimAlt: string | null;
+  readonly skyTop: string;
+  readonly skyHorizon: string;
+  readonly skyBottom: string;
+  /** Sonne bzw. Mond (sunColor). */
+  readonly sun: string;
+  /** Scheibe am Himmel ist ein Mond. */
+  readonly moon: boolean;
+}
 
 /** Stile mit eigener Front Door (alles außer 'classic'). */
 export type FrontDoorStyleId = Exclude<MenuStyleId, 'classic'>;
@@ -47,6 +68,8 @@ export interface FrontDoorLevel {
   readonly locked: boolean;
   /** "Empfohlen: T7/T8" — Vorbereitungs-Lektionen ohne Stern, null = keine offen. */
   readonly recommended: string | null;
+  /** Farben des Levels, null = noch nicht geladen. */
+  readonly theme: FrontDoorLevelTheme | null;
 }
 
 /** Eine Trainings-Lektion (kurz, für Hinweise/Knöpfe). */
@@ -58,6 +81,16 @@ export interface FrontDoorLesson {
   readonly subtitle: string | null;
   /** 0..3 Sterne. */
   readonly stars: number;
+  /** Gruppe (Grundlagen / Fortgeschritten). */
+  readonly group: 'basics' | 'advanced';
+}
+
+export interface FrontDoorLessonGroup {
+  readonly id: 'basics' | 'advanced';
+  /** "Grundlagen" */
+  readonly title: string;
+  /** "bestanden → Fidget-Spinner" */
+  readonly reward: string;
 }
 
 export interface FrontDoorTraining {
@@ -77,6 +110,31 @@ export interface FrontDoorTraining {
    * groß "Training starten" (recommended) an — Stile sollten das auch tun, aber nie erzwingen.
    */
   readonly newbie: boolean;
+  /** Alle Lektionen in Index-Reihenfolge (leer, solange nicht geladen). */
+  readonly lessons: readonly FrontDoorLesson[];
+  /** Gruppen in Anzeigereihenfolge (nur die mit Lektionen). */
+  readonly groups: readonly FrontDoorLessonGroup[];
+  /** Taste der Vorführung in Lektionen ("H"), für den Hinweistext. */
+  readonly demoKey: string;
+}
+
+/** Ein Handschuh oder Gegenstand (Kosmetik), wie die klassische Kachel. */
+export interface FrontDoorCosmetic {
+  readonly kind: 'glove' | 'item';
+  /** GloveId bzw. HeldItemId ('classic' / 'none' = Standard / Nichts). */
+  readonly id: string;
+  readonly name: string;
+  readonly unlocked: boolean;
+  /** Hand/Renderer kennen ihn schon (false = "in Arbeit", nicht wählbar). */
+  readonly implemented: boolean;
+  /** Bedingung kurz wie die Kachel (nur gesperrt), z. B. "GOLD · L1". */
+  readonly condition: string | null;
+  /** Bedingung als Satz (Tooltip), z. B. "GOLD-Medaille in 01 GRUNDKURS (26.10 s)". */
+  readonly conditionLong: string | null;
+  /** Fortschritt kurz ("2/4"), null = keiner. */
+  readonly progress: string | null;
+  /** Ist die wirksame Wahl. */
+  readonly equipped: boolean;
 }
 
 export interface FrontDoorCosmetics {
@@ -88,6 +146,51 @@ export interface FrontDoorCosmetics {
   readonly itemName: string;
   /** Zuletzt freigeschaltet (Anzeigename), null = nichts. Es gibt keinen "neu"-Merker; das ist das Nächstbeste. */
   readonly latest: string | null;
+  /** Alle Handschuhe / Gegenstände in Freischalt-Reihenfolge (Standard/Nichts zuerst). */
+  readonly gloves: readonly FrontDoorCosmetic[];
+  readonly items: readonly FrontDoorCosmetic[];
+}
+
+/** Ein Bestenlisten-Eintrag. */
+export interface FrontDoorBoardEntry {
+  readonly rank: number;
+  readonly uid: string;
+  readonly name: string;
+  readonly avatarUrl: string | null;
+  readonly dev: boolean;
+  readonly bot: boolean;
+  /** Verifizierte Zeit (s). */
+  readonly time: number;
+  /** Für raceGhost. */
+  readonly runId: string;
+  /** Mein Eintrag. */
+  readonly mine: boolean;
+}
+
+export interface FrontDoorBoard {
+  readonly levelId: string;
+  /** Top 10. */
+  readonly top: readonly FrontDoorBoardEntry[];
+  /** Ausschnitt um mich herum (leer ohne eigenen Lauf). */
+  readonly around: readonly FrontDoorBoardEntry[];
+  /** Spieler in der Wertung. */
+  readonly total: number;
+  /** Mein Eintrag, null = noch kein Lauf. */
+  readonly me: FrontDoorBoardEntry | null;
+}
+
+/** Screens, die ein Stil selbst als Ansicht bauen kann (MenuStyleInfo.views). */
+export type FrontDoorView = 'training' | 'leaderboard' | 'cosmetics' | 'profile' | 'moderation';
+
+/**
+ * Anfrage an die Front Door: "zeig diese Ansicht" (z. B. Menu.showProfile(uid) aus der klassischen Bestenliste oder die
+ * Lektionsübersicht nach einer Lektion). Kommt nur in DEM mount/update-ctx, der sie zustellt; danach wieder null.
+ */
+export interface FrontDoorRequest {
+  readonly view: FrontDoorView;
+  readonly levelId?: string;
+  /** Profil: fremder Spieler (fehlt = ich). */
+  readonly uid?: string;
 }
 
 export interface FrontDoorAccount {
@@ -175,6 +278,8 @@ export interface FrontDoorContext {
   /** prefers-reduced-motion: reduce → keine Dauer-Animationen, kein Pulsieren/Kamerafahrten (harte Schnitte ok). */
   readonly reducedMotion: boolean;
   readonly assets: FrontDoorAssets;
+  /** Siehe FrontDoorRequest; null = normal (Hauptmenü bzw. zuletzt gezeigte Ansicht). */
+  readonly request: FrontDoorRequest | null;
 
   // ---- Lesen pro Frame
   /** Takt (siehe FrontDoorBeat). Das Objekt wird wiederverwendet — Werte lesen, nicht aufbewahren. Nie null. */
@@ -199,8 +304,11 @@ export interface FrontDoorContext {
   openLeaderboard(levelId?: string): void;
   openSettings(): void;
   openControls(): void;
-  /** Profil (Platzhalter-Screen "Profil — kommt", bis der Profil-Strang ihn baut). */
-  openProfile(): void;
+  /**
+   * Profil-Screen (eigenes ohne uid, sonst das eines anderen Spielers). Für Stile mit 'profile' in views baut der Stil es
+   * selbst (über getProfile) — dann ruft er das hier nicht auf, außer er will den Bestands-Screen.
+   */
+  openProfile(uid?: string): void;
   /** Admin-Menü (Freischaltungen/Medaillen; auch F8). Bewusst unauffällig anbieten. */
   openAdmin(): void;
   /** Menü-Labor (Stil wechseln). Jede Front Door MUSS einen Weg dorthin anbieten. */
@@ -220,6 +328,27 @@ export interface FrontDoorContext {
    * Knöpfe, die play() auslösen.
    */
   markLockButton(el: HTMLButtonElement): void;
+
+  // ---- Daten auf Abruf (Plan 010 Runde 4)
+  /** Bestenliste eines Levels. Wirft OnlineError (code, message: lesbar) — offline: code 'offline'/'unavailable'. */
+  board(levelId: string): Promise<FrontDoorBoard>;
+  /**
+   * Gegen einen Ghost fahren (runId null = eigene Bestzeit). Startet das Level wie play() — SYNCHRON in der Geste
+   * aufrufen (Pointer Lock), Knopf mit markLockButton markieren.
+   */
+  raceGhost(levelId: string, runId: string | null, label: string): void;
+  /** Spielerprofil (ohne uid: ich — braucht bei loginRequired den Login). Wirft OnlineError ('notFound' = gebannt/unbekannt). */
+  getProfile(uid?: string): Promise<PlayerProfile>;
+  /** Moderation, nur für Entwickler (account.dev); sonst null. Jedes Mal frisch lesen (Identität kann wechseln). */
+  admin(): AdminService | null;
+  /** Kosmetik ausrüsten (gesperrt/nicht umgesetzt → tut nichts). Danach kommt ein update() mit neuer Auswahl. */
+  equip(kind: 'glove' | 'item', id: string): void;
+  /**
+   * 3D-Hand-Vorschau in ein eigenes Canvas (150×176 Low-Res, Pipeline wie im Spiel; CSS-Größe bestimmt der Stil,
+   * ganzzahlig skalieren). label bekommt den Namen der gerade gezeigten Bewegung. Rückgabe: stoppen + aufräumen (Pflicht
+   * in unmount). Eigener WebGL-Kontext.
+   */
+  mountHandPreview(canvas: HTMLCanvasElement, label: HTMLElement | null): () => void;
 }
 
 /** Engine-Tasten, die Menu.ts an die Front Door weiterreicht (InputManager → Menu.handleAction). */
@@ -252,4 +381,9 @@ export interface MenuStyleInfo {
   readonly name: string;
   /** Eine Zeile. */
   readonly description: string;
+  /**
+   * Bestands-Screens, die dieser Stil selbst als Ansicht baut. Menu.ts zeigt sie dann (vom Titel bzw. nach einer Lektion
+   * aus) über die Front Door mit ctx.request statt des Bestands-Screens. Fehlt = keine.
+   */
+  readonly views?: readonly FrontDoorView[];
 }

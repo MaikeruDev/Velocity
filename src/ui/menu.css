@@ -2248,3 +2248,32 @@
   justify-content: center;
   max-width: 960px;
 }
+
+/* Bestenliste: Name als Knopf zum Spielerprofil (Plan 010 Runde 4) */
+.vel-board-profile {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.vel-board-profile:hover .vel-board-nm {
+  color: var(--cyan);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Profil (Bestand): Kopf mit Avatar + Name */
+.vel-profile-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 24px;
+}

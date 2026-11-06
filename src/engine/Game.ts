@@ -18,6 +18,8 @@ import { ViewHand } from '../ui/hand/ViewHand';
 import type { ViewHandState } from '../ui/hand/ViewHand';
 import { makeHandInput } from '../ui/hand/handMotion';
 import type { FinishResult, HudData, HudKeys, LessonResult } from '../ui/types';
+import type { FrontDoorLevelTheme } from '../ui/menuLab/types';
+import { levelTheme } from '../ui/menuLab/doorData';
 import type { LessonPauseInfo, MenuTraining } from '../ui/Menu';
 import { BrushWorld } from '../world/collision/BrushWorld';
 import { GatedWorld } from '../world/collision/GatedWorld';
@@ -795,6 +797,7 @@ export class Game {
     // Freischaltungen aus den Bestzeiten nachtragen (verlorener Unlock-Stand kostet nichts).
     this.unlocks.sync(this.levels, (id) => this.best.get(id), this.progress);
     this.menu.setLevels(this.levels);
+    void this.loadLevelThemes();
     // Online-Sitzung herstellen (Mock: still lokal; Supabase: Discord-Sitzung wiederherstellen, nie ein Redirect) —
     // ohne Verbindung läuft alles offline weiter. Zurück vom Discord-Login: gesicherten Lauf jetzt einreichen.
     const on = this.online;
@@ -1378,6 +1381,25 @@ export class Game {
 
   // ================================================================== Level
 
+  /**
+   * Level-Farben für das Menü (Front Doors färben ihre Discs danach): die Level-Dateien im Hintergrund lesen, nur
+   * environment behalten. Kein Kompilieren (das kostet Frames im Menü); der HTTP-Cache macht das spätere Laden billig.
+   */
+  private async loadLevelThemes(): Promise<void> {
+    const themes = new Map<string, FrontDoorLevelTheme>();
+    for (const lv of this.levels) {
+      try {
+        const res = await fetch(`${this.baseUrl}levels/${lv.file}`);
+        if (!res.ok) continue;
+        const env = levelTheme(await res.json());
+        if (env) themes.set(lv.id, env);
+      } catch {
+        // nur Optik
+      }
+    }
+    if (themes.size > 0) this.menu.setLevelThemes(themes);
+  }
+
   private getLevel(id: string): Promise<CompiledLevel> {
     let p = this.levelCache.get(id);
     if (!p) {
@@ -1920,6 +1942,12 @@ export class Game {
         const [top, around] = await Promise.all([on.getLeaderboard(levelId, { kind: 'top', limit: 10 }), on.getLeaderboard(levelId, { kind: 'around', radius: 3 })]);
         return { top, around };
       },
+      profile: async (uid) => {
+        // Mock/ohne Login-Pflicht: Identität erst herstellen, sonst kennt der Dienst "mich" noch nicht
+        if (uid === undefined && !on.identity && !on.loginRequired) await on.auth(this.settings.get().playerName);
+        return on.getProfile(uid);
+      },
+      admin: () => on.admin,
     };
     this.menu.setOnline(provider);
     on.onIdentityChange((id) => {

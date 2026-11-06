@@ -16,7 +16,7 @@
   --k: 1;
 }
 
-@media (min-height: 900px) and (min-width: 1500px) {
+@media (min-height: 1000px) and (min-width: 1500px) {
   .vel-menu.vel-style--ps2 {
     --k: 1.5;
   }
@@ -942,7 +942,7 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(calc(300px * var(--k)), 0.36fr) minmax(0, 1fr);
+  grid-template-columns: minmax(calc(340px * var(--k)), 0.36fr) minmax(0, 1fr);
   gap: calc(24px * var(--k));
   padding-top: calc(20px * var(--k));
   align-items: start;
@@ -1433,11 +1433,14 @@
  * scrollte, was klassisch auf eine Seite passt). Kopf = EINE Zeile (Logo · Symbol + Titel · Konto) in der ersten
  * Zeile des Screens; der Scrollbereich endet über der flachen Prompt-Leiste. */
 .vel-menu.vel-style--ps2:is([data-screen='training'], [data-screen='leaderboard'], [data-screen='cosmetics'], [data-screen='settings'], [data-screen='controls'], [data-screen='lab'], [data-screen='profile'], [data-screen='admin']) .vel-screen {
+  /* Fit-Zoom je Screen (fit.ts): 1 / 1.5 / 2, Polster oben = Rest-Platz im oberen Drittel. px hier drin werden
+   * mitgezoomt (52 px Fuß = 52 × zoom), Prozent bleiben visuell. */
+  zoom: var(--ps2-fit, 1);
   width: min(1360px, calc(100% - 80px));
   max-width: 1360px;
   height: calc(100% - 52px);
   max-height: none;
-  padding: 16px 4px 12px 0;
+  padding: var(--ps2-fit-pad, 16px) 4px 12px 0;
   gap: 16px;
   /* Kopf gehört nach oben (Bestenliste zentriert klassisch vertikal) */
   justify-content: flex-start;
@@ -1446,13 +1449,13 @@
 }
 
 /* Kopfzeile: Pixel-Logo links, Konto rechts (Standbild-Daten aus der Front Door) */
-.vel-menu.vel-style--ps2:is([data-screen='training'], [data-screen='leaderboard'], [data-screen='cosmetics'], [data-screen='settings'], [data-screen='controls'], [data-screen='lab'], [data-screen='profile'], [data-screen='admin'])::before {
+.vel-menu.vel-style--ps2:is([data-screen='training'], [data-screen='leaderboard'], [data-screen='cosmetics'], [data-screen='settings'], [data-screen='controls'], [data-screen='lab'], [data-screen='profile'], [data-screen='admin']) .vel-screen::before {
   content: var(--ps2-acc, '');
   position: absolute;
   z-index: 3;
-  top: 14px;
-  left: max(40px, calc(50% - 680px));
-  right: max(40px, calc(50% - 680px));
+  top: calc(var(--ps2-fit-pad, 16px) - 2px);
+  left: 0;
+  right: 4px;
   height: 48px;
   font-family: var(--font-head);
   font-size: 16px;
@@ -1468,7 +1471,7 @@
 
 /* Fußlinie wie die Front Door (ersetzt die globalen Scanlines auf diesen Screens) */
 .vel-menu.vel-style--ps2:is([data-screen='training'], [data-screen='leaderboard'], [data-screen='cosmetics'], [data-screen='settings'], [data-screen='controls'], [data-screen='lab'], [data-screen='profile'], [data-screen='admin'])::after {
-  inset: auto max(40px, calc(50% - 680px)) 48px;
+  inset: auto max(calc(40px * var(--ps2-fit, 1)), calc(50% - 680px * var(--ps2-fit, 1))) calc(48px * var(--ps2-fit, 1));
   height: 1px;
   background: var(--ps2-line);
   mix-blend-mode: normal;
@@ -1995,4 +1998,920 @@
 .vel-menu.vel-style--ps2 .vel-leaderboard-screen > .vel-board-grid,
 .vel-menu.vel-style--ps2 .vel-leaderboard-screen > .vel-lock-hint {
   order: 2;
+}
+
+/* Handvorschau 150×176 Low-Res: bei Fit 1.5 wären 450 px = 4.5 Gerätepixel je Pixel. 300 px × 1.5 = 450 = genau 3×
+ * (und klein genug, dass Kosmetik bei 1080p die Stufe 1.5 schafft); bei Fit 2: 300 × 2 = 600 = 4×. */
+.vel-menu.vel-style--ps2:is([data-ps2-fit='1.5'], [data-ps2-fit='2']) .vel-hand-preview {
+  width: 300px;
+  height: 352px;
+}
+
+/* ==================================================================
+ * Native Ansichten (Plan 010 Runde 4, views.ts): Training, Bestenliste, Kosmetik, Profil, Moderation.
+ * Gleiche Bausteine wie Disc-Auswahl und Memory Card. Silkscreen nur 16 × --k. Listen, die von Natur aus lang sind
+ * (Moderation, Bestenliste mit "um dich herum"), scrollen IN ihrem Panel — die Ansicht selbst nie.
+ * ================================================================== */
+
+.vel-menu.vel-style--ps2 .ps2-sub {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(12px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-view-head .ps2-head-icon {
+  flex: none;
+  align-self: center;
+  width: calc(48px * var(--k));
+  height: calc(48px * var(--k));
+  margin: calc(-8px * var(--k)) 0;
+}
+
+.vel-menu.vel-style--ps2 .ps2-sub-intro {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  color: #c4c9ec;
+}
+
+.vel-menu.vel-style--ps2 .ps2-panel {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(8px * var(--k));
+  padding: calc(12px * var(--k)) calc(16px * var(--k));
+  background: var(--ps2-glass);
+  border: 1px solid var(--ps2-line);
+  pointer-events: auto;
+}
+
+.vel-menu.vel-style--ps2 .ps2-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: calc(16px * var(--k));
+  padding-bottom: calc(6px * var(--k));
+  border-bottom: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .ps2-panel-title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--k));
+  font-family: var(--font-head);
+  font-weight: 400;
+  font-size: calc(16px * var(--k));
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.vel-menu.vel-style--ps2 .ps2-panel-title::before {
+  content: '';
+  width: calc(8px * var(--k));
+  height: calc(8px * var(--k));
+  background: var(--disc, var(--cyan));
+}
+
+.vel-menu.vel-style--ps2 .ps2-panel-note {
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  text-transform: none;
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .ps2-empty {
+  margin: 0;
+  padding: calc(8px * var(--k)) 0;
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .ps2-bad {
+  color: var(--loss);
+}
+
+.vel-menu.vel-style--ps2 .ps2-tag {
+  display: inline-block;
+  padding: 0 calc(6px * var(--k));
+  /* Pixelify statt Silkscreen: Silkscreen wäre nur bei 8 px scharf — zu klein für BOT/PB/GESPERRT */
+  font-family: var(--font-body);
+  font-size: calc(14px * var(--k));
+  line-height: 1.3;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ps2-dim);
+  border: 1px solid var(--ps2-line);
+  white-space: nowrap;
+}
+
+.vel-menu.vel-style--ps2 .ps2-tag--gold {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+
+.vel-menu.vel-style--ps2 .ps2-tag--me {
+  color: var(--ps2-ink);
+  background: var(--cyan);
+  border-color: var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .ps2-tag--bad,
+.vel-menu.vel-style--ps2 .ps2-tag--ban,
+.vel-menu.vel-style--ps2 .ps2-tag--delete_run {
+  color: var(--loss);
+  border-color: var(--loss);
+}
+
+.vel-menu.vel-style--ps2 .ps2-tag--unban {
+  color: var(--gain);
+  border-color: var(--gain);
+}
+
+.vel-menu.vel-style--ps2 .ps2-tag--rename {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+
+.vel-menu.vel-style--ps2 .ps2-stars {
+  display: inline-flex;
+  gap: calc(2px * var(--k));
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  color: rgba(143, 149, 192, 0.55);
+}
+
+.vel-menu.vel-style--ps2 .ps2-stars .is-on {
+  font-style: normal;
+  color: var(--gold);
+  text-shadow: 0 2px 0 #6b4a00;
+}
+
+.vel-menu.vel-style--ps2 .ps2-stars i {
+  font-style: normal;
+}
+
+.vel-menu.vel-style--ps2 .ps2-detail-bar {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(8px * var(--k)) calc(24px * var(--k));
+  min-height: calc(56px * var(--k));
+  padding: calc(8px * var(--k)) calc(16px * var(--k));
+  border-top: 1px solid var(--ps2-line);
+  border-bottom: 1px solid var(--ps2-line);
+  pointer-events: auto;
+}
+
+.vel-menu.vel-style--ps2 .ps2-detail-bar .ps2-btn {
+  margin-left: auto;
+}
+
+/* ---- Training */
+.vel-menu.vel-style--ps2 .ps2-lesson-cols {
+  flex: none;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(16px * var(--k));
+  align-items: start;
+}
+
+.vel-menu.vel-style--ps2 .ps2-lesson-list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(6px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-lesson {
+  display: grid;
+  grid-template-columns: calc(48px * var(--k)) calc(40px * var(--k)) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: calc(8px * var(--k));
+  min-height: calc(52px * var(--k));
+  padding: 0 calc(12px * var(--k)) 0 calc(2px * var(--k));
+  text-align: left;
+  background: rgba(6, 8, 22, 0.55);
+  border: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .ps2-lesson.is-selected,
+.vel-menu.vel-style--ps2 .ps2-lesson:hover {
+  background: var(--ps2-glass-hi);
+  border-color: var(--ps2-line-hi);
+}
+
+.vel-menu.vel-style--ps2 .ps2-lesson.is-selected {
+  box-shadow: inset calc(4px * var(--k)) 0 0 #ff8a3a;
+}
+
+.vel-menu.vel-style--ps2 .ps2-lesson-icon {
+  display: block;
+  width: calc(48px * var(--k));
+  height: calc(48px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-lesson-short {
+  font-size: calc(16px * var(--k));
+  color: var(--ps2-blue);
+}
+
+.vel-menu.vel-style--ps2 .ps2-lesson.is-selected .ps2-lesson-short {
+  color: #ff9a52;
+}
+
+.vel-menu.vel-style--ps2 .ps2-lesson-name {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.vel-menu.vel-style--ps2 .ps2-lesson-name b {
+  font-weight: 400;
+  font-size: calc(16px * var(--k));
+  letter-spacing: 2px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vel-menu.vel-style--ps2 .ps2-lesson-name small {
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  text-transform: none;
+  color: #c4c9ec;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vel-menu.vel-style--ps2 .ps2-lesson-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+/* ---- Bestenliste */
+.vel-menu.vel-style--ps2 .ps2-login-note {
+  display: flex;
+  align-items: center;
+  gap: calc(16px * var(--k));
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  color: #c4c9ec;
+  pointer-events: auto;
+}
+
+.vel-menu.vel-style--ps2 .ps2-board-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(calc(260px * var(--k)), 0.32fr) minmax(0, 1fr);
+  gap: calc(16px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-board-discs {
+  display: flex;
+  flex-direction: column;
+  gap: calc(6px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-board-disc {
+  --disc: var(--cyan);
+  display: grid;
+  grid-template-columns: calc(48px * var(--k)) minmax(0, 1fr);
+  align-items: center;
+  gap: calc(8px * var(--k));
+  min-height: calc(56px * var(--k));
+  padding: 0 calc(12px * var(--k)) 0 calc(2px * var(--k));
+  text-align: left;
+  background: rgba(6, 8, 22, 0.55);
+  border: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .ps2-board-disc:hover,
+.vel-menu.vel-style--ps2 .ps2-board-disc.is-selected {
+  background: var(--ps2-glass-hi);
+  border-color: var(--ps2-line-hi);
+}
+
+.vel-menu.vel-style--ps2 .ps2-board-disc.is-selected {
+  border-color: var(--disc);
+  box-shadow: inset calc(4px * var(--k)) 0 0 var(--disc);
+}
+
+.vel-menu.vel-style--ps2 .ps2-board-disc-icon {
+  display: block;
+  width: calc(48px * var(--k));
+  height: calc(48px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-board-disc-name {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.vel-menu.vel-style--ps2 .ps2-board-disc-name b {
+  font-weight: 400;
+  font-size: calc(16px * var(--k));
+  letter-spacing: 1px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vel-menu.vel-style--ps2 .ps2-board-disc-name small {
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  text-transform: none;
+  color: var(--ps2-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vel-menu.vel-style--ps2 .ps2-board-panel {
+  --disc: var(--cyan);
+  overflow-y: auto;
+  border-top: calc(4px * var(--k)) solid var(--disc);
+  scrollbar-color: var(--ps2-line-hi) transparent;
+}
+
+.vel-menu.vel-style--ps2 .ps2-slot-wr {
+  margin: 0;
+  font-size: calc(16px * var(--k));
+  letter-spacing: 1px;
+  color: var(--gold);
+  text-transform: uppercase;
+}
+
+/* Tabellen wie Speicherlisten: Zeilen als Grid, abwechselnd leicht getönt */
+.vel-menu.vel-style--ps2 .ps2-table {
+  display: flex;
+  flex-direction: column;
+}
+
+.vel-menu.vel-style--ps2 .ps2-tr {
+  display: grid;
+  grid-template-columns: calc(48px * var(--k)) minmax(0, 1fr) calc(112px * var(--k)) calc(64px * var(--k)) auto;
+  align-items: center;
+  gap: calc(8px * var(--k));
+  min-height: calc(32px * var(--k));
+  padding: 0 calc(8px * var(--k));
+  font-size: calc(16px * var(--k));
+  border-bottom: 1px solid rgba(140, 170, 255, 0.1);
+}
+
+.vel-menu.vel-style--ps2 .ps2-tr:nth-child(even) {
+  background: rgba(140, 170, 255, 0.05);
+}
+
+.vel-menu.vel-style--ps2 .ps2-th {
+  min-height: calc(28px * var(--k));
+  color: var(--ps2-dim);
+  border-bottom: 1px solid var(--ps2-line);
+  background: none !important;
+}
+
+.vel-menu.vel-style--ps2 .ps2-tr.is-selected {
+  background: rgba(140, 170, 255, 0.14);
+  box-shadow: inset calc(4px * var(--k)) 0 0 var(--disc, var(--cyan));
+}
+
+.vel-menu.vel-style--ps2 .ps2-tr.is-me {
+  color: #fff;
+  background: rgba(51, 240, 255, 0.12);
+}
+
+.vel-menu.vel-style--ps2 .ps2-tr--gap {
+  min-height: calc(20px * var(--k));
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .ps2-trank {
+  color: var(--ps2-blue);
+}
+
+.vel-menu.vel-style--ps2 .ps2-rank--1 .ps2-trank {
+  color: var(--gold);
+}
+
+.vel-menu.vel-style--ps2 .ps2-rank--2 .ps2-trank {
+  color: #cfd6e6;
+}
+
+.vel-menu.vel-style--ps2 .ps2-rank--3 .ps2-trank {
+  color: #e0915a;
+}
+
+.vel-menu.vel-style--ps2 .ps2-twho {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--k));
+  font-family: var(--font-body);
+  color: #fff;
+}
+
+.vel-menu.vel-style--ps2 .ps2-tname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  text-transform: none;
+}
+
+.vel-menu.vel-style--ps2 .ps2-tname-btn {
+  min-width: 0;
+  display: inline-flex;
+  text-transform: none;
+}
+
+.vel-menu.vel-style--ps2 .ps2-tname-btn:hover .ps2-tname {
+  color: var(--cyan);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.vel-menu.vel-style--ps2 .ps2-ttime {
+  font-family: var(--font-head);
+  letter-spacing: 1px;
+  text-align: right;
+}
+
+.vel-menu.vel-style--ps2 .ps2-tdate {
+  font-family: var(--font-body);
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .ps2-tact {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: calc(6px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .vel-frontdoor--ps2 .ps2-btn--small {
+  min-height: calc(24px * var(--k));
+  padding: 0 calc(8px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .vel-frontdoor--ps2 .ps2-btn--danger {
+  color: #ffd6dd;
+  border-color: rgba(255, 77, 109, 0.6);
+}
+
+.vel-menu.vel-style--ps2 .vel-frontdoor--ps2 .ps2-btn--danger:hover {
+  color: var(--ps2-ink);
+  background: var(--loss);
+  border-color: var(--loss);
+}
+
+/* ---- Kosmetik */
+.vel-menu.vel-style--ps2 .ps2-cosm-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: calc(16px * var(--k));
+  align-items: start;
+}
+
+.vel-menu.vel-style--ps2 .ps2-preview {
+  border-top: calc(4px * var(--k)) solid var(--magenta);
+}
+
+.vel-menu.vel-style--ps2 .ps2-preview-frame {
+  border: 1px solid var(--ps2-line-hi);
+  line-height: 0;
+}
+
+/* 150×176 Low-Res, 2× / 3× / 4× mit --k = 1 / 1.5 / 2 — immer ganzzahlig */
+.vel-menu.vel-style--ps2 .ps2-hand-preview {
+  display: block;
+  width: calc(300px * var(--k));
+  height: calc(352px * var(--k));
+  image-rendering: pixelated;
+}
+
+.vel-menu.vel-style--ps2 .ps2-preview-tier {
+  font-size: calc(16px * var(--k));
+  letter-spacing: 1px;
+  color: var(--cyan);
+  text-transform: uppercase;
+}
+
+.vel-menu.vel-style--ps2 .ps2-cosm-col {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(12px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-inventory {
+  display: flex;
+  flex-direction: column;
+  gap: calc(12px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-inv-grid {
+  display: grid;
+  gap: calc(6px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-inv-grid--hand {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.vel-menu.vel-style--ps2 .ps2-inv-grid--item {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.vel-menu.vel-style--ps2 .ps2-inv {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(4px * var(--k));
+  min-width: 0;
+  min-height: calc(56px * var(--k));
+  padding: calc(8px * var(--k));
+  text-align: left;
+  background: rgba(6, 8, 22, 0.55);
+  border: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .ps2-inv:hover,
+.vel-menu.vel-style--ps2 .ps2-inv.is-selected {
+  background: var(--ps2-glass-hi);
+  border-color: var(--ps2-line-hi);
+}
+
+.vel-menu.vel-style--ps2 .ps2-inv.is-selected {
+  box-shadow: 0 0 0 1px var(--ps2-line-hi);
+}
+
+.vel-menu.vel-style--ps2 .ps2-inv.is-on {
+  background: rgba(51, 240, 255, 0.14);
+  border-color: var(--cyan);
+  box-shadow: inset 0 calc(-4px * var(--k)) 0 var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .ps2-inv.is-locked,
+.vel-menu.vel-style--ps2 .ps2-inv.is-pending {
+  border-style: dashed;
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .ps2-inv-name {
+  max-width: 100%;
+  font-size: calc(16px * var(--k));
+  letter-spacing: 1px;
+  line-height: 1.25;
+  /* Silbentrennung (lang="de") statt Bruch mitten im Wort: STURMFEUER-ZEUG, nicht STURMFEUERZ/EUG */
+  hyphens: auto;
+  overflow-wrap: break-word;
+}
+
+.vel-menu.vel-style--ps2 .ps2-inv.is-locked .ps2-inv-name {
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .ps2-inv-cond {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(4px * var(--k));
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  text-transform: none;
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .ps2-inv-prog {
+  font-family: var(--font-head);
+  font-weight: 400;
+  padding: 0 4px;
+  color: var(--ps2-text);
+  border: 1px solid var(--ps2-line);
+}
+
+/* Schloss aus zwei Kästen (Bügel + Körper), pixelscharf */
+.vel-menu.vel-style--ps2 .ps2-lock {
+  position: relative;
+  display: inline-block;
+  width: 8px;
+  height: 12px;
+}
+
+.vel-menu.vel-style--ps2 .ps2-lock::before {
+  content: '';
+  position: absolute;
+  left: 1px;
+  top: 0;
+  width: 6px;
+  height: 6px;
+  border: 2px solid currentColor;
+  border-bottom: 0;
+  box-sizing: border-box;
+}
+
+.vel-menu.vel-style--ps2 .ps2-lock::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 8px;
+  height: 6px;
+  background: currentColor;
+}
+
+.vel-menu.vel-style--ps2 .ps2-inv-on {
+  position: absolute;
+  top: calc(6px * var(--k));
+  right: calc(6px * var(--k));
+  padding: 0 calc(6px * var(--k));
+  font-size: calc(16px * var(--k));
+  line-height: 1.1;
+  color: var(--ps2-ink);
+  background: var(--cyan);
+}
+
+/* ---- Profil */
+.vel-menu.vel-style--ps2 .ps2-sub--profile .ps2-card-body {
+  flex: 1;
+  min-height: 0;
+  padding-top: 0;
+}
+
+.vel-menu.vel-style--ps2 .ps2-profile--big {
+  --head: calc(136px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-profile--big .ps2-profile-icon {
+  width: calc(96px * var(--k));
+  height: calc(112px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-table--profile .ps2-tr {
+  grid-template-columns: calc(48px * var(--k)) minmax(0, 1fr) calc(112px * var(--k)) calc(48px * var(--k)) auto;
+  min-height: calc(56px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-prow-icon {
+  display: block;
+  width: calc(48px * var(--k));
+  height: calc(48px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-prow-name {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.vel-menu.vel-style--ps2 .ps2-prow-name b {
+  font-weight: 400;
+  letter-spacing: 1px;
+  color: #fff;
+}
+
+.vel-menu.vel-style--ps2 .ps2-prow-name small {
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  text-transform: none;
+  color: var(--disc, var(--ps2-dim));
+}
+
+.vel-menu.vel-style--ps2 .ps2-profile-levels {
+  border-top: calc(4px * var(--k)) solid var(--magenta);
+}
+
+/* Moderations-Block auf fremden Profilen */
+.vel-menu.vel-style--ps2 .ps2-mod-block {
+  display: flex;
+  flex-direction: column;
+  gap: calc(8px * var(--k));
+  padding-top: calc(8px * var(--k));
+  border-top: 1px dashed rgba(255, 77, 109, 0.45);
+}
+
+.vel-menu.vel-style--ps2 .ps2-mod-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(6px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-input {
+  min-width: 0;
+  width: calc(180px * var(--k));
+  height: calc(28px * var(--k));
+  padding: 0 calc(8px * var(--k));
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  color: #fff;
+  background: rgba(4, 4, 14, 0.85);
+  border: 1px solid var(--ps2-line-hi);
+  border-radius: 0;
+  outline: none;
+  pointer-events: auto;
+  user-select: text;
+}
+
+.vel-menu.vel-style--ps2 .ps2-input:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 1px var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .ps2-input--wide {
+  width: calc(320px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-mod-msg {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  color: var(--gain);
+}
+
+.vel-menu.vel-style--ps2 .ps2-mod-msg.ps2-bad {
+  color: var(--loss);
+}
+
+/* ---- Moderation */
+.vel-menu.vel-style--ps2 .ps2-tabs {
+  display: flex;
+  gap: calc(6px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-tab {
+  min-height: calc(36px * var(--k));
+  padding: 0 calc(16px * var(--k));
+  font-size: calc(16px * var(--k));
+  letter-spacing: 2px;
+  color: var(--ps2-dim);
+  background: rgba(6, 8, 22, 0.55);
+  border: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .ps2-tab:hover {
+  color: #fff;
+  border-color: var(--ps2-line-hi);
+}
+
+.vel-menu.vel-style--ps2 .ps2-tab.is-selected {
+  color: #fff;
+  background: var(--ps2-glass-hi);
+  border-color: var(--ps2-line-hi);
+  box-shadow: inset 0 calc(-4px * var(--k)) 0 var(--loss);
+}
+
+.vel-menu.vel-style--ps2 .ps2-mod-panel {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-color: var(--ps2-line-hi) transparent;
+}
+
+.vel-menu.vel-style--ps2 .ps2-mod-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(8px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-seg {
+  display: flex;
+  gap: calc(4px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-seg-btn {
+  min-height: calc(28px * var(--k));
+  padding: 0 calc(10px * var(--k));
+  font-size: calc(16px * var(--k));
+  color: var(--ps2-text);
+  background: rgba(6, 8, 22, 0.7);
+  border: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .ps2-seg-btn.is-on {
+  color: var(--ps2-ink);
+  background: #eef1ff;
+  border-color: #fff;
+}
+
+.vel-menu.vel-style--ps2 .ps2-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6px * var(--k));
+  padding: 0 0 0 calc(8px * var(--k));
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  color: #fff;
+  border: 1px solid var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .ps2-chip-x {
+  padding: 0 calc(8px * var(--k));
+  color: var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .ps2-mod-pager {
+  display: flex;
+  align-items: center;
+  gap: calc(16px * var(--k));
+  padding-top: calc(4px * var(--k));
+}
+
+/* Spalten am Tisch statt je Zeile (subgrid): sonst ist die auto-Knopfspalte in Kopf- und Datenzeilen verschieden
+ * breit und die Überschriften rutschen gegen die Werte. Die Bestätigungszeile legt Begründung + Knöpfe in eine
+ * eigene volle Zeile, damit das Eingabefeld nicht alle Spalten verbreitert. */
+.vel-menu.vel-style--ps2 :is(.ps2-table--mod, .ps2-table--players) {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) calc(112px * var(--k)) minmax(0, 0.8fr) auto;
+}
+
+.vel-menu.vel-style--ps2 :is(.ps2-table--mod, .ps2-table--players) > * {
+  grid-column: 1 / -1;
+}
+
+.vel-menu.vel-style--ps2 :is(.ps2-table--mod, .ps2-table--players) .ps2-tr {
+  grid-template-columns: subgrid;
+  min-height: calc(36px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 :is(.ps2-table--mod, .ps2-table--players) .ps2-tr.is-confirm .ps2-tact {
+  grid-column: 1 / -1;
+  padding-bottom: calc(6px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-table--mod .ps2-ttime {
+  text-align: left;
+}
+
+.vel-menu.vel-style--ps2 .ps2-table--audit .ps2-tr {
+  grid-template-columns: calc(200px * var(--k)) minmax(0, 0.8fr) calc(168px * var(--k)) minmax(0, 0.8fr) minmax(0, 1.6fr);
+}
+
+.vel-menu.vel-style--ps2 .ps2-tr.is-banned .ps2-tname {
+  color: var(--ps2-dim);
+  text-decoration: line-through;
+}
+
+.vel-menu.vel-style--ps2 .ps2-tr.is-confirm {
+  background: rgba(255, 77, 109, 0.1);
+  box-shadow: inset calc(4px * var(--k)) 0 0 var(--loss);
+}
+
+/* Klassische Bestenliste: Name als Knopf zum Profil (Bestands-Screen im ps2-Stil) */
+.vel-menu.vel-style--ps2 .vel-board-profile:hover .vel-board-nm {
+  color: var(--cyan);
+}
+
+/* Panels mit 3D-Symbolen: kein Glas über dem Canvas (das 3D liegt UNTER dem DOM) — nur Rahmen; die Zeilen
+ * tragen ihr eigenes Glas, aber erst rechts von der Symbol-Mulde. */
+.vel-menu.vel-style--ps2 :is(.ps2-lesson-group, .ps2-profile-levels) {
+  background: rgba(6, 8, 22, 0.18);
+}
+
+.vel-menu.vel-style--ps2 :is(.ps2-lesson, .ps2-board-disc) {
+  background: linear-gradient(90deg, transparent 0 calc(50px * var(--k)), rgba(6, 8, 22, 0.62) calc(50px * var(--k)));
+}
+
+.vel-menu.vel-style--ps2 :is(.ps2-lesson, .ps2-board-disc):is(:hover, .is-selected) {
+  background: linear-gradient(90deg, rgba(140, 170, 255, 0.06) 0 calc(50px * var(--k)), var(--ps2-glass-hi) calc(50px * var(--k)));
+}
+
+.vel-menu.vel-style--ps2 .ps2-table--profile .ps2-prow {
+  background: linear-gradient(90deg, transparent 0 calc(56px * var(--k)), rgba(6, 8, 22, 0.62) calc(56px * var(--k)));
+}
+
+.vel-menu.vel-style--ps2 .ps2-table--profile .ps2-prow.is-selected {
+  background: linear-gradient(90deg, rgba(140, 170, 255, 0.06) 0 calc(56px * var(--k)), var(--ps2-glass-hi) calc(56px * var(--k)));
+}
+
+.vel-menu.vel-style--ps2 .ps2-profile--big {
+  background: linear-gradient(180deg, transparent 0 var(--head), var(--ps2-glass) var(--head));
+}
+
+/* Eigener Name mit DEV-Abzeichen: umbrechen statt abschneiden (die Spalte ist schmal) */
+.vel-menu.vel-style--ps2 .ps2-profile--big .ps2-profile-line {
+  flex-wrap: wrap;
+}
+
+.vel-menu.vel-style--ps2 .ps2-profile--big .ps2-profile-name .vel-name-dev-text,
+.vel-menu.vel-style--ps2 .ps2-profile--big .ps2-profile-name {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
 }

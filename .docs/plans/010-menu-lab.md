@@ -1,7 +1,7 @@
 # Plan 010 — Menü-Labor: vier Hauptmenü-Stile zum Ausprobieren
 
-**Stand:** 2026-11-06 · **Status:** Gerüst fertig (Vertrag, Registry, Stubs, Labor, Einstellung, Screenshot-Werkzeug).
-**In Arbeit:** vier Stil-Agenten parallel, je einer pro Stil.
+**Stand:** 2026-11-06 · **Status:** vier Stile gebaut, **ps2 ist Default** (`DEFAULT_SETTINGS.menuStyle`). Runde 4 (§7):
+Vertrag für native Stil-Ansichten (Training, Bestenliste, Kosmetik, Profil, Moderation), Profilseite, Dev-Moderation.
 
 ## 1. Ziel
 
@@ -115,6 +115,36 @@ Im Browser: `npm run dev` → `http://localhost:5173/?menu=<id>` (oder Menü-Lab
 ## 6. Offen
 
 - Nach den vier Stilen: Nutzer wählt; Stubs + `stubDoor.ts` löschen; ggf. Gewinner als Default.
-- Profil-Screen baut der Online-/Profil-Strang (dann `showProfile` dort einhängen).
+- ~~Profil-Screen~~ erledigt (Runde 4): classic = Bestands-Screen `showProfile(uid?)`, ps2 = eigene Ansicht.
+- hub/rave/arcade könnten die neuen Daten (`board`, `lessons`, `gloves/items`, `theme`) ebenfalls nutzen; `views` leer
+  lassen = Bestands-Screens wie bisher.
 - `GameSettings` ist im Verifier-Bundle (über `Settings.movementConfigFor`): jede Änderung an `Settings.ts`/`settingsTypes.ts`
   verschiebt Minifier-Namen → `tests/submitFunction` meldet "Bundle veraltet" → Bundle bauen/hochladen/deployen (Plan 009 §14).
+
+## 7. Runde 4: native Stil-Ansichten, Profil, Moderation (06.11.)
+
+**Delegation.** `MenuStyleInfo.views` (registry.ts) sagt, welche Bestands-Screens ein Stil selbst baut. Ruft man
+`showTraining` / `showLeaderboard` / `showCosmetics` / `showProfile(uid?)` / `showModeration` vom Titel aus auf (Training auch
+nach einer Lektion, Profil von überall), zeigt Menu.ts stattdessen die Front Door mit `ctx.request = {view, levelId?, uid?}`
+(einmal zugestellt, `entry: 'return'`). Aus Ergebnis/Pause bleiben die Bestands-Screens, damit "Zurück" dorthin führt.
+
+**Neue Daten/Aufrufe** (Vertrag, `types.ts`): `FrontDoorLevel.theme`, `FrontDoorTraining.lessons/groups/demoKey`,
+`FrontDoorCosmetics.gloves/items`, `ctx.board(levelId)`, `raceGhost(levelId, runId | null, label)` (synchron in der Geste,
+Knopf mit `markLockButton`), `getProfile(uid?)`, `admin()` (nur Devs, sonst null), `equip(kind, id)`,
+`mountHandPreview(canvas, label)` (Rückgabe = stoppen, Pflicht in `unmount`), `openProfile(uid?)`. Fehler von `board`/
+`getProfile` sind `OnlineError` (`code`, lesbare `message`).
+
+**ps2** (`ps2/views.ts`): Training (Lektionen als Slots mit Pylon, Sterne, Start), Bestenliste (Strecken als Discs links,
+Top 10 + "um dich herum", Name → Profil, Ghost je Zeile, Weltrekord/Eigene Bestzeit, Login-Hinweis), Kosmetik (3D-Hand-
+Vorschau 2×/3×/4× + Inventar, Enter rüstet aus), Profil (Memory-Card-Ansicht, je Level Disc, Zeit, Rang `#3 / 41`,
+Medaille, Ghost, Liste; eigenes ohne Login = Discord-Hinweis + lokale Zeiten), Moderation (System → Moderation, nur Devs:
+Läufe / Spieler / Protokoll, Filter, "Mehr laden", Löschen und Sperren zweistufig mit Pflicht-Begründung, Umbenennen). Auf
+fremden Profilen sieht ein Dev einen Moderations-Block. Weltrekord je Disc in Disc-Auswahl und Memory Card. Discs in den
+Level-Farben (Trim aus der Level-Datei).
+
+**Fit-Zoom der übrigen Bestands-Screens** (`ps2/fit.ts`): je Screen die größte Stufe aus 1 / 1.5 / 2, bei der Inhalt und
+Breite passen (sonst 1, scrollt dann wie classic), Rest-Platz zu 40 % nach oben. Gemessen bei Screenwechsel, Größe,
+Inhaltsänderung (MutationObserver + ResizeObserver, ein rAF); meldet sich ab, wenn der Root den Stil verliert.
+
+**Prüfen:** Abläufe `?online=mock&mockdev` (Bann → Eintrag weg, Löschen → Bestzeit wandert, Umbenennen, Protokoll) per
+Playwright; Vertrag in `tests/frontDoorContract.test.ts`.

@@ -28,6 +28,23 @@ interface Fitter {
 
 const active = new WeakMap<HTMLElement, Fitter>();
 
+/**
+ * Natürliche Inhaltshöhe in visuellen px: Unterkante des tiefsten Kindes (ohne fixierte, z. B. die Prompt-Leiste)
+ * minus Oberkante des Screens, plus unteres Polster. height:auto ginge nicht — der Menü-Root ist ein Flex-Container mit
+ * align-items: stretch und zöge den Screen wieder auf volle Höhe.
+ */
+function contentHeight(el: HTMLElement, z: number): number {
+  const top = el.getBoundingClientRect().top - el.scrollTop * z;
+  let bottom = top;
+  for (const c of Array.from(el.children)) {
+    if (!(c instanceof HTMLElement) || getComputedStyle(c).position === 'fixed') continue;
+    const r = c.getBoundingClientRect();
+    if (r.height > 0) bottom = Math.max(bottom, r.bottom);
+  }
+  const padB = parseFloat(getComputedStyle(el).paddingBottom) || 0;
+  return bottom - top + padB * z;
+}
+
 export function installFitter(menu: HTMLElement): void {
   if (active.has(menu)) return;
   let raf = 0;
@@ -55,18 +72,15 @@ export function installFitter(menu: HTMLElement): void {
     measuring = true;
     const H = menu.clientHeight;
     const W = menu.clientWidth;
-    const st = el.style;
-    const prevH = st.height;
     let chosen = 1;
     let content = 0;
     for (const z of ZOOMS) {
       if (z > 1 && W / z - 80 < MIN_LAYOUT_W) continue;
       menu.style.setProperty('--ps2-fit', String(z));
       menu.style.setProperty('--ps2-fit-pad', `${PAD_TOP}px`);
-      // Natürliche Höhe: Scroll-Container kurz auf auto (visuelle px über getBoundingClientRect)
-      st.height = 'auto';
-      const h = el.getBoundingClientRect().height;
-      st.height = prevH;
+      // auch das Attribut: CSS bemaßt z. B. die Hand-Vorschau je Stufe anders
+      menu.dataset.ps2Fit = String(z);
+      const h = contentHeight(el, z);
       const avail = H - FOOT * z;
       if (h <= avail || z === 1) {
         chosen = z;

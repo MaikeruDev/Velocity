@@ -26,12 +26,25 @@ import type { MedalId } from './medals';
 import { effectiveLines } from '../render/lowres';
 import type { FinishResult, LessonResult, MenuEvents, MenuScreen, OnlineStatus, RawMouseStatus } from './types';
 import type { LeaderboardEntry, LeaderboardPage } from '../online/types';
-import { NAME_MAX, sanitizeName } from '../online/types';
+import { NAME_MAX, OnlineError, sanitizeName } from '../online/types';
 import type { LevelMedals } from '../world/level/LevelFormat';
 import { GAME_VERSION, PHYSICS_VERSION } from '../engine/replay/format';
-import type { FrontDoor, FrontDoorContext, FrontDoorLesson, FrontDoorStyleId } from './menuLab/types';
+import type {
+  FrontDoor,
+  FrontDoorContext,
+  FrontDoorCosmetic,
+  FrontDoorLesson,
+  FrontDoorLessonGroup,
+  FrontDoorLevelTheme,
+  FrontDoorRequest,
+  FrontDoorStyleId,
+  FrontDoorView,
+} from './menuLab/types';
+import type { PlayerProfile } from '../online/profileTypes';
+import type { AdminService } from '../online/adminTypes';
 import { loadFrontDoor, MENU_STYLES } from './menuLab/registry';
 import { BeatClock } from './menuLab/beatClock';
+import { doorBoard } from './menuLab/doorData';
 import type { MenuAudio } from './menuLab/beatClock';
 import { FRONT_DOOR_ASSETS } from './menuLab/assets';
 
@@ -96,7 +109,19 @@ type FrontDoorCalls = Pick<
   | 'fullscreen'
   | 'startMusic'
   | 'markLockButton'
+  | 'board'
+  | 'raceGhost'
+  | 'getProfile'
+  | 'admin'
+  | 'equip'
+  | 'mountHandPreview'
 >;
+
+/** Lektionsgruppen (Titel + Belohnung) — klassische Liste und FrontDoorTraining.groups. */
+const LESSON_GROUPS: readonly FrontDoorLessonGroup[] = [
+  { id: 'basics', title: 'Grundlagen', reward: 'bestanden → Fidget-Spinner' },
+  { id: 'advanced', title: 'Fortgeschritten', reward: 'alles bestanden → Roboter-Hand' },
+];
 
 /** Nach einer Maustasten-Belegung Kontextmenü und Zurück/Vor-Navigation noch kurz schlucken. */
 const CAPTURE_SUPPRESS_MS = 800;
@@ -147,6 +172,10 @@ export interface MenuOnline {
   signOut(): void;
   /** Top 10 und der Ausschnitt um mich herum. Wirft bei Netzfehlern. */
   board(levelId: string): Promise<{ readonly top: LeaderboardPage; readonly around: LeaderboardPage }>;
+  /** Spielerprofil (Plan 009 §15); ohne uid ich. Wirft OnlineError ('notFound' = gebannt/unbekannt, 'auth' = Login fehlt). */
+  profile(uid?: string): Promise<PlayerProfile>;
+  /** Moderation, nur solange ich Entwickler bin; sonst null. */
+  admin(): AdminService | null;
 }
 
 /** Laufende Lektion für die Pause (Plan 007). Aktionen ohne MenuEvent laufen über die Rückrufe. */
@@ -241,6 +270,14 @@ export class Menu {
   private doorCalls: FrontDoorCalls | null = null;
   private readonly beatClock = new BeatClock();
   private labReturn: 'title' | 'admin' = 'title';
+  /** Anfrage an die Front Door (Stil baut den Screen selbst), wird mit dem nächsten mount/update zugestellt. */
+  private doorRequest: FrontDoorRequest | null = null;
+  /** Level-Farben (Game liest die Level-Dateien im Hintergrund). */
+  private levelThemes = new Map<string, FrontDoorLevelTheme>();
+  /** Profil-Screen (Bestand): fremder Spieler oder null = ich. */
+  private profileUid: string | null = null;
+  private profileSeq = 0;
+  private profileReturn: 'title' | 'leaderboard' = 'title';
 
   constructor(root: HTMLElement, settings: SettingsStore, best: BestTimes, unlocks: UnlockStore) {
     this.settings = settings;
@@ -266,6 +303,7 @@ export class Menu {
     this.unsubscribe = settings.subscribe((s, prev) => {
       for (const r of this.refreshers) r(s);
       if (s.menuStyle !== prev.menuStyle) this.styleChanged();
+      else if (this.current === 'title') this.updateDoor();
     });
     this.applyStyleClass();
   }
@@ -301,6 +339,12 @@ export class Menu {
     else if (this.current === 'admin') this.showAdmin();
   }
 
+  /** Level-Farben (LevelFile.environment) für Front Doors; Game liefert sie nach dem Hintergrund-Laden. */
+  setLevelThemes(themes: ReadonlyMap<string, FrontDoorLevelTheme>): void {
+    this.levelThemes = new Map(themes);
+    this.updateDoor();
+  }
+
   /**
    * Training (Plan 007): Lektionen + Fortschritt. Game ruft das nach dem Laden von
    * training/index.json und nach jeder Änderung des Fortschritts (offene Screens bauen neu).
@@ -325,6 +369,9 @@ export class Menu {
    * gezeigte bzw. das in der Titel-Liste gewählte Level. Aus dem Ergebnis führt "Zurück" wieder dorthin.
    */
   showLeaderboard(levelId?: string): void {
+    // Vom Titel aus baut ein Stil mit eigener Bestenlisten-Ansicht sie selbst (aus dem Ergebnis bleibt der Bestand,
+    // damit "Zurück" dorthin führt).
+    if (this.current === 'title' && this.delegate({ view: 'leaderboard', levelId: levelId ?? this.selectedLevelId ?? undefined })) return;
     if (this.current !== 'leaderboard') this.boardReturn = this.current === 'finish' ? 'finish' : 'title';
     this.boardLevel = levelId ?? this.boardLevel ?? this.selectedLevelId;
     this.render('leaderboard', this.buildLeaderboard());
@@ -388,9 +435,29 @@ export class Menu {
     this.render('lab', this.buildLab());
   }
 
-  /** Profil — Platzhalter, bis der Profil-Strang den Screen baut. */
-  showProfile(): void {
+  /** Profil (Plan 009 §15): eigenes (ohne uid) oder das eines anderen Spielers (Klick auf einen Namen). */
+  showProfile(uid?: string): void {
+    if (this.delegate(uid !== undefined ? { view: 'profile', uid } : { view: 'profile' })) return;
+    if (this.current !== 'profile') this.profileReturn = this.current === 'leaderboard' ? 'leaderboard' : 'title';
+    this.profileUid = uid ?? null;
     this.render('profile', this.buildProfile());
+    void this.loadProfile();
+  }
+
+  /** Moderation (nur Front Doors mit 'moderation'; klassisch gibt es dafür keinen Screen). */
+  showModeration(): void {
+    this.delegate({ view: 'moderation' });
+  }
+
+  /** Front-Door-Stil mit eigener Ansicht? Dann den Titel mit Anfrage zeigen (true) statt des Bestands-Screens. */
+  private delegate(req: FrontDoorRequest): boolean {
+    const style = this.menuStyle;
+    if (style === 'classic') return false;
+    const views: readonly FrontDoorView[] = MENU_STYLES.find((st) => st.id === style)?.views ?? [];
+    if (!views.includes(req.view)) return false;
+    this.doorRequest = req;
+    this.showTitle();
+    return true;
   }
 
   private leaveLab(): void {
@@ -425,7 +492,9 @@ export class Menu {
         const inst = factory();
         this.door = { id, inst, root };
         try {
-          inst.mount(root, this.doorCtx(id));
+          const c = this.doorCtx(id);
+          this.doorRequest = null;
+          inst.mount(root, c);
         } catch (err) {
           console.error(`Menü-Stil "${id}" konnte nicht starten`, err);
           this.unmountDoor();
@@ -448,7 +517,9 @@ export class Menu {
   private updateDoor(): void {
     const d = this.door;
     if (d === null || this.current !== 'title') return;
-    d.inst.update(this.doorCtx(d.id));
+    const c = this.doorCtx(d.id);
+    this.doorRequest = null;
+    d.inst.update(c);
     this.applyLockStatus();
   }
 
@@ -479,6 +550,7 @@ export class Menu {
       name: lessonName(lv),
       subtitle: lv.subtitle ?? null,
       stars: t ? t.stars(lv.id) : 0,
+      group: lv.group,
     });
     const eff = this.effectiveCosmetics(this.settings.get());
     const g = gloveUnlock(eff.glove);
@@ -496,7 +568,8 @@ export class Menu {
     const st = this.lockStatus;
     return {
       style,
-      entry: this.doorsSeen.has(style) ? 'return' : 'boot',
+      entry: this.doorsSeen.has(style) || this.doorRequest !== null ? 'return' : 'boot',
+      request: this.doorRequest,
       levels: this.levels.map((lv, i) => {
         const best = this.best.get(lv.id);
         return {
@@ -512,6 +585,7 @@ export class Menu {
           nextMedal: lv.medals ? nextMedal(best, lv.medals) : null,
           locked: false,
           recommended: this.prepText(lv),
+          theme: this.levelThemes.get(lv.id) ?? null,
         };
       }),
       selected: Math.min(this.selected, Math.max(0, this.levels.length - 1)),
@@ -524,6 +598,9 @@ export class Menu {
         countText: t ? trainingCount(t) : '',
         recommended: recEntry ? lesson(recEntry) : null,
         newbie: this.isNewbie(),
+        lessons: lessons.map(lesson),
+        groups: LESSON_GROUPS.filter((g) => lessons.some((l) => l.group === g.id)),
+        demoKey: this.demoKey,
       },
       cosmetics: {
         unlocked: this.unlocks.list().length,
@@ -531,6 +608,7 @@ export class Menu {
         gloveName: g === null ? 'Standard' : unlockDef(g).name,
         itemName: it === null ? 'Nichts' : unlockDef(it).name,
         latest,
+        ...this.cosmeticLists(),
       },
       account: {
         online: on !== null,
@@ -574,7 +652,7 @@ export class Menu {
       openLeaderboard: (levelId) => this.showLeaderboard(levelId ?? this.selectedLevelId ?? undefined),
       openSettings: () => this.showSettings(),
       openControls: () => this.showControls(),
-      openProfile: () => this.showProfile(),
+      openProfile: (uid) => this.showProfile(uid),
       openAdmin: () => this.showAdmin(),
       openLab: () => this.showLab(),
       signIn: () => this.online?.signIn(),
@@ -587,6 +665,30 @@ export class Menu {
         el.dataset.lock = '1';
         el.disabled = this.lockStatus.pending;
       },
+      board: async (levelId) => {
+        const on = this.online;
+        if (!on) throw new OnlineError('offline', 'Offline — keine Bestenliste.');
+        const data = await on.board(levelId);
+        return doorBoard(levelId, data.top, data.around, on.myUid());
+      },
+      raceGhost: (levelId, runId, label) => {
+        if (this.lockStatus.pending || performance.now() < this.guardUntil) return;
+        this.emit('raceGhost', { levelId, runId, label });
+      },
+      getProfile: (uid) => {
+        const on = this.online;
+        if (!on) return Promise.reject(new OnlineError('offline', 'Offline — kein Profil.'));
+        return on.profile(uid);
+      },
+      admin: () => this.online?.admin() ?? null,
+      equip: (kind, id) => {
+        const list = kind === 'glove' ? this.cosmeticLists().gloves : this.cosmeticLists().items;
+        const c = list.find((x) => x.id === id);
+        if (!c || !c.unlocked || !c.implemented) return;
+        if (kind === 'glove') this.settings.update({ glove: c.id as GloveId });
+        else this.settings.update({ heldItem: c.id as HeldItemId });
+      },
+      mountHandPreview: (canvas, label) => this.startPreview(canvas, label ?? h('span', ''), () => this.effectiveCosmetics(this.settings.get())),
     };
     return this.doorCalls;
   }
@@ -617,13 +719,68 @@ export class Menu {
     );
   }
 
+  private leaveProfile(): void {
+    this.profileSeq++;
+    if (this.profileReturn === 'leaderboard') this.showLeaderboard();
+    else this.showTitle();
+  }
+
+  /** Profil (Bestand): Kopf + Bestzeiten je Level, gefüllt von loadProfile. */
   private buildProfile(): HTMLElement {
+    const mine = this.profileUid === null || this.profileUid === this.online?.myUid();
+    const on = this.online;
+    const body = h('div', 'vel-panel vel-profile-body', h('p', 'vel-hint', on ? 'Lade …' : 'Offline — kein Profil.'));
+    const login = mine && on?.loginRequired && on.myUid() === null ? h('div', 'vel-hint vel-board-who vel-board-who--out', h('span', '', 'Nicht angemeldet — dein Profil braucht den Discord-Login.'), this.discordButton()) : null;
     return h(
       'section',
       'vel-screen vel-profile-screen',
-      h('div', 'vel-head-row', h('h1', 'vel-h1', 'Profil'), h('div', 'vel-row', this.btn('Zurück', 'vel-btn--small', () => this.showTitle(), 'Esc'))),
-      h('div', 'vel-panel', h('h2', 'vel-h2', 'Profil — kommt'), h('p', 'vel-text', 'Hier stehen bald dein Name, Avatar, Bestzeiten und Abzeichen.')),
+      h('div', 'vel-head-row', h('h1', 'vel-h1', mine ? 'Profil' : 'Spieler'), h('div', 'vel-row', this.btn('Zurück', 'vel-btn--small', () => this.leaveProfile(), 'Esc'))),
+      login,
+      body,
     );
+  }
+
+  private async loadProfile(): Promise<void> {
+    const seq = ++this.profileSeq;
+    const on = this.online;
+    const body = (): Element | null => this.el.querySelector('.vel-profile-body');
+    if (!on) return;
+    const uid = this.profileUid ?? undefined;
+    if (uid === undefined && on.loginRequired && on.myUid() === null) {
+      body()?.replaceChildren(h('p', 'vel-hint', 'Melde dich an, um dein Online-Profil zu sehen. Deine lokalen Bestzeiten stehen in der Levelauswahl.'));
+      return;
+    }
+    try {
+      const p = await on.profile(uid);
+      if (seq !== this.profileSeq || this.current !== 'profile') return;
+      const rows = p.bests.map((b) => {
+        const lv = this.levels.find((l) => l.id === b.levelId);
+        const medal = lv?.medals ? medalFor(b.time, lv.medals) : null;
+        const ghost = this.btn('Ghost', 'vel-btn--small vel-board-ghost', () => this.emit('raceGhost', { levelId: b.levelId, runId: b.runId, label: `${p.name} ${formatTime(b.time)}` }));
+        ghost.dataset.lock = '1';
+        return h(
+          'tr',
+          '',
+          h('td', '', lv?.name ?? b.levelId),
+          h('td', '', formatTime(b.time)),
+          h('td', '', `#${b.rank} / ${b.total}`),
+          h('td', '', medal !== null ? medalBadge(medal) : h('span', 'vel-dim', '—')),
+          h('td', '', ghost),
+        );
+      });
+      const since = p.memberSince ? new Date(p.memberSince).toLocaleDateString('de-DE') : '—';
+      body()?.replaceChildren(
+        h('div', 'vel-profile-head', pixelAvatar(p.avatarUrl, p.name, 32), playerName(p.name, p.dev, 'vel-account-name', 'b')),
+        h('p', 'vel-hint', `Dabei seit ${since} · ${p.runs} ${p.runs === 1 ? 'Lauf' : 'Läufe'} · ${p.worldRecords} ${p.worldRecords === 1 ? 'Weltrekord' : 'Weltrekorde'}`),
+        rows.length > 0
+          ? h('table', 'vel-splits vel-board', h('thead', '', h('tr', '', h('th', '', 'Level'), h('th', '', 'Zeit'), h('th', '', 'Rang'), h('th', '', 'Medaille'), h('th', '', 'Ghost'))), h('tbody', '', ...rows))
+          : h('p', 'vel-hint', 'Noch keine Bestzeit auf den aktuellen Strecken.'),
+      );
+    } catch (err) {
+      if (seq !== this.profileSeq || this.current !== 'profile') return;
+      const nf = err instanceof OnlineError && err.code === 'notFound';
+      body()?.replaceChildren(h('p', 'vel-hint vel-bad', nf ? 'Spieler nicht gefunden.' : `Profil nicht geladen — ${err instanceof Error ? err.message : String(err)}`));
+    }
   }
 
   // ------------------------------------------------------------------ Discord-Konto (Plan 009, Supabase)
@@ -670,6 +827,7 @@ export class Menu {
 
   /** Lektionsliste (aus dem Titel oder nach einer Lektion). */
   showTraining(): void {
+    if ((this.current === 'title' || this.current === 'lessonDone' || this.current === null) && this.delegate({ view: 'training' })) return;
     this.lockStatus = LOCK_IDLE;
     const t = this.training;
     if (t) {
@@ -758,6 +916,7 @@ export class Menu {
 
   /** Kosmetik: Handschuh und Gegenstand der View-Hand, mit Live-Vorschau (Plan 005). */
   showCosmetics(): void {
+    if (this.current === 'title' && this.delegate({ view: 'cosmetics' })) return;
     this.render('cosmetics', this.buildCosmetics());
   }
 
@@ -808,7 +967,7 @@ export class Menu {
         if (a === 'pause' || a === 'confirm') this.leaveLab();
         return true;
       case 'profile':
-        if (a === 'pause' || a === 'confirm') this.showTitle();
+        if (a === 'pause' || a === 'confirm') this.leaveProfile();
         return true;
       case 'pause':
         if (a === 'confirm') this.emit('resume', undefined);
@@ -1606,6 +1765,32 @@ export class Menu {
   }
 
   /** Effektive Wahl (gesperrt → Standard), wie Game.applyCosmetics. */
+  /** Handschuhe + Gegenstände für Front Doors — dieselben Regeln wie die Kacheln in buildCosmetics. */
+  private cosmeticLists(): { readonly gloves: readonly FrontDoorCosmetic[]; readonly items: readonly FrontDoorCosmetic[] } {
+    const eff = this.effectiveCosmetics(this.settings.get());
+    const byLadder = (id: UnlockId | null): number => (id === null ? -1 : UNLOCKS.findIndex((u) => u.id === id));
+    const one = (kind: 'glove' | 'item', id: string, lock: UnlockId | null, fallback: string, implemented: boolean, equipped: boolean): FrontDoorCosmetic => {
+      const unlocked = lock === null || this.unlocks.has(lock);
+      const cond = !unlocked && lock !== null ? this.unlockCompact(lock) : null;
+      return {
+        kind,
+        id,
+        name: lock === null ? fallback : unlockDef(lock).name,
+        unlocked,
+        implemented,
+        condition: cond ? (cond.el.textContent ?? '') : null,
+        conditionLong: !unlocked && lock !== null ? this.unlockCondition(lock) : null,
+        progress: cond?.progress ?? null,
+        equipped: unlocked && implemented && equipped,
+      };
+    };
+    const gloves = [...GLOVE_IDS].sort((a, b) => byLadder(gloveUnlock(a)) - byLadder(gloveUnlock(b))).map((g) => one('glove', g, gloveUnlock(g), 'Standard', hasSkin(g), eff.glove === g));
+    const items = [...HELD_ITEM_IDS]
+      .sort((a, b) => byLadder(itemUnlock(a)) - byLadder(itemUnlock(b)))
+      .map((i) => one('item', i, itemUnlock(i), 'Nichts', i === 'none' || (hasItemView(i) && hasPropTricks(i)), eff.item === i));
+    return { gloves, items };
+  }
+
   private effectiveCosmetics(s: GameSettings): { glove: GloveId; item: HeldItemId } {
     const g = gloveUnlock(s.glove);
     const i = itemUnlock(s.heldItem);
@@ -2547,7 +2732,7 @@ export class Menu {
         'td',
         'vel-board-name',
         e.avatarUrl !== null || this.online?.loginRequired ? pixelAvatar(e.avatarUrl, e.name, 16) : null,
-        playerName(e.name, e.dev, 'vel-board-nm'),
+        boardNameButton(playerName(e.name, e.dev, 'vel-board-nm'), () => this.showProfile(e.uid)),
         e.bot ? h('small', 'vel-board-tag', 'BOT') : null,
         mine ? h('small', 'vel-board-tag vel-board-tag--me', 'DU') : null,
       ),
@@ -2771,4 +2956,15 @@ function trainingCount(t: TrainingProgressView): string {
 function lessonName(lv: TrainingIndexEntry): string {
   const n = lv.name.startsWith(lv.short) ? lv.name.slice(lv.short.length).replace(/^[\s·:.-]+/, '') : lv.name;
   return n.length > 0 ? n : lv.name;
+}
+
+
+/** Name in der Bestenliste als Knopf zum Profil (null = nur Text). */
+function boardNameButton(name: HTMLElement, onClick: (() => void) | null): HTMLElement {
+  if (onClick === null) return name;
+  const b = h('button', 'vel-board-profile', name);
+  b.type = 'button';
+  b.title = 'Profil ansehen';
+  b.addEventListener('click', onClick);
+  return b;
 }

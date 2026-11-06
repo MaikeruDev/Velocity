@@ -565,11 +565,27 @@ Menü-Labor (Plan 010, 06.11.) — alle Nutzer nachgezogen:
 - **Einstellungen**: `GameSettings.menuStyle` (`MenuStyleId` 'classic' | 'ps2' | 'hub' | 'rave' | 'arcade', `MENU_STYLE_IDS`,
   Default classic; `sanitizeSettings`: fehlt/unbekannt → base). `?menu=<id>` = Sitzungs-Override (`Menu.setStyleOverride`).
   Achtung: Settings.ts liegt im Verifier-Bundle (movementConfigFor) — Änderungen machen es veraltet (Plan 010 §6).
-- **UI** (`ui/types`): `MenuScreen` + 'lab' (Menü-Labor) | 'profile' (Platzhalter). Menü: `showLab()`, `showProfile()`,
+- **UI** (`ui/types`): `MenuScreen` + 'lab' (Menü-Labor) | 'profile' (Spielerprofil, seit Runde 4 echt). Menü: `showLab()`, `showProfile()`,
   `setAudio(MenuAudio)` (main.ts), `menuStyle`; Root-Klasse `vel-style--<id>` auf allen Screens, `data-door="ready"` sobald
   eine Front Door steht.
 - **Neu** `src/ui/menuLab/types.ts` (Vertrag FrontDoor/FrontDoorContext), `registry.ts` (lazy je Stil), `beatClock.ts`
   (Takt, Ersatz-Uhr 132 BPM ohne AudioContext), Stile in `src/ui/menuLab/<id>/`. Regeln für Stile: `.docs/plans/010-menu-lab.md`.
+
+Menü-Labor Runde 4 (Plan 010 §7, 06.11.) — alle Nutzer nachgezogen (classic/hub/rave/arcade ignorieren die neuen Felder):
+- **Front-Door-Vertrag** (`menuLab/types.ts`): `FrontDoorLevel.theme` (`FrontDoorLevelTheme`: trim, trimAlt, skyTop/Horizon/
+  Bottom, sun, moon; null bis Game die Level-Dateien gelesen hat), `FrontDoorTraining.lessons/groups/demoKey`
+  (`FrontDoorLesson.group`, `FrontDoorLessonGroup`), `FrontDoorCosmetics.gloves/items` (`FrontDoorCosmetic`), `ctx.request`
+  (`FrontDoorRequest {view, levelId?, uid?}`), Aufrufe `board(levelId)` → `FrontDoorBoard`, `raceGhost`, `getProfile(uid?)`,
+  `admin()`, `equip(kind, id)`, `mountHandPreview(canvas, label)`, `openProfile(uid?)`. `MenuStyleInfo.views?`
+  (`FrontDoorView[]`): Stile, die Training/Bestenliste/Kosmetik/Profil/Moderation selbst bauen — Menu.ts delegiert dann vom
+  Titel bzw. nach einer Lektion aus an die Front Door (aus Ergebnis/Pause bleiben die Bestands-Screens). ps2 hat alle fünf.
+- **Menu.ts**: `MenuOnline.profile(uid?)`, `MenuOnline.admin()`; `showProfile(uid?)` (klassischer Profil-Screen statt
+  Platzhalter, Esc → zurück zur Bestenliste), `showModeration()`, `setLevelThemes(map)`; Namen in der klassischen
+  Bestenliste öffnen das Profil. Reine Abbildungen in `menuLab/doorData.ts` (`doorBoard`, `doorBoardEntry`, `levelTheme`).
+- **Game.ts**: liest nach dem Index die Level-Dateien im Hintergrund (nur `environment`, kein Kompilieren) →
+  `menu.setLevelThemes`; Provider `profile`/`admin` an die Online-Schicht.
+- **Tests**: `tests/frontDoorContract.test.ts` (Abbildungen, Themes aller Level, Registry-Ansichten, Profil + Moderation
+  gegen den Mock).
 
 ### 3.5 Musik folgt dem Movement
 Der Techno-Track (132 BPM) ist aus Oszillatoren und Rauschen gebaut. Er bekommt

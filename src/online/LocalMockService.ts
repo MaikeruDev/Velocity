@@ -350,7 +350,8 @@ export class LocalMockService implements OnlineService {
       const rep = run.result;
       if (!rep) continue;
       const uid = `rival-${rv.seed}`;
-      this.db.users[uid] ??= { uid, name: rv.name, runs: 0 };
+      this.db.users[uid] ??= { uid, name: rv.name, runs: 0, created: '2026-09-30T12:00:00.000Z' };
+      this.db.users[uid].created ??= '2026-09-30T12:00:00.000Z';
       this.db.users[uid].runs++;
       const bytes = await packReplay(rep);
       this.db.runs[`${levelId}/${uid}`] = {

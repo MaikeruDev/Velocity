@@ -15,9 +15,14 @@ import { accountName, avatar, button, el, fmtTime, keycap, medalChip } from './d
 import type { FgKind, FgObj } from './scene';
 import { BOOT_LEN, levelColor, Ps2Scene } from './scene';
 import { rgb } from './models';
+import { installFitter } from './fit';
 import type { Rgb } from './models';
+import { BoardView, CosmeticsView, loadBoard, ModerationView, onBoards, ProfileView, TrainingView, wrLine } from './views';
+import type { Host, SubView, SubViewId, SubViewParams } from './views';
+import type { FrontDoorRequest } from '../types';
 
-type View = 'main' | 'discs' | 'card' | 'system';
+type View = 'main' | 'discs' | 'card' | 'system' | SubViewId;
+const SUB_VIEWS: readonly View[] = ['training', 'board', 'cosmetics', 'profile', 'moderation'];
 type MainId = 'play' | 'training' | 'card' | 'board' | 'cosmetics' | 'system';
 
 interface MainItem {
@@ -37,7 +42,8 @@ const MAIN_ITEMS: readonly MainItem[] = [
 ];
 
 /** Systemliste (Reihenfolge = Pfeil-Navigation). */
-type SysId = 'settings' | 'controls' | 'fullscreen' | 'lab' | 'admin';
+type SysId = 'settings' | 'controls' | 'fullscreen' | 'lab' | 'admin' | 'moderation';
+const MOD_ITEM: { id: SysId; label: string; hint: string } = { id: 'moderation', label: 'Moderation', hint: 'Läufe löschen, Spieler sperren, Protokoll (nur Entwickler)' };
 const SYS_ITEMS: readonly { id: SysId; label: string; hint: string }[] = [
   { id: 'settings', label: 'Einstellungen', hint: 'Maus, Sicht, Movement, Grafik, Ton' },
   { id: 'controls', label: 'Steuerung', hint: 'Tasten belegen' },
@@ -47,7 +53,18 @@ const SYS_ITEMS: readonly { id: SysId; label: string; hint: string }[] = [
 ];
 
 /** Bleibt über Mounts erhalten (die Front Door wird bei jeder Rückkehr neu gemountet). */
-const memory: { view: View; main: number; card: number; sys: number } = { view: 'main', main: 0, card: 0, sys: 0 };
+const memory: { view: View; main: number; card: number; sys: number; params: SubViewParams } = { view: 'main', main: 0, card: 0, sys: 0, params: {} };
+
+/** Vertrags-Anfrage → eigene Ansicht. */
+function viewOfRequest(r: FrontDoorRequest): { view: View; params: SubViewParams } {
+  const params: SubViewParams = { levelId: r.levelId, uid: r.uid };
+  switch (r.view) {
+    case 'leaderboard':
+      return { view: 'board', params };
+    default:
+      return { view: r.view, params };
+  }
+}
 
 const SKIP_GUARD_MS = 350;
 /** 3D-Symbole als PNG-URLs (CSS-Variable → Wert), einmal je Sitzung gerendert. */
@@ -81,6 +98,41 @@ class Ps2Door implements FrontDoor {
 
   private view: View = 'main';
   private levelSel = 0;
+  /** Native Ansicht (Training, Bestenliste …) oder null. */
+  private sub: SubView | null = null;
+  /** Woher eine Unteransicht kam (Esc führt dorthin zurück). */
+  private stack: { view: View; params: SubViewParams }[] = [];
+  private params: SubViewParams = {};
+  /** Theme-Signatur der Discs (Neubau, wenn die Level-Farben kommen). */
+  private themeSig = '';
+  private readonly host: Host = {
+    ctx: () => {
+      if (!this.ctx) throw new Error('ps2: ctx fehlt');
+      return this.ctx;
+    },
+    obj: (kind, variant = 0, discOf) => {
+      const sc = this.scene;
+      if (!sc) throw new Error('ps2: Szene fehlt');
+      return sc.addObj(kind, variant, discOf ? discColors(discOf) : undefined);
+    },
+    release: (o) => this.scene?.removeObj(o),
+    anchor: (o, e) => {
+      o.shown = true;
+      this.anchors.push({ o, e });
+    },
+    focus: (o, color) => {
+      const sc = this.scene;
+      if (!sc) return;
+      sc.focus = o;
+      if (color) sc.focusColor = color;
+      if (o) o.selected = true;
+      this.dirty = true;
+    },
+    go: (v, p) => this.go(v, p),
+    back: () => this.back(),
+    rebuild: () => this.renderView(true),
+    discColor: (lv) => discCss(lv),
+  };
 
   // 3D-Objekte je Ansicht
   private mainObjs: FgObj[] = [];
@@ -106,10 +158,20 @@ class Ps2Door implements FrontDoor {
     this.root = root;
     this.ctx = ctx;
     this.levelSel = ctx.selected;
-    const boot = ctx.entry === 'boot' && !ctx.reducedMotion;
+    const boot = ctx.entry === 'boot' && !ctx.reducedMotion && ctx.request === null;
     // Erster Boot startet im Hauptmenü; Rückkehr landet dort, wo man war (aus der Disc-Auswahl → wieder dort).
     this.view = ctx.entry === 'boot' ? 'main' : memory.view;
+    this.params = ctx.entry === 'boot' ? {} : memory.params;
     if (ctx.entry === 'boot') memory.main = 0;
+    if (ctx.request) {
+      const r = viewOfRequest(ctx.request);
+      this.view = r.view;
+      this.params = r.params;
+    }
+
+    // Fit-Zoom der Bestands-Screens (meldet sich selbst ab, wenn der Stil wechselt)
+    const menuRoot = root.closest<HTMLElement>('.vel-menu');
+    if (menuRoot) installFitter(menuRoot);
 
     const scene = new Ps2Scene();
     scene.reducedMotion = ctx.reducedMotion;
@@ -127,6 +189,7 @@ class Ps2Door implements FrontDoor {
     this.gearObj = scene.addObj('gear', 2);
     this.gearObj.dimIdle = 0;
     this.syncLevelObjs();
+    if (SUB_VIEWS.includes(this.view)) this.sub = this.makeSub(this.view, this.params);
 
     this.ui = el('div', 'ps2-ui');
     root.append(this.ui);
@@ -174,10 +237,20 @@ class Ps2Door implements FrontDoor {
     this.ctx = ctx;
     this.levelSel = ctx.selected;
     if (this.scene) this.scene.reducedMotion = ctx.reducedMotion;
-    if (!prev || prev.levels.length !== ctx.levels.length) this.syncLevelObjs();
+    if (!prev || prev.levels.length !== ctx.levels.length || this.themeSig !== themeSignature(ctx)) this.syncLevelObjs();
     this.renderStatus();
     this.renderError();
-    this.renderView(true);
+    if (ctx.request) {
+      const r = viewOfRequest(ctx.request);
+      this.stack = [];
+      this.go(r.view, r.params, true);
+      return;
+    }
+    // Unteransicht mit eigener update() (Kosmetik: Vorschau läuft weiter) statt Neubau
+    if (this.sub?.update) {
+      this.sub.update();
+      this.renderPrompts();
+    } else this.renderView(true);
     this.dirty = true;
   }
 
@@ -194,6 +267,10 @@ class Ps2Door implements FrontDoor {
     }
     this.resizeObs?.disconnect();
     this.resizeObs = null;
+    onBoards(null);
+    this.sub?.dispose();
+    this.sub = null;
+    memory.params = this.params;
     this.exportLook();
     if (this.logoImg) this.logoImg.src = '';
     this.logoImg = null;
@@ -278,7 +355,12 @@ class Ps2Door implements FrontDoor {
     }
     if (performance.now() < this.skipGuardUntil) return;
     if (a === 'confirm') this.confirm();
-    else if (a === 'back') this.back();
+    else if (a === 'back') {
+      // Esc in einem Eingabefeld (Moderation): nur das Feld verlassen, nicht die Ansicht
+      const ae = document.activeElement;
+      if (ae instanceof HTMLInputElement && this.root?.contains(ae)) ae.blur();
+      else this.back();
+    }
   }
 
   // ------------------------------------------------------------------ Boot
@@ -384,6 +466,13 @@ class Ps2Door implements FrontDoor {
       p.append(b);
     };
     const lr = [keycap('◀'), keycap('▶')];
+    if (this.sub) {
+      for (const pr of this.sub.prompts()) {
+        const keys = pr.keys.map((k) => keycap(k, k.length > 1));
+        item(keys, pr.label, pr.action === 'confirm' ? () => this.confirm() : pr.action === 'back' ? () => this.back() : null, pr.lock === true);
+      }
+      return;
+    }
     switch (this.view) {
       case 'main':
         item(lr, 'Wählen', null);
@@ -457,11 +546,29 @@ class Ps2Door implements FrontDoor {
 
   // ------------------------------------------------------------------ Ansichten
 
-  private go(v: View): void {
-    if (this.booting) return;
-    if (this.view === v) return;
+  /** Ansicht wechseln. Unteransichten merken sich, woher sie kamen (Esc → zurück dorthin). */
+  private go(v: View, p: SubViewParams = {}, force = false): void {
+    if (this.booting && !force) return;
+    if (this.view === v && !force && !SUB_VIEWS.includes(v)) return;
+    if (SUB_VIEWS.includes(v) && !force) this.stack.push({ view: this.view, params: this.params });
+    if (!SUB_VIEWS.includes(v)) this.stack = [];
+    this.sub?.dispose();
+    this.sub = null;
+    onBoards(null);
     this.view = v;
+    this.params = p;
     memory.view = v;
+    memory.params = p;
+    if (SUB_VIEWS.includes(v)) this.sub = this.makeSub(v, p);
+    // Disc-Auswahl / Memory Card zeigen den Weltrekord je Strecke: vorladen
+    if ((v === 'discs' || v === 'card') && this.ctx?.account.online) {
+      const c = this.ctx;
+      onBoards(() => {
+        if (this.view === 'discs') this.renderPanel();
+        else if (this.view === 'card') this.renderDetail();
+      });
+      for (const lv of c.levels) loadBoard(c, lv.id);
+    }
     this.renderView(false);
     this.scene?.restartPop();
     if (this.ctx?.reducedMotion) this.scene?.snap();
@@ -501,6 +608,8 @@ class Ps2Door implements FrontDoor {
       case 'system':
         this.buildSystem(stage);
         break;
+      default:
+        this.sub?.build(stage);
     }
     // Kopfzeile: Logo + "◀ Hauptmenü" als Maus-Weg zurück (der Ansichtstitel steht groß darunter)
     if (this.crumb) this.crumb.textContent = this.view === 'main' ? '' : 'Hauptmenü';
@@ -563,16 +672,16 @@ class Ps2Door implements FrontDoor {
         this.go('discs');
         break;
       case 'training':
-        c.openTraining();
+        this.go('training');
         break;
       case 'card':
         this.go('card');
         break;
       case 'board':
-        c.openLeaderboard();
+        this.go('board', { levelId: c.levels[this.levelSel]?.id });
         break;
       case 'cosmetics':
-        c.openCosmetics();
+        this.go('cosmetics');
         break;
       case 'system':
         this.go('system');
@@ -741,13 +850,15 @@ class Ps2Door implements FrontDoor {
       box.append(el('p', 'ps2-info-desc', c.loading ? 'Disc wird gelesen …' : 'Keine Strecken gefunden.'));
       return;
     }
-    box.style.setProperty('--disc', levelColor(lv.index));
+    box.style.setProperty('--disc', discCss(lv));
+    const wr = wrLine(lv.id);
     const head = el(
       'div',
       'ps2-slot-head',
       el('span', 'ps2-slot-num', `Disc ${lv.num} / ${String(c.levels.length).padStart(2, '0')}`),
       el('h2', 'ps2-slot-name', lv.name),
       lv.subtitle ? el('p', 'ps2-slot-sub', lv.subtitle) : null,
+      wr ? el('p', 'ps2-slot-wr', wr) : null,
     );
     const best = el('div', 'ps2-slot-best', el('div', 'ps2-slot-best-t', el('em', '', 'Bestzeit'), el('b', lv.bestTime === null ? 'is-empty' : '', lv.bestText)), medalChip(lv.medal));
     const ladder = el('ol', 'ps2-ladder');
@@ -764,7 +875,7 @@ class Ps2Door implements FrontDoor {
     const actions = el('div', 'ps2-info-actions');
     const start = button('ps2-btn ps2-btn--primary ps2-btn--start', () => this.ctx?.play(lv.id), keycap('Enter', true), 'Starten');
     this.ctx?.markLockButton(start);
-    actions.append(start, button('ps2-btn', () => this.ctx?.openLeaderboard(lv.id), 'Bestenliste'));
+    actions.append(start, button('ps2-btn', () => this.go('board', { levelId: lv.id }), 'Bestenliste'));
     box.append(head, best, ladder);
     if (lv.recommended) box.append(el('p', 'ps2-slot-rec', `Vorher üben — ${lv.recommended}`));
     box.append(actions);
@@ -822,7 +933,7 @@ class Ps2Door implements FrontDoor {
       progress.append(el('div', 'ps2-progress-row', el('span', 'ps2-progress-label', label), bar, el('span', 'ps2-progress-num', max > 0 ? `${have}/${max}` : '—')));
     }
     const acts = el('div', 'ps2-profile-actions');
-    acts.append(button('ps2-btn', () => this.ctx?.openProfile(), 'Profil'));
+    acts.append(button('ps2-btn', () => this.go('profile'), 'Profil'));
     if (a.loginRequired && !a.signedIn) acts.append(button('ps2-btn ps2-btn--discord', () => this.ctx?.signIn(), 'Mit Discord anmelden'));
     if (a.signedIn) acts.append(button('ps2-btn ps2-btn--quiet', () => this.ctx?.signOut(), 'Abmelden'));
     const profile = el(
@@ -863,7 +974,7 @@ class Ps2Door implements FrontDoor {
       }
       const b = button('ps2-save', () => this.activateCard(i), icon, el('span', 'ps2-save-title', title), sub);
       if (i < levels.length) {
-        b.style.setProperty('--disc', levelColor(i));
+        b.style.setProperty('--disc', discCss(levels[i]));
         this.ctx?.markLockButton(b);
       }
       b.addEventListener('pointerenter', () => this.selectCard(i));
@@ -907,8 +1018,8 @@ class Ps2Door implements FrontDoor {
     if (!c || this.booting) return;
     memory.card = i;
     if (i < c.levels.length) c.play(c.levels[i].id);
-    else if (i === c.levels.length) c.openTraining();
-    else c.openCosmetics();
+    else if (i === c.levels.length) this.go('training');
+    else this.go('cosmetics');
   }
 
   private renderDetail(): void {
@@ -920,11 +1031,12 @@ class Ps2Door implements FrontDoor {
     if (i < c.levels.length) {
       const lv = c.levels[i];
       const next = lv.nextMedal ? `${MEDAL_NAMES[lv.nextMedal.id]} unter ${fmtTime(lv.nextMedal.limit)}` : lv.medals ? 'alles geholt' : '—';
+      const wr = wrLine(lv.id);
       box.append(
         el('span', 'ps2-detail-name', `${lv.num} ${lv.name}`),
-        el('span', 'ps2-detail-sub', lv.subtitle ?? ''),
+        el('span', 'ps2-detail-sub', wr ?? lv.subtitle ?? ''),
         el('span', 'ps2-detail-fact', el('em', '', 'Nächstes Ziel'), el('b', '', next)),
-        button('ps2-btn ps2-btn--small', () => this.ctx?.openLeaderboard(lv.id), 'Bestenliste'),
+        button('ps2-btn ps2-btn--small', () => this.go('board', { levelId: lv.id }), 'Bestenliste'),
       );
     } else if (i === c.levels.length) {
       const r = c.training.recommended;
@@ -951,7 +1063,7 @@ class Ps2Door implements FrontDoor {
       this.anchors.push({ o: this.gearObj, e: icon });
     }
     const list = el('div', 'ps2-sys-list');
-    SYS_ITEMS.forEach((it, i) => {
+    this.sysItems().forEach((it, i) => {
       const b = button(`ps2-sys-item${it.id === 'admin' ? ' ps2-sys-item--quiet' : ''}`, () => this.activateSys(i), el('span', 'ps2-sys-label', it.label), el('span', 'ps2-sys-hint', it.hint));
       if (it.id === 'admin') b.append(keycap('F8', true));
       b.addEventListener('pointerenter', () => this.selectSys(i));
@@ -968,8 +1080,14 @@ class Ps2Door implements FrontDoor {
     );
   }
 
+  /** Systemliste; Moderation nur für Entwickler mit Moderations-Dienst. */
+  private sysItems(): readonly { id: SysId; label: string; hint: string }[] {
+    const c = this.ctx;
+    return c && c.account.dev && c.admin() !== null ? [...SYS_ITEMS.slice(0, 4), MOD_ITEM, SYS_ITEMS[4]] : SYS_ITEMS;
+  }
+
   private selectSys(i: number): void {
-    const n = SYS_ITEMS.length;
+    const n = this.sysItems().length;
     memory.sys = ((i % n) + n) % n;
     this.applySelection();
   }
@@ -978,7 +1096,7 @@ class Ps2Door implements FrontDoor {
     const c = this.ctx;
     if (!c || this.booting) return;
     memory.sys = i;
-    switch (SYS_ITEMS[i].id) {
+    switch (this.sysItems()[i]?.id) {
       case 'settings':
         c.openSettings();
         break;
@@ -994,6 +1112,9 @@ class Ps2Door implements FrontDoor {
       case 'admin':
         c.openAdmin();
         break;
+      case 'moderation':
+        this.go('moderation');
+        break;
     }
   }
 
@@ -1004,6 +1125,11 @@ class Ps2Door implements FrontDoor {
     if (!s) return;
     for (const o of s.objs) o.selected = false;
     s.focus = null;
+    if (this.sub) {
+      this.sub.select();
+      this.dirty = true;
+      return;
+    }
     switch (this.view) {
       case 'main': {
         this.itemBtns.forEach((b, i) => b.classList.toggle('is-selected', i === memory.main));
@@ -1021,7 +1147,7 @@ class Ps2Door implements FrontDoor {
         if (o) {
           o.selected = true;
           s.focus = o;
-          s.focusColor = hexRgb(levelColor(this.levelSel));
+          s.focusColor = hexRgb(discCss(this.ctx?.levels[this.levelSel]));
         }
         break;
       }
@@ -1031,7 +1157,7 @@ class Ps2Door implements FrontDoor {
         if (o) {
           o.selected = true;
           s.focus = o;
-          s.focusColor = memory.card < this.ringObjs.length ? hexRgb(levelColor(memory.card)) : memory.card === this.ringObjs.length ? rgb('#ff8a3a') : rgb('#d03cff');
+          s.focusColor = memory.card < this.ringObjs.length ? hexRgb(discCss(this.ctx?.levels[memory.card])) : memory.card === this.ringObjs.length ? rgb('#ff8a3a') : rgb('#d03cff');
         }
         if (this.profileObj) this.profileObj.selected = false;
         break;
@@ -1058,14 +1184,15 @@ class Ps2Door implements FrontDoor {
     for (const o of this.saveObjs) s.removeObj(o);
     this.ringObjs = [];
     this.saveObjs = [];
-    c.levels.forEach((_lv, i) => {
-      const o = s.addObj('disc', i);
+    this.themeSig = themeSignature(c);
+    c.levels.forEach((lv, i) => {
+      const o = s.addObj('disc', i, discColors(lv));
       o.slot = i;
       o.dimIdle = 0.45;
       this.ringObjs.push(o);
     });
-    c.levels.forEach((_lv, i) => {
-      const o = s.addObj('disc', i);
+    c.levels.forEach((lv, i) => {
+      const o = s.addObj('disc', i, discColors(lv));
       o.dimIdle = 0.3;
       this.saveObjs.push(o);
     });
@@ -1156,6 +1283,11 @@ class Ps2Door implements FrontDoor {
   };
 
   private navigate(dx: number, dy: number): void {
+    if (this.sub) {
+      this.sub.navigate(dx, dy);
+      this.dirty = true;
+      return;
+    }
     switch (this.view) {
       case 'main':
         this.selectMain(memory.main + (dx !== 0 ? dx : dy));
@@ -1191,6 +1323,10 @@ class Ps2Door implements FrontDoor {
   private confirm(): void {
     const c = this.ctx;
     if (!c || this.booting) return;
+    if (this.sub) {
+      this.sub.confirm();
+      return;
+    }
     switch (this.view) {
       case 'main':
         this.activateMain(memory.main);
@@ -1208,7 +1344,26 @@ class Ps2Door implements FrontDoor {
   }
 
   private back(): void {
-    if (this.view !== 'main') this.go('main');
+    const prev = this.stack.pop();
+    if (prev) this.go(prev.view, prev.params, true);
+    else if (this.view !== 'main') this.go('main');
+  }
+
+  private makeSub(v: View, p: SubViewParams): SubView | null {
+    switch (v) {
+      case 'training':
+        return new TrainingView(this.host);
+      case 'board':
+        return new BoardView(this.host, p);
+      case 'cosmetics':
+        return new CosmeticsView(this.host);
+      case 'profile':
+        return new ProfileView(this.host, p.uid);
+      case 'moderation':
+        return new ModerationView(this.host, p);
+      default:
+        return null;
+    }
   }
 
   /** Maus soll Knöpfe nicht fokussieren (sonst stiehlt Enter die Pfeil-Auswahl). Klick bleibt. */
@@ -1271,6 +1426,23 @@ class Ps2Door implements FrontDoor {
 
 function hexRgb(hex: string): Rgb {
   return rgb(hex);
+}
+
+/** Disc-Farbe: Trim des Levels (Theme aus der Level-Datei), sonst die feste Ersatzfarbe je Index. */
+function discCss(lv: FrontDoorLevel | undefined): string {
+  if (!lv) return levelColor(0);
+  return lv.theme?.trim ?? levelColor(lv.index);
+}
+
+/** Etikett + Akzent einer Disc (Trim, Zweit-Trim bzw. Horizont), null = Ersatzfarben. */
+function discColors(lv: FrontDoorLevel): readonly [Rgb, Rgb] | undefined {
+  const t = lv.theme;
+  if (!t) return undefined;
+  return [rgb(t.trim), rgb(t.trimAlt ?? t.skyHorizon)];
+}
+
+function themeSignature(c: FrontDoorContext): string {
+  return c.levels.map((l) => (l.theme ? `${l.theme.trim}${l.theme.trimAlt ?? ''}` : '-')).join('|');
 }
 
 const factory: FrontDoorFactory = () => new Ps2Door();

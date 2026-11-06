@@ -361,14 +361,15 @@ export class Ps2Scene {
   // ------------------------------------------------------------ Vordergrund-Objekte
 
   /** Objekt anlegen (beim Aufbau einer Ansicht; nicht im Frame-Pfad). */
-  addObj(kind: FgKind, variant = 0): FgObj {
+  /** colors: Etikett + Akzent einer Disc (Level-Theme), sonst die Ersatzfarben je variant. */
+  addObj(kind: FgKind, variant = 0, colors?: readonly [Rgb, Rgb]): FgObj {
     let g: BufferGeometry;
     let g2: BufferGeometry | null = null;
     let spec = 0.25;
     let rim: Rgb = [0.25, 0.35, 0.6];
     switch (kind) {
       case 'disc': {
-        const l = LEVEL_LABELS[variant % LEVEL_LABELS.length];
+        const l = colors ?? LEVEL_LABELS[variant % LEVEL_LABELS.length];
         g = discGeometry(l[0], l[1]);
         spec = 0.6;
         break;

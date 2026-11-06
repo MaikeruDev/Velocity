@@ -2211,3 +2211,203 @@ bestätigen, dass nichts übrig ist.
 `using (not is_banned or (select auth.uid()) = id)` in der SELECT-Policy, denn Policy-Ausdrücke unterliegen nicht den
 Spalten-Grants des Aufrufers. Ein Funktionsaufruf in der Policy auf das Schema `private` scheitert dagegen (kein USAGE
 für anon). So verschwinden gebannte Profile öffentlich, ohne dass der Bann-Status lesbar wird.
+
+## 214. Neue Einstellung verschiebt das Verifier-Bundle (Menü-Labor)
+
+`tools/online/build-function.mjs` bündelt `Settings.movementConfigFor` mit — ein neues Feld in `settingsTypes`/`sanitizeSettings`
+(menuStyle) wird zwar weggeschüttelt, ändert aber esbuilds Minifier-Namen (z. B. `O1=8,D1=16` ↔ `D1=8,O1=16`). Inhaltlich
+gleich, byteweise nicht → `tests/submitFunction` "Bundle veraltet". Prüfen: `tr ';,' '\n\n'` beider Bundles + diff — nur
+Namen? Dann Bundle neu bauen, hochladen, index.ts deployen (Plan 009 §14), nicht den Test anfassen.
+
+## 215. `__vel.ready` ist true, bevor die Levelliste da ist (Menü-Labor)
+
+`installDebug` läuft vor `game.boot()`; `ready` sagt nur "Handle hängt". Playwright-Werkzeuge, die den Titel fotografieren,
+warten zusätzlich auf `page.waitForLoadState('networkidle')` (index.json + Lektionen), sonst zeigt der Titel "lädt".
+
+## 216. Bestands-Screens blenden ein — Screenshot direkt nach waitForSelector ist leer (Menü-Labor)
+
+`.vel-screen` hat `animation: vel-in 160ms steps(4, end)` ab opacity 0. Gleich nach dem Erscheinen fotografiert = nur die
+Kulisse. ≥ 200–300 ms warten. Und nach einem Klick (z. B. "Einstellungen") die Maus wegbewegen, bevor ein anderer Screen
+fotografiert wird — sie überfährt sonst an derselben Stelle einen Knopf (:hover = gleiche Optik wie is-selected).
+
+## 217. Pointer Lock aus der Front Door: Enter geht, obwohl es im rAF ausgeführt wird (Menü-Labor)
+
+Engine-Aktionen (Enter → 'confirm') laufen erst im nächsten Frame durch `Menu.handleAction`, nicht im keydown-Handler.
+`requestPointerLock` klappt trotzdem — die transiente User-Aktivierung hält einige Sekunden. Gemessen (Playwright, rave-Stub):
+Klick auf Start und Enter → `gameState 'playing'`, `pointerLockElement` gesetzt. Nach einem await/Animationsende ist das nicht
+garantiert; darum im Vertrag "play() synchron".
+
+## 218. Button-Reset im Stil-Scope schlägt die eigenen Komponenten-Regeln (Menü ps2)
+
+`.vel-menu.vel-style--ps2 .vel-frontdoor--ps2 button { background: none; border: 0; padding: 0 }` hat Spezifität (0,3,1) —
+höher als `.vel-menu.vel-style--ps2 .ps2-save` (0,3,0). Folge: Slots ohne Polster/Rahmen, nur `.is-selected` (0,4,0) bekam
+Glas → genau der gewählte Slot verdeckte sein 3D-Symbol. Reset immer in `:where(...)` setzen, dann gewinnt jede Klassenregel.
+
+## 219. Glas über einem 3D-Anker verdeckt das Objekt (Menü ps2)
+
+Der three.js-Canvas liegt UNTER dem DOM. Ein halbtransparentes Panel über einem Anker dunkelt das Objekt ab ("gewählte Disc
+ist dunkel"). Symbol-Mulden ohne Füllung bauen (`linear-gradient(transparent 0 var(--well), glass var(--well))`).
+
+## 220. Anker erst messen, wenn das Layout steht (Menü ps2)
+
+Logo-Canvas bekommt seine CSS-Größe erst nach dem Laden des Bilds, Schriften kommen später → Objekte saßen über den Labels.
+Anker (getBoundingClientRect) einmal im nächsten rAF nachmessen (Flag), zusätzlich nach `document.fonts.ready` und Resize —
+nie je Frame.
+
+## 221. LatheGeometry: Wicklung hängt an der Laufrichtung des Profils (Menü ps2)
+
+Profil von oben nach unten → Normalen nach innen; im Vertex-Licht heißt das Rim = 1 überall (Pylon blau statt orange).
+Vorzeichen des Volumens (Σ a·(b×c)) prüfen und ggf. Dreiecke umdrehen. Und: ein langer Mantel ohne Zwischenpunkte trägt nur
+EIN Dreieck je Segment — Streifen je Dreieck brauchen Profilpunkte an den Streifengrenzen.
+
+## 222. Boot überspringen mit Enter darf nicht starten (Menü ps2)
+
+Die Enter-Taste kommt zweimal an: keydown (überspringt) und im nächsten Frame `onAction('confirm')`. 350 ms Sperre nach dem
+Überspringen, sonst springt Enter direkt in die nächste Aktion.
+
+## 223. Halo eines versteckten Objekts (Menü ps2)
+
+Versteckte Objekte (Boot) bekommen keine Transformation; ein Halo, das ihrer `scale` folgt, wird bildschirmgroß. Fokus-Effekte
+nur an sichtbare, aktualisierte Objekte hängen.
+
+## 224. Runde 2: Bestands-Screens ohne zweiten WebGL-Kontext (Menü ps2)
+
+Die Front Door wird beim Verlassen des Titels abgebaut — ihre Welt kann hinter Training/Einstellungen nicht weiterlaufen.
+Lösung: in `unmount()` (vor `dispose`) einmal nur die Hintergrund-Szene zeichnen und im selben Task `canvas.toDataURL()`
+lesen (kein preserveDrawingBuffer nötig), dazu freigestellte 3D-Symbole per `readRenderTargetPixels` + CPU-Bayer. Alles als
+CSS-Variablen am `.vel-menu`-Root; das Scoped-CSS nutzt sie als Hintergrund/Icons. Symbole nur einmal je Sitzung.
+
+## 225. `zoom` statt Neu-Bemaßen der klassischen Screens (Menü ps2)
+
+`zoom: var(--k)` auf `.vel-screen` skaliert Layout und Schrift (16 → 24 px bleibt im 8-px-Raster). `calc(100% - 144px)`
+im gezoomten Element ergibt sichtbar H − 144·k (Prozent bleibt visuell, px wird gezoomt). Pixel-Canvases darin (Hand-
+Vorschau 150×176) neu bemaßen, damit Low-Res-Pixel × zoom ganzzahlig bleibt (300 px × 1.5 = 3×).
+
+## 226. Fester Knopf aus dem Scroll-Bereich (Menü ps2)
+
+Den vorhandenen Zurück-Knopf (`.vel-btn:has(> .vel-kbd)`) per `position: fixed` als Prompt-Leiste unten mittig zeigen —
+echter, klickbarer DOM-Knopf statt Pseudo-Element. `row-reverse` stellt die Esc-Kappe vor den Text.
+
+## 227. Runde 3: `zoom` war der Scroll-Grund (Menü ps2)
+
+`zoom: 1.5` ab 900 px Höhe machte aus einer Seite, die klassisch passt, 140–400 px Scroll (1600x900 am schlimmsten — 900 px
+mal 1/1.5 = 600 px nutzbar). Ohne zoom, mit einzeiligem Kopf (Logo · Symbol + Titel · Konto in der ersten Zeile, 44 px) und
+flacher Prompt-Leiste ist der Rahmen nicht höher als der klassische (40 + 40 px Polster). Messen statt schätzen:
+`scrollHeight − clientHeight` des `.vel-screen` je Screen × Größe gegen `?menu=classic`. Fallen: die Front Door merkt sich
+die Ansicht (nach System → Einstellungen steht sie beim Zurückkommen im System-Menü), und `.vel-leaderboard-screen` hat
+`justify-content: safe center` — ohne `flex-start` rutscht der Kopf von der Kopfzeile weg.
+
+## 228. shot.ts überfährt den ERSTEN `.vel-frontdoor button` (Menü hub)
+
+Liegt davor ein unsichtbarer Knopf (projizierte Schilder mit
+`visibility: hidden`), läuft `locator.hover` 30 s in den Timeout. Reihenfolge im DOM: Karte (Starten) zuerst, Schilder
+danach; Stapelung per `z-index`.
+
+## 229. Enter auf einem fokussierten Knopf ist kein 'confirm' (Menü hub)
+
+Nach einem Mausklick auf Leiste/Schild behält der Knopf den
+Fokus → das nächste Enter klickt ihn nur erneut. Navigationsknöpfe nach dem Klick `blur()`en, dann geht Enter an
+`onAction('confirm')`.
+
+## 230. Ziel-Lerp über 180° läuft durch die Kamera (Menü hub)
+
+Kamerafahrt mit Blickwechsel nach hinten/vorne (Anflug) als Gier/Nick
+interpolieren, nicht als Zielpunkt-Lerp.
+
+## 231. Deko in Blickrichtung prüfen, in ALLEN Seitenverhältnissen (Menü hub)
+
+Die Plakatwand lag von den Rand-Stationen aus angeschnitten
+am Bildrand (16:9 hinter dem Konto-Chip, 32:9 sowieso) — Lösung: nur während des Anflugs sichtbar.
+
+## 232. Quader verdecken ihr Inneres: (Menü hub)
+
+offener Spind = Quader ohne Vorderseite (Flächenmaske), sonst sieht man das Innenleben nie.
+
+## 233. Canvas-Text in der Welt: (Menü hub)
+
+Silkscreen erst nach `document.fonts.load('700 32px Silkscreen')` neu rastern; Alpha
+schwellen (≥ 110 → 255) für harte Pixel; `getContext('2d', { willReadFrequently: true })`, sonst Konsolen-Warnung.
+
+## 234. backdrop-filter isoliert: mix-blend-mode im Kind sieht die Kulisse nicht (Menü rave)
+
+Xerox-Foto = Element mit `backdrop-filter: grayscale contrast` über dem Spiel-Canvas. Ein Kind mit `background: magenta;
+mix-blend-mode: multiply` zum Einfärben ergab eine FLACHE Farbfläche: das backdrop-filter-Element ist eine eigene Blend-Gruppe,
+das Kind mischt nur mit dessen (leerem) Inhalt. Einfärben direkt in der Filterkette: `… sepia(1) hue-rotate(268deg) saturate(3.2)`
+(Magenta) bzw. `hue-rotate(140deg)` (Cyan).
+
+## 235. Tinte um ein backdrop-Fenster: box-shadow-Spread statt Fläche darunter (Menü rave)
+
+Ein deckender Hintergrund UNTER dem Fenster wäre genau das, was backdrop-filter dann sieht (Tinte statt Spiel). Lösung: das
+Fenster unten in der Ebenenfolge, `box-shadow: 0 0 0 calc(100vw + 100vh) var(--ink)` deckt den Rest. Folge: das Fenster nie per
+opacity ein-/ausblenden (sonst liegt die rohe Kulisse frei) — beim Intro deckt ein Kind-Deckel es auf.
+
+## 236. Button-Reset im Stil-CSS: in :where() setzen (Menü rave)
+
+`.vel-menu.vel-style--rave button { padding: 0; background: none }` leckte erst in alle Bestands-Screens (überstimmt `.vel-btn`),
+auf `.rv button` eingeschränkt überstimmte es dann die eigenen `.rv-start`-Regeln (Spezifität 0,3,1 > 0,3,0). Mit
+`:where(.vel-menu.vel-style--rave .rv button)` hat der Reset Spezifität 0 und jede Klassenregel gewinnt.
+
+## 237. Pseudo-Ebene hinter einem transformierten Knopf (Menü rave)
+
+`::before { z-index: -1 }` in einem Knopf mit `transform` liegt ÜBER dessen eigenem Hintergrund (transform = Stacking Context).
+Fläche und Versatz-Schatten darum beide als Pseudo-Elemente (z -1 / z -2), der Knopf selbst ohne Hintergrund.
+
+## 238. Playwright page.evaluate mit tsx: "__name is not defined" (Menü rave)
+
+tsx/esbuild (keepNames) fügt `__name(...)` in Funktionen ein, die page.evaluate dann im Browser ohne Helfer ausführt. Abhilfe:
+Funktionsrumpf als String übergeben (aus einer .js-Datei gelesen) statt als Pfeilfunktion.
+
+## 239. Ticker im Takt ohne JS pro Frame (Menü rave)
+
+WAAPI `track.animate()` mit n+1 Keyframes (je einer pro Beat, jeder mit Ease-out) läuft auf dem Compositor und ruckt pro Beat;
+Phase per `anim.currentTime = (beat mod n) · beatMs` an ctx.beat() binden (beim Aufbau, beim Wechsel auf live, alle 8 Takte).
+Nach Textänderung Klone + Animation neu (Breite ändert sich).
+
+## 240. `<button>` erbt die Schriftgröße nicht (Menü arcade)
+
+Chrome setzt für Buttons `font: 13.333px …` (UA-Stylesheet). Wer Größen in `em` relativ zu einem Eltern-Element rechnet
+(arcade: Bühne mit `font-size: 16·s px`), bekommt in Knöpfen 13.33 px → Silkscreen unscharf und skaliert nicht mit.
+Fix: `font: inherit` am eigenen Knopf-Klasse. Fiel erst im 1080p-Bild auf (Karten wirkten "kleiner" als bei 720p).
+
+## 241. Silkscreen-Raster und Maßstab: s nur in 0.5er-Schritten (Menü arcade)
+
+Bühne in em, `1em = 16·s px`, s ∈ {1, 1.5, 2, 2.5, 3, …} → 1em/2em/3em sind immer Vielfache von 8 px, und 0.125em
+(1 Kunst-Pixel des Gehäuse-Canvas) ist ganzzahlig. Schriften also NUR 1/2/3/4em; 1.5em wäre bei s=1.5 36 px (unscharf).
+720 → s=1, 1080 → 1.5, 1440 → 2, 2160 → 3 passen exakt (Bühne 720·s hoch).
+
+## 242. Räumliche Tasten-Navigation: Mittelpunkte reichen nicht (Menü arcade)
+
+Nur "Mittelpunkt liegt in Richtung" + Abstand → die angehobene (translateY) gewählte Karte macht die Nachbarkarte
+"darunter", und ein breiter Knopf oben (START) gilt als "rechts" von einem Menüpunkt darunter. Kandidat muss jenseits
+der eigenen Kante liegen (Toleranz ¼ der Größe).
+
+## 243. Gehäuse-Canvas ÜBER dem Bildschirm-DOM (Menü arcade)
+
+Rahmen mit ausgestanztem Röhren-Loch als Canvas oben drauf (pointer-events: none) statt clip-path am DOM: eine Form für
+Rahmen, getreppte Ecken, Randschatten (Wölbung) und Glas-Reflex — Klicks gehen durch. Nur bei resize zeichnen.
+
+## 244. Bestands-Screens als Stil-Ansicht: Delegation über MenuStyleInfo.views + ctx.request (Menü ps2)
+
+Statt Training/Bestenliste/Kosmetik/Profil nur umzufärben, baut ps2 sie selbst. Menu.ts fragt in showTraining/showLeaderboard/showCosmetics/showProfile über `delegate()`, ob der aktive Stil die Ansicht in `views` hat, und zeigt
+dann den Titel mit `ctx.request`. **Nur vom Titel bzw. nach einer Lektion** — aus dem Ergebnis bleibt der Bestands-Screen,
+sonst führt "Zurück" nicht mehr zum Ergebnis. Die Anfrage wird im mount/update-ctx genau einmal zugestellt (danach null),
+mit `entry: 'return'` (kein Boot). Nebeneffekt: die Ansichten laufen vor der lebenden 3D-Welt — kein Standbild nötig.
+
+## 245. Glas über 3D-Ankern, zum zweiten Mal (Menü ps2)
+
+Die neuen Listen (Lektionen, Discs, Profil-Zeilen) lagen in Panels mit Glas — der three.js-Canvas liegt UNTER dem DOM, die
+Symbole wurden zweimal abgedunkelt (Pylone fast schwarz). **Regel für den Stil:** Panels mit 3D-Symbolen tragen kein Glas;
+Zeilen bekommen ihr Glas erst rechts von der Symbol-Mulde (`linear-gradient(90deg, transparent 0 50px, glass 50px)`).
+
+## 246. Inhaltshöhe messen in einem Flex-Root mit align-items: stretch (Menü ps2)
+
+`height: auto` auf dem Screen und `getBoundingClientRect().height` liefert in `.vel-menu` (display: flex, stretch) immer die
+volle Höhe — der Fit-Zoom wählte überall 1 mit Füllgrad 1.00. Richtig: Unterkante des tiefsten Kindes (ohne
+`position: fixed`) minus Oberkante, plus unteres Polster. Und: CSS, das je Zoom-Stufe anders bemaßt
+(`[data-ps2-fit="1.5"]`), braucht das Attribut schon WÄHREND der Probe-Messung jeder Stufe.
+
+## 247. zoom: Prozent bleibt visuell, px wird gezoomt (Menü ps2)
+
+In einem Element mit `zoom: z` ergibt `calc(100% - 52px)` sichtbar H − 52·z. Ein Fuß von 52 px skaliert also mit, die
+Höhe bleibt die des Elternteils. Pixel-Canvases darin so bemaßen, dass CSS-Breite × z ein ganzzahliges Vielfaches der
+Low-Res-Breite ist (Hand-Vorschau 150 px: 300 × 1.5 = 450 = 3×).
