@@ -1,3 +1,4 @@
+import type { PlatformAuth } from '../platform/types';
 import type { CompiledLevel } from '../world/level/compileLevel';
 import { LocalMockService } from './LocalMockService';
 import { SupabaseService } from './SupabaseService';
@@ -42,6 +43,8 @@ export interface OnlineDeps {
   readonly latencyMs?: number;
   readonly failRate?: number;
   readonly env?: OnlineEnv;
+  /** Desktop (platform.auth, Plan 011 §3.1): Login im System-Browser + Sitzung verschlüsselt. Web: null/fehlt. */
+  readonly desktopAuth?: PlatformAuth | null;
 }
 
 /**
@@ -58,7 +61,8 @@ export async function createOnlineService(backend: OnlineBackend, deps: OnlineDe
       const key = env.VITE_SUPABASE_ANON_KEY;
       if (!url || !key) return null;
       const { createSupabaseApi } = await import('./supabaseApi');
-      return new SupabaseService({ api: createSupabaseApi(url, key), loadLevel: deps.loadLevel, levelIds: deps.levelIds });
+      const desk = deps.desktopAuth ?? null;
+      return new SupabaseService({ api: createSupabaseApi(url, key, { vault: desk?.session ?? null }), loadLevel: deps.loadLevel, levelIds: deps.levelIds, externalLogin: desk });
     }
     case 'mock':
       return new LocalMockService({ loadLevel: deps.loadLevel, latencyMs: deps.latencyMs, failRate: deps.failRate, dev: deps.mockDev });

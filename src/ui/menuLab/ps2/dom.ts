@@ -1,6 +1,7 @@
 /** Kleine DOM-Helfer der PS2-Front-Door (nur in mount/update benutzt, nie im Frame-Pfad). */
 import { MEDAL_COLORS, MEDAL_NAMES } from '../../medals';
-import type { MedalId } from '../types';
+import type { FrontDoorGlyph, FrontDoorInput, FrontDoorPrompt, MedalId } from '../types';
+import { fillGlyphs } from '../../padGlyphs';
 
 export function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, ...kids: (Node | string | null)[]): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -20,6 +21,23 @@ export function button(cls: string, onClick: (e: MouseEvent) => void, ...kids: (
 /** Tastenkappe ("ENTER", "ESC", Pfeile) — eigene Prompt-Optik, keine Konsolen-Symbole. */
 export function keycap(label: string, wide = false): HTMLElement {
   return el('span', `ps2-key${wide ? ' ps2-key--wide' : ''}`, label);
+}
+
+/** Tastatur-Glyphe als ps2-Kappe (Text länger als ein Zeichen → breit). */
+export function keyGlyph(g: FrontDoorGlyph): HTMLElement {
+  return keycap(g.text, g.text.length > 1);
+}
+
+/**
+ * Hinweis-Halter (Plan 011 §1.6): Tastatur → ps2-Kappen, Pad → A/B bzw. ✕/○ (ui/padGlyphs). Beim Gerätewechsel füllt
+ * refreshGlyphs ihn neu (data-glyph + data-keys="own"), ohne die Ansicht neu zu bauen.
+ */
+export function glyphCap(input: FrontDoorInput, p: FrontDoorPrompt): HTMLElement {
+  const host = el('span', 'ps2-keys');
+  host.dataset.glyph = p;
+  host.dataset.keys = 'own';
+  fillGlyphs(host, input.glyphs(p), keyGlyph);
+  return host;
 }
 
 /** Zeit "mm:ss.cc" wie ctx bestText (formatTime im Menü). */

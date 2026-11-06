@@ -252,6 +252,48 @@ export interface FrontDoorAssets {
 }
 
 /**
+ * Symbol-Familie der Tasten-Hinweise (Plan 011 §1.6): zuletzt benutztes Gerät, die Einstellung "Tasten-Symbole"
+ * schlägt die Pad-Erkennung, ein unbekanntes Pad zeigt Xbox-Beschriftung.
+ */
+export type FrontDoorGlyphFamily = 'keyboard' | 'xbox' | 'playstation';
+
+/** Hinweise, für die es eine Taste gibt. nav = alle vier Richtungen, navX/navY = eine Achse, tabs = LB/RB als Paar. */
+export type FrontDoorPrompt = 'confirm' | 'back' | 'restart' | 'respawn' | 'demo' | 'nav' | 'navX' | 'navY' | 'tabs' | 'tabPrev' | 'tabNext';
+
+export const FRONT_DOOR_PROMPTS: readonly FrontDoorPrompt[] = ['confirm', 'back', 'restart', 'respawn', 'demo', 'nav', 'navX', 'navY', 'tabs', 'tabPrev', 'tabNext'];
+
+/**
+ * Ein Tasten-Symbol. Keine Marken-Logos: Tastatur = Kappe mit Text, Xbox = Buchstabe in Gerätefarbe, PlayStation =
+ * eigene Pixel-Form (Kreuz/Kreis/Quadrat/Dreieck). Fertiges DOM baut `ui/padGlyphs.glyphNode` (Stile dürfen es nutzen).
+ */
+export interface FrontDoorGlyph {
+  readonly family: FrontDoorGlyphFamily;
+  /** Kurztext ("ENTER", "A", "LB", "◀", "✕") — auch Ersatz, wenn ein Stil keine Formen zeichnet. */
+  readonly text: string;
+  readonly kind: 'key' | 'face' | 'shoulder' | 'trigger' | 'stick' | 'dpad' | 'system';
+  /** PlayStation-Form (nur kind 'face'), sonst null. */
+  readonly symbol: 'cross' | 'circle' | 'square' | 'triangle' | null;
+  /** D-Pad: welche Arme leuchten. */
+  readonly arms: 'all' | 'x' | 'y' | 'up' | 'down' | 'left' | 'right' | null;
+  /** Gerätefarbe (#rrggbb) oder null. */
+  readonly color: string | null;
+  /** Lesbarer Name (title/aria): "Taste A", "Kreuz", "Enter". */
+  readonly name: string;
+}
+
+/**
+ * Eingabegerät (Plan 011 §1.5/§1.6). LEBENDIG, nicht Schnappschuss: liest immer den aktuellen Stand; bei einem
+ * Wechsel ruft Menu.ts `onInput()` (fehlt sie: `update()`). Prompts im selben Frame umschalten.
+ */
+export interface FrontDoorInput {
+  readonly family: FrontDoorGlyphFamily;
+  /** Zuletzt benutzt wurde ein Gamepad (dann: sichtbarer Fokus statt Hover, A/B statt Enter/Esc). */
+  readonly pad: boolean;
+  /** Symbole eines Hinweises; leer = auf diesem Gerät gibt es dafür keine Taste (z. B. tabs auf der Tastatur). */
+  glyphs(p: FrontDoorPrompt): readonly FrontDoorGlyph[];
+}
+
+/**
  * Alles, was eine Front Door braucht. Daten sind ein Schnappschuss (bei Änderungen kommt ein neuer ctx über
  * update()); die Funktionen sind stabil und dürfen gemerkt werden.
  */
@@ -280,6 +322,15 @@ export interface FrontDoorContext {
   readonly assets: FrontDoorAssets;
   /** Siehe FrontDoorRequest; null = normal (Hauptmenü bzw. zuletzt gezeigte Ansicht). */
   readonly request: FrontDoorRequest | null;
+  /** Eingabegerät + Tasten-Symbole (lebendig, siehe FrontDoorInput; stabiles Objekt). */
+  readonly input: FrontDoorInput;
+  /** Plattform (Plan 011): 'desktop' = Electron-Hülle (Vollbild = Anzeigemodus des Fensters, kein F11). */
+  readonly platform: 'web' | 'desktop';
+  /**
+   * Admin-Menü anbieten (openAdmin, F8)? Web immer; am Desktop nur mit --dev (Achievements, Plan 011 §2.2.13).
+   * false → Admin-Eintrag weglassen (openAdmin tut dann nichts).
+   */
+  readonly adminMenu: boolean;
 
   // ---- Lesen pro Frame
   /** Takt (siehe FrontDoorBeat). Das Objekt wird wiederverwendet — Werte lesen, nicht aufbewahren. Nie null. */
@@ -316,8 +367,13 @@ export interface FrontDoorContext {
   /** Discord-Login (verlässt die Seite; nur sinnvoll bei account.loginRequired && !signedIn). */
   signIn(): void;
   signOut(): void;
-  /** Vollbild umschalten (User-Geste nötig, also auch synchron im Handler). */
+  /** Vollbild umschalten (User-Geste nötig, also auch synchron im Handler). Desktop: Anzeigemodus Vollbild ⇄ Fenster. */
   fullscreen(): void;
+  /**
+   * Programm beenden — nur am Desktop, im Web null (dann KEINEN Beenden-Eintrag zeigen). Sofort, ohne Rückfrage:
+   * die Bestätigung ("Wirklich beenden?") baut der Stil selbst.
+   */
+  readonly quit: (() => void) | null;
   /**
    * Musik jetzt starten (AudioContext entsperren) — NUR aus einer User-Geste. Danach liefert beat() live.
    * Optional für Stile, die im Menü Musik wollen (Musik läuft gedämpft, wie im Pause-Menü).
@@ -370,6 +426,16 @@ export interface FrontDoor {
    * Fehlt die Methode, tut Enter nichts.
    */
   onAction?(a: FrontDoorAction): void;
+  /**
+   * Pad-Richtung (Steuerkreuz/Stick, mit Wiederholung beim Halten; Plan 011 §2.2.8): dx/dy ∈ {−1, 0, 1}. true = verbraucht.
+   * Fehlt die Methode, navigiert Menu.ts räumlich über die Knöpfe des Stils (ui/padNav) und A klickt den fokussierten.
+   * Mit der Methode kommt A weiter als onAction('confirm') — der Stil klickt dann selbst (ctx.input.pad).
+   */
+  onNavigate?(dx: number, dy: number): boolean;
+  /** LB/RB (dir −1/+1): Reiter wechseln. true = verbraucht. */
+  onTab?(dir: -1 | 1): boolean;
+  /** Eingabegerät/Symbole gewechselt (ctx.input lesen). Fehlt die Methode, kommt update(ctx). */
+  onInput?(): void;
 }
 
 /** Jeder Stil exportiert default eine FrontDoorFactory aus src/ui/menuLab/<id>/index.ts. */

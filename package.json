@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "main": "out/electron/main.js",
   "description": "VELOCITY — PS2-Pixel-Plattformer mit Source-Air-Strafing und reaktivem Techno.",
   "scripts": {
     "dev": "vite",
@@ -16,10 +17,17 @@
     "shot": "node tools/shoot.mjs",
     "playtest": "node tools/playtest.mjs",
     "audio:check": "node tools/audiocheck.mjs",
-    "levels:build": "tsx tools/levels/build.ts"
+    "levels:build": "tsx tools/levels/build.ts",
+    "desktop:compile": "tsc -p electron && node tools/desktop/config.mjs",
+    "desktop:dev": "node tools/desktop/dev.mjs",
+    "desktop:start": "npm run desktop:compile && electron .",
+    "desktop:build": "npm run build && npm run desktop:compile && electron-builder --win dir --config electron-builder.yml && node tools/desktop/check-build.mjs",
+    "desktop:smoke": "tsx tools/desktop/smoke.ts",
+    "desktop:steam-check": "tsx tools/desktop/steam-check.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.119.0",
+    "steamworks.js": "0.4.0",
     "three": "^0.186.1"
   },
   "devDependencies": {
@@ -27,6 +35,8 @@
     "@fontsource/silkscreen": "^5.3.0",
     "@types/node": "^22.10.0",
     "@types/three": "^0.186.0",
+    "electron": "45.2.3",
+    "electron-builder": "26.18.0",
     "lil-gui": "^0.21.0",
     "playwright": "^1.63.0",
     "tsx": "^4.20.0",

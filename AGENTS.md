@@ -66,7 +66,7 @@ npm install
 npm run dev            # http://localhost:5173
 npm run typecheck
 npm test               # Vitest: Kollision + Movement + Bots
-npm run sim            # Movement-Sim: Bots vergleichen, Tuning-Report (-- --section arcade | -- --preset cs2)
+npm run sim            # Movement-Sim: Bots vergleichen, Tuning-Report (-- --section arcade|stick | -- --preset cs2)
 npm run levels:build   # tools/levels/*.ts → public/levels/*.json + index.json, Lektionen → public/levels/training/
                        #   (-- <id>|training|<Lektions-id>: nur diese Dateien, NIE index.json → danach ohne Filter bauen!)
                        #   Medaillen (Regel 10): Bronze 3°-Hand, Silber 2°-Hand (48 Seeds, safeRoute), Gold = max(1°-Hand × 1.05,
@@ -112,8 +112,31 @@ SUPABASE_SECRET_KEY=… node tools/online/upload-bundle.mjs   # Bundle → priva
                        #   pinnen; danach index.ts deployen (npx supabase functions deploy submit-run | MCP). Ablauf: Plan 009 §14
 npx tsx tools/menu/shot.ts              # Menü-Labor (Plan 010): Screenshots je Hauptmenü-Stil + Konsolenfehler → shots/menu/<id>/
                        #   (Port 5720, MENU_PORT=…; MENU_STYLE=<id>[,<id>], MENU_SIZE=WxH[,WxH], MENU_WAIT=ms; immer ?online=mock)
-npm run build
+npx tsx tools/pad/pad-check.ts          # Controller im Spiel nur mit Fake-Pad (__vel.pad): Start per A ohne Lock, Stick/Kamera/LB,
+                       #   Blur/Start/Trennen pausiert → shots/pad/ (Port 5730, PAD_PORT=…; immer ?online=mock)
+npx tsx tools/pad/menu-check.ts         # Menü nur mit Fake-Pad (echter Pfad InputManager → Menü): alle Screens erreichbar, Glyphen
+                       #   Xbox/PS/Tastatur im nächsten Frame, Belegungs-Aufnahme, Web ohne Beenden → shots/pad/menu/
+                       #   (Port 5731, PADMENU_PORT=…; PADMENU_SIZE=WxH[,…], PADMENU_STYLES=0 = nur ps2)
+npm run build          # danach: grep -rE "electron|ipcRenderer|contextBridge|steamworks|require\(" dist/assets = 0 Treffer
+npm run desktop:dev    # Electron-Hülle (Plan 011) gegen den Vite-Dev-Server 5173, mit --dev (DevTools)
+npm run desktop:start  # Electron gegen die gebaute dist/ (app://velocity); vorher npm run build
+npm run desktop:build  # build + tsc -p electron + electron-builder --win dir → release/win-unpacked/VELOCITY.exe, danach
+                       #   tools/desktop/check-build.mjs (kein steam_appid.txt, steam_api64.dll neben der exe, Binding entpackt)
+npx tsx tools/desktop/smoke.ts [--no-exe]   # Desktop-Smoke (Playwright _electron + exe per CDP): Sicherheit, Kürzel (echte
+                       #   OS-Tasten nur nach PID-Prüfung des Vordergrundfensters), Strg-Ducken, Lock + Esc, Anzeigemodus, Spiegel
+                       #   (Local Storage gelöscht → eingespielt), kein Admin ohne --dev, Beenden per Fake-Pad, Determinismus
+                       #   L1–L4 ⇄ Node → shots/desktop/ (öffnet echte Fenster; vorher npm run build bzw. desktop:build)
+npx tsx tools/desktop/authSmoke.ts      # Desktop-Login (Plan 011 §3.1): echtes Electron + Live-Supabase, --dev --auth-no-browser
+                       #   (kein System-Browser, keine OS-Tasten): Empfänger/state/Allowlist, Tresor (DPAPI), Login-Knopf →
+                       #   simulierter Abbruch bei Discord → Toast im Menü → shots/desktop/auth-report.json (vorher npm run build)
+npx tsx tools/desktop/steam-check.ts [--no-exe]   # Steamworks-Gerüst (Plan 011 Phase 4) NUR mit Fake (--steam immer mit
+                       #   --steam-fake, VELOCITY_STEAM entfernt — nie "Spielt Spacewar" auf dem echten Konto): ohne Flag nichts,
+                       #   "Steam läuft nicht" = 1 Log + caps aus, Presence Menü/L2/Ghost/Training, Overlay → Pause, Achievements
+                       #   unter CDP/--dev aus, exe: Fake ohne --dev gesperrt → shots/desktop/steam/ (vorher npm run build)
 ```
+
+> Electron-Falle (Node < 22.12): `npm install` meldet Erfolg, aber das Electron-Binary fehlt (install.js lädt
+> ESM per require). Dann `cd node_modules/electron && node --experimental-require-module install.js`.
 
 > Windows-Falle: Falls Vite/Vitest mit *"Cannot find native binding"* abbricht,
 > fehlt `@rolldown/binding-win32-x64-msvc` (npm-Bug #4828). Ist in
@@ -128,6 +151,8 @@ src/
   main.ts            Einstieg: DOM, Renderer, Audio, Game zusammenstecken
   engine/            Game-Loop (fixed timestep 128 Hz + Interpolation), Input
                      (Pointer Lock, Raw-Maus, Mausrad-Jump), Settings, Events, Game
+  engine/pad/        Controller (Plan 011, DOM-frei): PadInput (Polling, Flanken, Menü-/Spiel-Kontext, Belegungs-Aufnahme),
+                     stickCurve (Deadzone, Drehrate, 8 Richtungen), padSettings (velocity.pad.v1), prompts, types
   world/             Level-Format, Brush-Kompilierung (konvexe Hüllen), Box-Traces
   player/            PlayerMovement (Source-pmove-Port), CameraRig, Bots
   audio/             Prozeduraler Techno: Sequencer, Instrumente, Mixer, SFX
@@ -139,6 +164,15 @@ src/
   engine/replay/     Replays (Plan 009): Quantisierung, Binärformat, Recorder, RunSimulator, Verifier, Ghost aus Replay
   online/            OnlineService (anbieter-unabhängig), LocalMockService, SupabaseService (+ supabaseApi: supabase-js-
                      Adapter, dynamisch geladen), submitVerifier (Server-Prüfung), pendingSubmit (Lauf über den Login retten)
+  platform/          Plattform-Schicht (Plan 011): platform() → web (Default) | desktop (Bridge window.velocityDesktop,
+                     nur Typen in bridgeTypes.ts), saveMirror (velocity.* → userData/save/save.json); Steam (Phase 4,
+                     Desktop-Chunk): steam (Rich Presence, Overlay → Pause), achievements (Live-Ereignisse → IDs,
+                     velocity.achv.v1, 480-Test-Tabelle), live (Game-Hook-Typen, isCleanFinish)
+electron/            Desktop-Hülle (Plan 011, eigenes tsconfig, Node-Typen nur hier): main, preload.cts (sandboxed, CJS),
+                     protocol (app://velocity → dist/, CSP), policy (reine Regeln), window (Anzeigemodus), save, modules
+                     (Hook-Liste für Login/Steam), auth + session + authModule (Loopback-Login, verschlüsselte Sitzung),
+                     steam + steamFake (Steamworks hinter --steam, init(480) nach dem ersten Bild)
+                     → kompiliert nach out/electron/, electron-builder.yml → release/
 supabase/            migrations/*.sql (Schema, RLS, Funktionen, Buckets — so auch eingespielt), functions/submit-run/
                      (index.ts Handler + verifier.bundle.js, generiert)
 public/levels/       Level-JSON (generiert aus tools/levels/)
@@ -190,6 +224,10 @@ Die Module sprechen nur über diese Typen miteinander:
 | Audio-API | `src/audio/types.ts` |
 | Renderer-API | `src/render/types.ts` |
 | Hauptmenü-Stile (Front Doors) | `src/ui/menuLab/types.ts` |
+| Plattform (web/desktop), Desktop-Bridge | `src/platform/types.ts`, `src/platform/bridgeTypes.ts` (Kanäle: `electron/policy.ts` `IPC` ⇄ `electron/preload.cts`; Module: `electron/modules.ts`, Steam `STEAM_IPC` in `electron/steam.ts`) |
+| Live-Ereignisse für Achievements (Game → Plattform) | `src/platform/live.ts` (`LiveProgress`, `isCleanFinish`) |
+| Controller (Pad-Codes, Belegung, Einstellungen, Gerät, Prompts) | `src/engine/pad/types.ts` (+ `InputState`/`InputManager`-API unten) |
+| Speicher-Zugriff (Ghost/Stores, verifier-frei) | `src/engine/storage.ts` |
 
 Änderungen an einem Vertrag: im selben Zug alle Nutzer anpassen und hier notieren.
 
@@ -586,6 +624,54 @@ Menü-Labor Runde 4 (Plan 010 §7, 06.11.) — alle Nutzer nachgezogen (classic/
   `menu.setLevelThemes`; Provider `profile`/`admin` an die Online-Schicht.
 - **Tests**: `tests/frontDoorContract.test.ts` (Abbildungen, Themes aller Level, Registry-Ansichten, Profil + Moderation
   gegen den Mock).
+
+Steam-Vorbereitung (Plan 011, 06.11.) — S0/S1a/S1b/S1c/S2a/S2b integriert, alle Nutzer nachgezogen. `GameSettings`,
+`KeyBinds`, Replay-Format, `PHYSICS_VERSION`, `online/types` **unverändert**; Verifier-Bundle hängt nicht mehr an
+Settings/InputState/online-types (`engine/storage.ts`, Bundle-SHA `f2d04931…`, Upload offen):
+- **Pad-Vertrag** (`engine/pad/types`): `PadButtonCode` (Standard-Mapping, Xbox-Namen, `PadHome` nie belegbar), `PadBinds`,
+  `PAD_PRESETS` bumper/classic, `PadSettings` (yawRate/pitchRate °/s, invertY, Deadzones, curve, boost, moveDeadzone,
+  diagonalBand, glyphs, binds), `PAD_LIMITS`, `InputDevice`, `GlyphStyle`, `PromptAction`, `PAD_RESTART_HOLD` 0.4 s,
+  `PAD_CAPTURE_TIMEOUT` 5 s, `PAD_CAPTURE_CANCEL_HOLD` 0.6 s. Store `PadSettingsStore` (`velocity.pad.v1`, `sanitizePadSettings`).
+- **InputState**: `InputAction` + `navUp/navDown/navLeft/navRight/tabPrev/tabNext` (nur Menü-Kontext), `setPadMove(fwd, side)`
+  (digital, ODER mit WASD), `setLookRate(yaw, pitch)` (rad/s, in `beginFrame(frameDt)` integriert, dann quantisiert wie die
+  Maus), Pad-Codes im held-Set. `FixedLoop.onFrameStart(frameDt)`.
+- **InputManager**: `constructor(target, getSettings, platform?)`, `device`, `usingPad`, `onDevice(cb)`, `promptLabel(a)`,
+  `setMenuContext(on)`, `configurePad(s)`, `pad` (PadInput: `sticks`, `output`, `connected`, `capture`), **`capturePadButton(cb,
+  timeout?)` → stop** bzw. `nextPadButton(timeout?)` → Promise (nächster Knopf auch A/B; null = Abbruch: B halten, Start, Esc,
+  Zeit, Pad weg, Blur), `desktop`, `platformFullscreen`. Am Desktop: Strg duckt immer, keine beforeunload-Wache,
+  `toggleFullscreen`/`enterFullscreen` → `platform.window.setMode`.
+- **Menu**: `setPad(store, MenuPadDevice {connected, sticks, captureButton})`, `setInputDevice(d)` (Game verdrahtet beides:
+  `input.onDevice` → `applyPrompts` + `menu.setInputDevice`; kein Dev-Haken `__velMenu` mehr), `setPlatform(p)` (main.ts),
+  `adminAllowed` (Web immer, Desktop nur `--dev`: Admin-Knopf/F8/`showAdmin`). Desktop: "Anzeigemodus" statt "Vollbild beim
+  Start", Beenden zweistufig im Classic-Titel und in der Pause. `ui/padNav` (räumlicher Fokus, Klasse `is-padfocus`).
+- **UI** (`ui/types`): `MenuEvents.quit` (main.ts: `mirror.flush()` + `platform.quit()`).
+- **Front-Door-Vertrag** (`menuLab/types`): `ctx.input: FrontDoorInput {family, pad, glyphs(p)}`, `ctx.platform` 'web' | 'desktop',
+  `ctx.adminMenu`, `ctx.quit: (() => void) | null` (null = kein Beenden-Eintrag); `FrontDoor.onNavigate?(dx, dy)`,
+  `onTab?(dir)`, `onInput?()`. ps2: System-Panel mit "Beenden" (zweistufig) nur am Desktop, Admin nur mit `adminMenu`; hub
+  blendet Admin ebenso aus (rave/arcade: Knopf bleibt, `openAdmin` tut dann nichts).
+- **Plattform-Schicht** (`src/platform`): `platform()` → web (Default) | desktop (Bridge `window.velocityDesktop`),
+  `PlatformApi {kind, caps, dev, versions, quit, window, openExternal, saveMirror}`. main.ts: `installSaveMirror(…)` VOR
+  `new SettingsStore`, Dev-Parameter (`?online/level/menu/debug/mockdev/lockless`) am Desktop nur mit `--dev`.
+- **Debug-Handle**: `__vel.pad(patch | null)`, `__vel.input()` (+ `ctrlCrouch`, `locked`, `rawInput`).
+- **Desktop-Login (S3, Plan 011 §3.1)** — `OnlineService` und `online/types` **unverändert** (Bundle-SHA bleibt `f2d04931…`):
+  `PlatformApi.auth: PlatformAuth | null` (Web null) = Bridge-Feld `velocityDesktop.auth` (`DesktopAuthBridge {begin,
+  openExternal, cancel, session: DesktopSessionVault}`, Ergebnisse `DesktopAuthBegin`/`DesktopAuthResult`/`DesktopAuthFailure`
+  mit `DesktopAuthError`, Kanäle `AUTH_IPC` in electron/auth.ts). `SupabaseServiceOptions.externalLogin?: ExternalLogin`
+  (`signIn()` am Desktop: Loopback statt Redirect, löst nach dem Code-Tausch auf); `SupabaseApi` + `discordAuthUrl`,
+  `exchangeCode`; `createSupabaseApi(url, key, {vault?})` (Sitzungsschlüssel → `safeStorage`, Verifier bleiben in
+  localStorage); `OnlineDeps.desktopAuth` (main.ts: `plat.auth`). Electron-Modul `authModule` in `modules.ts`; Schalter
+  `--auth-no-browser` nur mit `--dev` (Smoke). Web: `platform.openExternal` ohne `noopener`-Feature (lieferte immer false).
+- **Steamworks-Gerüst (S4, Plan 011 Phase 4)** — steamworks.js **0.4.0** exakt in `dependencies` (electron-builder packt nur
+  Produktions-Abhängigkeiten; Vite bündelt es nie). `PlatformApi.steam: PlatformSteam | null` (`ready()` →
+  `PlatformSteamSession {appId, achievements, unlockAchievement, setPresence, onOverlay}` | null), `caps.steam` erst nach init
+  true. Bridge-Feld `velocityDesktop.steam?` (`DesktopSteamBridge`, `DesktopSteamStatus`, `SpacewarAchievement`; Kanäle
+  `STEAM_IPC` in electron/steam.ts) nur mit `--steam`/`VELOCITY_STEAM=1` und ladbarem Binding. **Modul-Hooks** (`modules.ts`):
+  `beforeReady?()` (vor app.ready, nur erste Instanz), `windowReady?(win)` (erstes Bild — Steam-init läuft erst hier),
+  `ctx.handleSync`, setup höchstens `MODULE_SETUP_TIMEOUT_MS` (3 s) abgewartet, dispose/beforeReady/windowReady mit try/catch.
+  **Game** (`platform/live.ts`): `onLiveProgress` (finish mit `isCleanFinish` = Aufnahme gültig + kein Bot, live geschaffte
+  Lektionsstufen, angenommener Supabase-Lauf; Lektion unsauber bei Bot/Override/Teleport/Config-Patch), `ghostRace`.
+  Achievements (`platform/achievements.ts`, `velocity.achv.v1`) nur aus diesen Ereignissen, nie aus Admin/Bestzeiten; komplett
+  aus mit `--dev` oder Debug-Zugang (`--remote-debugging-port`, `--inspect`). Fake nur mit `--dev --steam --steam-fake[=fail]`.
 
 ### 3.5 Musik folgt dem Movement
 Der Techno-Track (132 BPM) ist aus Oszillatoren und Rauschen gebaut. Er bekommt

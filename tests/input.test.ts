@@ -5,6 +5,7 @@ import { InputState, isBindableCode, keyShortLabel } from '../src/engine/InputSt
 import { InputManager } from '../src/engine/Input';
 import type { PointerLockTarget } from '../src/engine/Input';
 import { DEFAULT_KEYBINDS, DEFAULT_SETTINGS } from '../src/engine/settingsTypes';
+import { DEFAULT_PAD_SETTINGS } from '../src/engine/pad/types';
 import { PlayerMovement } from '../src/player/PlayerMovement';
 import { VELOCITY_DEFAULT } from '../src/player/MovementConfig';
 import type { PlayerInput } from '../src/player/types';
@@ -212,10 +213,11 @@ function installDom(mode: 'promise' | 'undefined' | 'notSupported'): FakeDom {
       return Promise.resolve();
     },
   };
-  for (const k of ['document', 'window', 'HTMLElement']) saved[k] = Object.getOwnPropertyDescriptor(globalThis, k);
+  for (const k of ['document', 'window', 'HTMLElement', 'HTMLButtonElement']) saved[k] = Object.getOwnPropertyDescriptor(globalThis, k);
   Object.defineProperty(globalThis, 'document', { value: doc, configurable: true, writable: true });
   Object.defineProperty(globalThis, 'window', { value: new EventTarget(), configurable: true, writable: true });
   Object.defineProperty(globalThis, 'HTMLElement', { value: class {}, configurable: true, writable: true });
+  Object.defineProperty(globalThis, 'HTMLButtonElement', { value: class {}, configurable: true, writable: true });
   return { target, doc };
 }
 
@@ -277,6 +279,63 @@ describe('Raw-Maus erkennen (U8)', () => {
     expect(a.sprint).toBe(true); // Auto-Sprint aus configure
     window.dispatchEvent(Object.assign(new Event('mouseup', { cancelable: true }), { button: 3 }));
     expect(im.tickInput(0, 1).jumpHeld).toBe(false);
+    im.dispose();
+  });
+});
+
+describe('InputManager: Controller (Plan 011 §1.3)', () => {
+  afterEach(() => {
+    restoreDom();
+  });
+
+  function fake(): { id: string; index: number; connected: boolean; mapping: string; buttons: { pressed: boolean; value: number }[]; axes: number[] } {
+    return { id: 'DualSense Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)', index: 0, connected: true, mapping: 'standard', buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })), axes: [0, 0, 0, 0] };
+  }
+
+  it('Gerät = zuletzt benutzt: Pad-Druck → playstation, Taste → keyboard; Glyphen-Einstellung schlägt die Erkennung', () => {
+    const dom = installDom('promise');
+    const im = new InputManager(dom.target, () => DEFAULT_SETTINGS);
+    const seen: string[] = [];
+    im.onDevice((d) => seen.push(d));
+    const pad = fake();
+    im.setFakePad(pad);
+    im.setMenuContext(false);
+    im.beginFrame(1 / 60);
+    expect(im.device).toBe('keyboard'); // nur verbunden, nichts gedrückt
+    pad.buttons[4] = { pressed: true, value: 1 }; // LB
+    im.beginFrame(1 / 60);
+    expect(im.device).toBe('playstation');
+    expect(im.usingPad).toBe(true);
+    expect(im.promptLabel('jump')).toBe('L1');
+    expect(im.tickInput(0, 1).jumpPressed).toBe(true);
+    expect(im.anyKeyDown()).toBe(true); // Vorführung endet auch mit Pad-Knöpfen
+    window.dispatchEvent(Object.assign(new Event('keydown', { cancelable: true }), { code: 'KeyW', repeat: false }));
+    expect(im.device).toBe('keyboard');
+    expect(im.usingPad).toBe(false);
+    expect(im.promptLabel('jump')).toBe('SPACE');
+    im.configurePad({ ...DEFAULT_PAD_SETTINGS, glyphs: 'xbox' });
+    pad.buttons[4] = { pressed: false, value: 0 };
+    im.beginFrame(1 / 60);
+    pad.buttons[0] = { pressed: true, value: 1 };
+    im.beginFrame(1 / 60);
+    expect(im.device).toBe('xbox');
+    expect(seen).toEqual(['playstation', 'keyboard', 'xbox']);
+    im.dispose();
+  });
+
+  it('Fokusverlust lässt Pad-Knöpfe und Sticks los', () => {
+    const dom = installDom('promise');
+    const im = new InputManager(dom.target, () => DEFAULT_SETTINGS);
+    const pad = fake();
+    im.setFakePad(pad);
+    im.setMenuContext(false);
+    pad.buttons[5] = { pressed: true, value: 1 }; // RB = Ducken
+    pad.axes[0] = 1;
+    im.beginFrame(1 / 60);
+    expect(im.tickInput(0, 1).crouch).toBe(true);
+    window.dispatchEvent(new Event('blur'));
+    const t = im.tickInput(0, 1);
+    expect([t.crouch, t.side]).toEqual([false, 0]);
     im.dispose();
   });
 });

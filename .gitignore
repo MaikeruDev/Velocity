@@ -18,3 +18,8 @@ media/*.mp4
 media/audio/
 media/trailer_check/
 media/trailer_contact*.png
+# Desktop (Plan 011): kompilierter Electron-Hauptprozess und electron-builder-Ausgabe
+out/
+release/
+# Steamworks (Plan 011 Phase 4): nur desktop:dev legt sie an (und räumt sie weg) — nie committen, nie ausliefern
+steam_appid.txt

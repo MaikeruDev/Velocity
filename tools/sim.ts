@@ -8,20 +8,22 @@
  *   npm run sim -- --sweep airSpeedCap=14,16.5,20,30
  *   npm run sim -- --level public/levels/sandbox.json
  *   npm run sim -- --section arcade      (nur der Arcade-Pass, Plan 007)
+ *   npm run sim -- --section stick       (Strafen mit Kamera-Stick, Plan 011)
  */
 import { MOVEMENT_PRESETS, withMovement, type MovementConfig, type MovementPresetId, type NumericMovementKey } from '../src/player/MovementConfig';
 import { runRoute } from '../src/player/bots';
 import { compileLevel } from '../src/world/level/compileLevel';
 import { arcadeSection } from './sim/arcade';
 import { readLevelFile } from './sim/levels';
+import { stickSection } from './sim/stick';
 import { BOT_LABELS, groundStats, hopRun, jumpDistance, standingHop, surfRun, type BotKind } from './sim/scenarios';
 
 interface Args {
   preset: MovementPresetId;
   sweep: { key: NumericMovementKey; values: number[] } | null;
   level: string | null;
-  /** Nur diesen Abschnitt (derzeit 'arcade'). */
-  section: 'arcade' | null;
+  /** Nur diesen Abschnitt. */
+  section: 'arcade' | 'stick' | null;
 }
 
 function isPreset(v: string): v is MovementPresetId {
@@ -60,7 +62,7 @@ function parseArgs(argv: readonly string[]): Args {
       args.level = val();
     } else if (a === '--section') {
       const v = val();
-      if (v !== 'arcade') throw new Error(`--section: nur "arcade" (war "${v}")`);
+      if (v !== 'arcade' && v !== 'stick') throw new Error(`--section: "arcade" oder "stick" (war "${v}")`);
       args.section = v;
     } else {
       throw new Error(`Unbekanntes Argument ${a}`);
@@ -251,6 +253,8 @@ function main(): void {
   const parts: string[] = [`# VELOCITY Movement-Sim (Preset: ${args.preset})\n`];
   if (args.section === 'arcade') {
     parts.push(arcadeSection(base));
+  } else if (args.section === 'stick') {
+    parts.push(stickSection(base));
   } else if (args.sweep) {
     parts.push(sweepSection(base, args.sweep.key, args.sweep.values));
   } else {

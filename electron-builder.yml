@@ -1,0 +1,51 @@
+# Desktop-Build Windows (Plan 011 Phase 2). Nur Target `dir`: release/win-unpacked = späteres Steam-Depot.
+# Kein NSIS, kein Auto-Update (Steam macht das, Plan 011 §2.2.12). Code-Signing: vorerst keins (§8.4).
+appId: com.velocity.game
+productName: VELOCITY
+executableName: VELOCITY
+copyright: Copyright © 2026 Maikeru
+directories:
+  output: release
+  buildResources: build
+# Nur das Nötige ins asar: kompilierter Hauptprozess + Preload und dieselbe Vite-dist/ wie Vercel.
+# Laufzeit-Abhängigkeiten (three, supabase-js) stecken schon im Vite-Bundle → keine node_modules im Paket —
+# außer steamworks.js (Plan 011 Phase 4): nur sein Windows-Binding, ohne die Typ-Abhängigkeit @types/node.
+files:
+  - package.json
+  - out/electron/**/*
+  - dist/**/*
+  - "!node_modules/**/*"
+  - node_modules/steamworks.js/package.json
+  - node_modules/steamworks.js/index.js
+  - node_modules/steamworks.js/dist/win64/steamworksjs.win32-x64-msvc.node
+  - node_modules/steamworks.js/dist/win64/steam_api64.dll
+# Native Dateien lädt Windows nicht aus dem asar: Binding + DLL nach app.asar.unpacked (das .node findet seine
+# DLL im eigenen Ordner).
+asarUnpack:
+  - node_modules/steamworks.js/dist/win64/*.node
+  - node_modules/steamworks.js/dist/win64/*.dll
+# steam_api64.dll zusätzlich neben die exe (Steamworks-Konvention, steamworks.js: "root of your build").
+# steam_appid.txt gehört NIE ins Paket (nur desktop:dev) — tools/desktop/check-build.mjs prüft das nach dem Build.
+extraFiles:
+  - from: node_modules/steamworks.js/dist/win64/steam_api64.dll
+    to: steam_api64.dll
+asar: true
+npmRebuild: false
+nodeGypRebuild: false
+buildDependenciesFromSource: false
+extraMetadata:
+  main: out/electron/main.js
+win:
+  target:
+    - target: dir
+      arch: [x64]
+  signAndEditExecutable: true
+# Electron-Fuses: Laufzeit-Hintertüren schließen, die ein ausgeliefertes Spiel nicht braucht.
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false

@@ -1,11 +1,12 @@
 import { PHYSICS_VERSION } from '../engine/replay/format';
 import { levelHash } from '../engine/replay/hash';
+import type { DesktopAuthError, DesktopAuthFailure, PlatformAuth } from '../platform/types';
 import type { CompiledLevel } from '../world/level/compileLevel';
 import type { BoardQuery, SessionInfo, SupabaseApi } from './supabaseApi';
 import type { AdminAuditRow, AdminPlayerRow, AdminRunRow, BoardRow, Json } from './supabaseTypes';
 import type { AdminAction, AdminAuditEntry, AdminAuditQuery, AdminDeleteResult, AdminDetailValue, AdminPage, AdminPlayer, AdminPlayerQuery, AdminRun, AdminRunQuery, AdminService } from './adminTypes';
 import type { PlayerProfile, ProfileBest } from './profileTypes';
-import type { LeaderboardEntry, LeaderboardPage, LeaderboardRange, OnlineService, PlayerIdentity, SubmitResult } from './types';
+import type { LeaderboardEntry, LeaderboardPage, LeaderboardRange, OnlineErrorCode, OnlineService, PlayerIdentity, SubmitResult } from './types';
 import { OnlineError, displayName, sanitizeName } from './types';
 
 /**
@@ -14,7 +15,9 @@ import { OnlineError, displayName, sanitizeName } from './types';
  *
  *   auth()        stellt eine vorhandene Sitzung wieder her (auch direkt nach dem OAuth-Redirect — supabase-js
  *                 tauscht ?code= beim Start und räumt die URL), lädt das Profil. Nie ein Redirect.
- *   signIn()      signInWithOAuth('discord', redirectTo = Origin + Pfad) — VERLÄSST DIE SEITE.
+ *   signIn()      Web: signInWithOAuth('discord', redirectTo = Origin + Pfad) — VERLÄSST DIE SEITE.
+ *                 Desktop (externalLogin, Plan 011 §3.1): System-Browser + Rücksprung auf 127.0.0.1, Code-Tausch hier
+ *                 im Renderer (PKCE-Verifier aus dem eigenen Storage); löst erst mit stehender Identität auf.
  *   submitRun     Edge Function submit-run (verifiziert serverseitig mit demselben Verifier, rankt).
  *   getLeaderboard  RPC get_leaderboard / get_rank_around je Tafel (Level-ID + Level-Hash + PHYSICS_VERSION).
  *   getGhost      runs.replay_path → öffentliche Storage-URL. Das Spiel verifiziert das Replay danach selbst.
@@ -37,6 +40,61 @@ export interface SupabaseServiceOptions {
   readonly levelIds?: () => readonly string[];
   /** Zeitlimit für Admin-Aktionen über die Edge Function (ms). Default 20 000. */
   readonly adminTimeoutMs?: number;
+  /**
+   * Desktop (Plan 011 §3.1): Login im System-Browser mit Rücksprung auf einen lokalen Port statt Seiten-Redirect
+   * (Electron blockiert die Navigation). Fehlt sie (Web), bleibt signIn() exakt der Redirect von bisher.
+   */
+  readonly externalLogin?: ExternalLogin | null;
+}
+
+/** Was SupabaseService vom Desktop-Login braucht (platform.auth ohne den Sitzungstresor, den nutzt supabaseApi). */
+export type ExternalLogin = Pick<PlatformAuth, 'begin' | 'openExternal' | 'cancel'>;
+
+/** Gründe des Hauptprozesses → OnlineError-Code (der Text kommt fertig mit). */
+const LOGIN_ERROR_CODES: Readonly<Record<DesktopAuthError, OnlineErrorCode>> = {
+  ports: 'unavailable',
+  url: 'unavailable',
+  open: 'unavailable',
+  timeout: 'timeout',
+  denied: 'auth',
+  provider: 'auth',
+  cancelled: 'auth',
+};
+
+const LOGIN_UNAVAILABLE = 'Desktop-Login nicht verfügbar — bitte das Spiel neu starten';
+
+function isLoginFailure(v: unknown): v is DesktopAuthFailure {
+  if (typeof v !== 'object' || v === null) return false;
+  const r = v as Record<string, unknown>;
+  return r.ok === false && typeof r.error === 'string' && Object.hasOwn(LOGIN_ERROR_CODES, r.error) && typeof r.detail === 'string';
+}
+
+function isLoginBegin(v: unknown): v is { readonly ok: true; readonly redirectUrl: string } | DesktopAuthFailure {
+  if (isLoginFailure(v)) return true;
+  const r = typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null;
+  return r !== null && r.ok === true && typeof r.redirectUrl === 'string';
+}
+
+function isLoginResult(v: unknown): v is { readonly ok: true; readonly code: string } | DesktopAuthFailure {
+  if (isLoginFailure(v)) return true;
+  const r = typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null;
+  return r !== null && r.ok === true && typeof r.code === 'string' && r.code !== '';
+}
+
+/** IPC-Aufruf: abgelehnt (kein Login-Modul) oder unlesbare Antwort → 'unavailable' statt eines rohen Fehlers. */
+async function bridgeCall<T>(call: () => Promise<unknown>, valid: (v: unknown) => v is T): Promise<T> {
+  let v: unknown;
+  try {
+    v = await call();
+  } catch {
+    throw new OnlineError('unavailable', LOGIN_UNAVAILABLE);
+  }
+  if (!valid(v)) throw new OnlineError('unavailable', LOGIN_UNAVAILABLE);
+  return v;
+}
+
+function loginError(f: DesktopAuthFailure): OnlineError {
+  return new OnlineError(LOGIN_ERROR_CODES[f.error], f.detail.trim().slice(0, 300) || 'Anmeldung fehlgeschlagen');
 }
 
 export class SupabaseService implements OnlineService {
@@ -49,6 +107,9 @@ export class SupabaseService implements OnlineService {
   private readonly listeners = new Set<(id: PlayerIdentity | null) => void>();
   private readonly hashes = new WeakMap<CompiledLevel, string>();
   private readonly adminTools: AdminService;
+  /** Laufender Desktop-Login (ein Versuch zur Zeit) und seine Auth-URL (für einen zweiten Klick). */
+  private loginRun: Promise<void> | null = null;
+  private loginUrl: string | null = null;
 
   constructor(opts: SupabaseServiceOptions) {
     this.opts = opts;
@@ -86,6 +147,8 @@ export class SupabaseService implements OnlineService {
   }
 
   async signIn(): Promise<void> {
+    const ext = this.opts.externalLogin;
+    if (ext) return this.signInExternal(ext);
     const to = this.opts.redirectTo ? this.opts.redirectTo() : `${location.origin}${location.pathname}`;
     await this.api.signInWithDiscord(to);
   }
@@ -174,6 +237,47 @@ export class SupabaseService implements OnlineService {
   }
 
   // ------------------------------------------------------------------ intern
+
+  /**
+   * Desktop-Login: ein Versuch zur Zeit. Ein zweiter Klick (Browser-Tab geschlossen?) öffnet dieselbe Auth-URL erneut —
+   * gleicher Verifier, gleicher state, der Hauptprozess wartet weiter auf denselben Rücksprung — statt neu zu beginnen.
+   */
+  private signInExternal(ext: ExternalLogin): Promise<void> {
+    if (this.loginRun) {
+      const url = this.loginUrl;
+      if (url !== null) void bridgeCall(() => ext.openExternal(url), isLoginResult).catch(() => undefined);
+      return this.loginRun;
+    }
+    const run = this.runExternalLogin(ext).finally(() => {
+      this.loginRun = null;
+      this.loginUrl = null;
+    });
+    this.loginRun = run;
+    return run;
+  }
+
+  private async runExternalLogin(ext: ExternalLogin): Promise<void> {
+    const begin = await bridgeCall(() => ext.begin(), isLoginBegin);
+    if (!begin.ok) throw loginError(begin);
+    let auth: { readonly url: string; readonly flowId: string | null };
+    try {
+      auth = await this.api.discordAuthUrl(begin.redirectUrl);
+    } catch (err) {
+      // Ohne Auth-URL wartet niemand auf den Empfänger — sofort zu statt erst nach der Frist.
+      try {
+        ext.cancel();
+      } catch {
+        // Bridge weg: der Hauptprozess schließt ihn spätestens nach der Frist
+      }
+      throw err;
+    }
+    this.loginUrl = auth.url;
+    const res = await bridgeCall(() => ext.openExternal(auth.url), isLoginResult);
+    if (!res.ok) throw loginError(res);
+    // supabase-js holt den Verifier dieses Flows aus dem eigenen Storage, speichert die Sitzung und meldet SIGNED_IN.
+    const s = await this.api.exchangeCode(res.code, auth.flowId);
+    await this.applySession(s);
+  }
 
   private requireMe(): PlayerIdentity {
     if (!this.me) throw new OnlineError('auth', 'Mit Discord anmelden, um Läufe einzureichen');

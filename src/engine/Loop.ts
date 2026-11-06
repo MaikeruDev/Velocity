@@ -17,8 +17,11 @@ export interface FixedLoopOptions {
    * frameFraction ∈ [0, 1]: wann dieses Tick-Ende zwischen vorigem (0) und diesem Frame (1) liegt.
    */
   readonly onTick: (dt: number, tickIndex: number, ticksThisFrame: number, frameFraction: number) => void;
-  /** Vor den Ticks JEDES Frames, auch ohne Tick (Blick-Sample für die Subtick-Interpolation). */
-  readonly onFrameStart?: () => void;
+  /**
+   * Vor den Ticks JEDES Frames, auch ohne Tick (Blick-Sample für die Subtick-Interpolation).
+   * frameDt = simulierte (gekappte) Framezeit — der Kamera-Stick integriert damit seine Drehrate.
+   */
+  readonly onFrameStart?: (frameDt: number) => void;
   /** alpha = Anteil des angebrochenen Ticks (für Interpolation), frameDt = echte (gekappte) Framezeit. */
   readonly onFrame: (alpha: number, frameDt: number, nowSeconds: number) => void;
   /** Längster Frame, der noch simuliert wird (s). Länger → Spiel läuft kurz langsamer statt zu springen. Default 0.1. */
@@ -38,7 +41,7 @@ const TICK_EPSILON = 1e-9;
 export class FixedLoop {
   private readonly onTick: FixedLoopOptions['onTick'];
   private readonly onFrame: FixedLoopOptions['onFrame'];
-  private readonly onFrameStart: (() => void) | null;
+  private readonly onFrameStart: ((frameDt: number) => void) | null;
   private readonly maxFrameTime: number;
   private readonly fixedMaxTicks: number | null;
   private readonly now: () => number;
@@ -136,7 +139,7 @@ export class FixedLoop {
   stepTicks(n: number): void {
     const count = Math.max(0, Math.floor(n));
     const dt = this.dtSeconds;
-    this.onFrameStart?.();
+    this.onFrameStart?.(count * dt);
     for (let i = 0; i < count; i++) {
       // Kein Rest im Spiel: die Ticks füllen den "Frame" exakt, u = Index-Anteil.
       this.onTick(dt, i, count, (i + 1) / count);
@@ -156,7 +159,7 @@ export class FixedLoop {
       frame = this.maxFrameTime;
     }
     const dt = this.dtSeconds;
-    this.onFrameStart?.();
+    this.onFrameStart?.(frame);
     this.accumulator += frame;
 
     // Tickzahl zuerst festlegen — onTick braucht n für die Subtick-Verteilung.

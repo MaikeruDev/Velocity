@@ -7,6 +7,8 @@ import { BestTimes, SettingsStore, movementConfigFor } from './engine/Settings';
 import { UnlockStore } from './engine/Unlocks';
 import { MENU_STYLE_IDS } from './engine/settingsTypes';
 import { createOnlineService, onlineBackend } from './online';
+import { platform } from './platform';
+import { installSaveMirror } from './platform/saveMirror';
 import { PS2Renderer } from './render/PS2Renderer';
 import { Hud } from './ui/Hud';
 import { Menu } from './ui/Menu';
@@ -18,6 +20,9 @@ import { TuningPanel } from './ui/TuningPanel';
  *   &lockless     dabei ohne Pointer Lock spielen (Playwright)
  *   ?debug        FPS-Anzeige + Event-Log ab Start
  *   ?online=off|mock|supabase   Online-Schicht (Plan 009) statt VITE_ONLINE (Default: supabase, wenn VITE_SUPABASE_URL gesetzt, sonst mock)
+ *   ?menu=<id>    Hauptmenü-Stil nur für diese Sitzung (Plan 010)
+ * Am Desktop (Electron) gelten diese Dev-Parameter nur mit --dev (Plan 011 §2.2.13; der Hauptprozess hängt ohne
+ * --dev ohnehin keine Query an — hier zusätzlich, falls doch eine durchkommt).
  */
 
 const TOAST_MS = 6000;
@@ -74,6 +79,9 @@ async function main(): Promise<void> {
   canvas.id = 'vel-canvas';
   app.appendChild(canvas);
 
+  const plat = platform();
+  // Speicher-Spiegel (Desktop): leeren localStorage aus save.json füllen, BEVOR ein Store liest (Plan 011 §2.7).
+  const mirror = installSaveMirror(plat.saveMirror, localStorage, window);
   const settings = new SettingsStore();
   let renderer: PS2Renderer;
   try {
@@ -88,12 +96,19 @@ async function main(): Promise<void> {
   const unlocks = new UnlockStore();
   // Früh erzeugen: rechnet die Hall-Impulsantworten im Leerlauf vor (vor dem ersten Klick).
   const audio = new TechnoAudio();
-  const input = new InputManager(canvas, () => settings.get());
+  const input = new InputManager(canvas, () => settings.get(), plat);
   const hud = new Hud();
   const menu = new Menu(byId('menu-root'), settings, best, unlocks);
+  menu.setPlatform(plat);
+  // Beenden (nur Desktop): Spiegel synchron sichern, dann den Hauptprozess beenden lassen.
+  menu.on('quit', () => {
+    mirror?.flush();
+    plat.quit();
+  });
   const tuning = new TuningPanel(settings, movementConfigFor(settings.get()));
 
-  const q = new URLSearchParams(location.search);
+  // Dev-Parameter am Desktop nur mit --dev (Admin/Level-Sprung/Mock würden Achievements und Bestenliste entwerten).
+  const q = new URLSearchParams(plat.kind === 'web' || plat.dev ? location.search : '');
   // Menü-Labor (Plan 010): Takt fürs Menü und ?menu=<id> als Sitzungs-Override (nicht gespeichert).
   menu.setAudio(audio);
   // VITE_TEST_MENU_STYLE: Playwright-Werkzeuge pinnen den klassischen Titel (tools/lib/devServer.mjs), ?menu gewinnt.
@@ -105,6 +120,8 @@ async function main(): Promise<void> {
     loadLevel: (id) => (gameRef ? gameRef.levelById(id) : Promise.reject(new Error('Spiel startet noch'))),
     levelIds: () => (gameRef ? gameRef.levelIds() : []),
     mockDev: q.has('mockdev'),
+    // Desktop: Login im System-Browser + Sitzung verschlüsselt (Plan 011 §3.1); Web: null → Redirect wie bisher.
+    desktopAuth: plat.auth,
   }).catch(() => null); // SDK-Chunk nicht ladbar (offline) → Spiel startet offline
 
   const game = new Game({
@@ -123,6 +140,13 @@ async function main(): Promise<void> {
     online,
   });
   gameRef = game;
+  // Steam (Plan 011 Phase 4, nur Desktop mit --steam): eigener Chunk — das Web lädt ihn nie, im Web-Bundle steckt kein
+  // Steamworks. Achievements nur aus echten Zielen/Lektionen (Game.onLiveProgress), Rich Presence, Overlay → Pause.
+  if (plat.steam) {
+    void import('./platform/steam')
+      .then((m) => m.installSteam(plat, game))
+      .catch((err: unknown) => console.warn('[velocity] Steam-Schicht nicht geladen', err));
+  }
 
   const debug = q.has('debug');
   installDebug({ game, audio, settings, unlocks, record: debug });

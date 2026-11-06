@@ -186,6 +186,8 @@ export interface MenuEvents {
    * Bestenliste (Ghost aus dessen Replay), null = eigene Bestzeit (lokaler Ghost). label fürs HUD/Toast.
    */
   raceGhost: { readonly levelId: string; readonly runId: string | null; readonly label: string };
+  /** Programm beenden (nur Desktop, Plan 011 §2.5; main.ts sichert den Spiegel und ruft platform.quit). */
+  quit: void;
 }
 
 export type MenuEventName = keyof MenuEvents;

@@ -1268,6 +1268,12 @@
   font-size: 16px;
 }
 
+/* Beenden (nur Desktop): zweiter Druck bestätigt. */
+.vel-quit-btn.is-armed {
+  color: #ff6a5a;
+  border-color: rgba(255, 106, 90, 0.6);
+}
+
 .vel-side .vel-admin-btn .vel-kbd {
   border-color: rgba(155, 147, 196, 0.4);
 }
@@ -2276,4 +2282,211 @@
   align-items: center;
   gap: 12px;
   font-size: 24px;
+}
+
+/* ------------------------------------------------------------------ Controller (Plan 011 §1.5–1.7) */
+
+/*
+ * Tasten-Symbole (ui/padGlyphs): eigene Pixel-Formen, keine Marken-Logos. Einheiten ganzzahlig, damit die 7×7-Raster
+ * scharf bleiben: --pg-u = Pixel der Gesichts-Symbole, --pg-ud = Pixel des D-Pads (Stile/zoom skalieren sie mit).
+ */
+.vel-menu {
+  --pg-u: 2px;
+  --pg-ud: 3px;
+  --pg-h: 24px;
+}
+
+.vel-pg {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: var(--pg-h);
+  height: var(--pg-h);
+  font-family: var(--font-head);
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  vertical-align: middle;
+  color: var(--pg-c, var(--text));
+}
+
+.vel-pg + .vel-pg {
+  margin-left: 4px;
+}
+
+.vel-pg-px {
+  display: block;
+  width: calc(var(--pg-u) * 7);
+  height: calc(var(--pg-u) * 7);
+}
+
+/*
+ * Gesichtstasten: gestuftes Achteck (Pixel-"Kreis") mit dunkler Mulde. Xbox: Ring in Gerätefarbe, PlayStation: neutraler
+ * Ring, die Form trägt die Farbe (Ring und Form in einer Farbe lasen sich als "Kreis im Kreis").
+ */
+.vel-pg--face,
+.vel-pg--stick {
+  width: var(--pg-h);
+  background: var(--pg-ring, var(--pg-c, var(--text)));
+  clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
+}
+
+.vel-pg--face.vel-pg--playstation {
+  --pg-ring: #6a72a8;
+}
+
+.vel-pg--face::before,
+.vel-pg--stick::before {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  z-index: -1;
+  background: var(--ink);
+  clip-path: inherit;
+}
+
+/* Stick (L3/R3, L/R): breiteres Achteck mit festen Ecken, damit zwei Zeichen passen. */
+.vel-pg--stick {
+  --pg-c: #b8c0ff;
+  width: auto;
+  padding: 0 6px;
+  clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px), 0 6px);
+}
+
+/* Schulter/Trigger: Kappe mit abgeschrägten Ecken oben (Schulter) bzw. unten (Trigger). */
+.vel-pg--shoulder,
+.vel-pg--trigger,
+.vel-pg--system {
+  padding: 0 6px;
+  color: var(--ink);
+  background: #dfe4ff;
+}
+
+.vel-pg--shoulder {
+  clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 0 100%, 0 6px);
+}
+
+.vel-pg--trigger {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px));
+}
+
+/* System (VIEW/MENU, CREATE/OPTIONS): flache Pille mit gestuften Ecken. */
+.vel-pg--system {
+  height: calc(var(--pg-h) - 4px);
+  clip-path: polygon(4px 0, calc(100% - 4px) 0, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0 calc(100% - 4px), 0 4px);
+}
+
+.vel-pg--dpad {
+  min-width: 0;
+  --pg-lit: #ffffff;
+  --pg-dim: #6a72a8;
+}
+
+.vel-pg--dpad .vel-pg-px {
+  width: calc(var(--pg-ud) * 7);
+  height: calc(var(--pg-ud) * 7);
+}
+
+/* Kappe eines Knopfs, die gerade Pad-Symbole trägt: Kappen-Optik aus, das Symbol zeichnet sich selbst. */
+.vel-kbd.is-pad {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+
+.vel-btn .vel-kbd.is-pad {
+  border: 0;
+  padding: 0;
+}
+
+.vel-menu[data-input='pad'] [data-kbd-only] {
+  display: none;
+}
+
+/* Maus-Hinweise ("Klick auf Weiter") sind am Pad falsch — Fehler bleiben sichtbar. */
+.vel-menu[data-input='pad'] .vel-lock-hint:not(.is-error) {
+  display: none;
+}
+
+/*
+ * Pad-Fokus (ui/padNav): harte Doppelkante Cyan/Tinte, kein Glow. Nur sichtbar, solange das Pad das letzte Gerät war.
+ * Knöpfe zeigen dazu ihren Hover-Zustand — so sieht "gewählt" am Pad aus wie mit der Maus.
+ */
+.vel-menu[data-input='pad'] .is-padfocus {
+  outline: 2px solid var(--cyan);
+  outline-offset: 3px;
+}
+
+.vel-menu[data-input='pad'] .vel-btn.is-padfocus {
+  color: var(--ink);
+  background: var(--cyan);
+  border-color: var(--cyan);
+}
+
+.vel-menu[data-input='pad'] .vel-range.is-padfocus {
+  outline-offset: 6px;
+}
+
+/* Einstellungen → Controller */
+.vel-pad-test-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.vel-pad-test {
+  width: 104px;
+  height: 48px;
+  image-rendering: pixelated;
+  flex: none;
+}
+
+.vel-pad-test-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-body);
+  font-size: 16px;
+  color: var(--dim);
+}
+
+.vel-pad-test-text small {
+  font-family: var(--font-head);
+  font-size: 8px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.vel-pad-panel .vel-h3 {
+  margin: 16px 0 6px;
+  font-family: var(--font-head);
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--magenta);
+}
+
+.vel-pad-bind .vel-btn {
+  min-width: 56px;
+  justify-content: center;
+}
+
+.vel-pad-keys dt {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vel-pad-keys .vel-pg + .vel-pg {
+  margin-left: 0;
 }

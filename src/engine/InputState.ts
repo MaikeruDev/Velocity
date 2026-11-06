@@ -1,6 +1,8 @@
 import type { MutablePlayerInput, PlayerInput } from '../player/types';
 import type { KeyBinds } from './settingsTypes';
 import { DEFAULT_KEYBINDS } from './settingsTypes';
+import type { PadBinds, PadButtonCode } from './pad/types';
+import { DEFAULT_PAD_SETTINGS } from './pad/types';
 
 /**
  * DOM-freier Kern der Eingabe: Tastenzustand, Belegung, Sprung-Flanken,
@@ -8,8 +10,24 @@ import { DEFAULT_KEYBINDS } from './settingsTypes';
  * ihn mit Browser-Events; Tests und Tools können ihn direkt benutzen.
  */
 
-/** 'demo' (Plan 007) kommt aus der Belegung (KeyBinds.demo, Default H), die übrigen aus ACTION_CODES. */
-export type InputAction = 'restart' | 'respawn' | 'pause' | 'toggleTuning' | 'toggleMute' | 'confirm' | 'demo';
+/**
+ * 'demo' (Plan 007) kommt aus der Belegung (KeyBinds.demo, Default H), die übrigen aus ACTION_CODES.
+ * nav…/tab… (Plan 011) kommen nur vom Pad im Menü-Kontext (Steuerkreuz/Stick, LB/RB) — das Spiel ignoriert sie.
+ */
+export type InputAction =
+  | 'restart'
+  | 'respawn'
+  | 'pause'
+  | 'toggleTuning'
+  | 'toggleMute'
+  | 'confirm'
+  | 'demo'
+  | 'navUp'
+  | 'navDown'
+  | 'navLeft'
+  | 'navRight'
+  | 'tabPrev'
+  | 'tabNext';
 
 export type InputOverride = (tickIndex: number, ticksThisFrame: number) => PlayerInput;
 
@@ -137,6 +155,14 @@ export class InputState {
   /** Codes der Vorführung (KeyBinds.demo): lösen die Aktion 'demo' aus, kein gehaltener Knopf. */
   private demoCodes: ReadonlySet<string> = new Set<string>();
   private binds: KeyBinds = DEFAULT_KEYBINDS;
+  /** Pad-Belegung (Plan 011): Pad-Codes laufen durch dieselben Knopf-Tabellen wie Tasten. */
+  private padBinds: PadBinds = DEFAULT_PAD_SETTINGS.binds;
+  /** Digitaler Bewegungs-Stick (−1/0/+1), ODER mit WASD. */
+  private padFwd = 0;
+  private padSide = 0;
+  /** Kamera-Stick als Drehrate (rad/s, Yaw-/Pitch-Raum), in beginFrame mit der Framezeit integriert. */
+  private yawRate = 0;
+  private pitchRate = 0;
   /**
    * Tipp-Klammer: Knöpfe, die seit dem letzten Tick gedrückt wurden. Gelten im
    * nächsten Tick als gehalten, auch wenn sie schon wieder los sind — ein
@@ -193,9 +219,20 @@ export class InputState {
     return this.binds;
   }
 
+  get padBindings(): PadBinds {
+    return this.padBinds;
+  }
+
+  /** Pad-Belegung setzen (selten) — nur jump/crouch/sprint sind gehaltene Knöpfe, die Aktionen macht PadInput. */
+  setPadBindings(binds: PadBinds): void {
+    this.padBinds = binds;
+    this.setBindings(this.binds);
+  }
+
   /** Belegung setzen (selten: Einstellungen) — baut die Code-Tabellen neu. */
   setBindings(binds: KeyBinds): void {
     this.binds = binds;
+    const pad = this.padBinds;
     const codes: string[][] = [];
     for (let b = 0; b < BUTTON_COUNT; b++) codes.push([]);
     codes[B_FORWARD].push(MOVE_CODES.forward);
@@ -205,6 +242,9 @@ export class InputState {
     for (const c of binds.jump) codes[B_JUMP].push(c);
     for (const c of binds.crouch) codes[B_CROUCH].push(c);
     for (const c of binds.sprint) codes[B_SPRINT].push(c);
+    for (const c of pad.jump) codes[B_JUMP].push(c);
+    for (const c of pad.crouch) codes[B_CROUCH].push(c);
+    for (const c of pad.sprint) codes[B_SPRINT].push(c);
     const mask = new Map<string, number>();
     for (let b = 0; b < BUTTON_COUNT; b++) {
       for (const c of codes[b]) mask.set(c, (mask.get(c) ?? 0) | (1 << b));
@@ -258,6 +298,38 @@ export class InputState {
     return had || this.isGameCode(code);
   }
 
+  /**
+   * Pad-Knopf (PadInput, nur Flanken): Druck wirkt wie ein Tastendruck ohne repeat (Sprung-Flanke,
+   * Tipp-Klammer), Loslassen wie keyup. So gelten latch, Auto-Hop und Sprungpuffer ohne Sonderfall.
+   */
+  padButton(code: PadButtonCode, down: boolean): void {
+    if (!down) {
+      this.held.delete(code);
+      return;
+    }
+    const mask = this.codeMask.get(code);
+    if (mask !== undefined) {
+      if (mask & JUMP_BIT) this.pendingJump = true;
+      this.latch |= mask;
+    }
+    this.held.add(code);
+  }
+
+  /** Bewegungs-Stick digital (−1/0/+1 je Achse, PadInput: 8 Richtungen). */
+  setPadMove(fwd: number, side: number): void {
+    this.padFwd = fwd > 0 ? 1 : fwd < 0 ? -1 : 0;
+    this.padSide = side > 0 ? 1 : side < 0 ? -1 : 0;
+  }
+
+  /**
+   * Kamera-Stick als Drehrate (rad/s; yaw + = nach links wie die Yaw-Achse, pitch + = hoch). Wirkt in
+   * beginFrame(frameDt) und läuft danach wie die Maus durch Subtick-Verteilung und Quantisierung.
+   */
+  setLookRate(yawRate: number, pitchRate: number): void {
+    this.yawRate = Number.isFinite(yawRate) ? yawRate : 0;
+    this.pitchRate = Number.isFinite(pitchRate) ? pitchRate : 0;
+  }
+
   /** Ein Mausrad-Event (egal welche Richtung) = ein Sprung-Impuls. */
   wheel(): void {
     this.pendingJump = true;
@@ -271,6 +343,8 @@ export class InputState {
   /** Fokusverlust, Tab-Wechsel, Lock-Verlust: sonst läuft man mit "klemmender" Taste weiter. */
   releaseAll(): void {
     this.held.clear();
+    this.padFwd = this.padSide = 0;
+    this.yawRate = this.pitchRate = 0;
     this.clearEdges();
   }
 
@@ -329,8 +403,16 @@ export class InputState {
    * Tick (FixedLoop.onFrameStart). Sonst bekäme bei 144 Hz / 128 Tick der Tick
    * nach einem leeren Frame zwei Frames Drehung (fallen.md #45). Keine Latenz:
    * Maus-Events kommen nie während der Ticks, das Sample ist der aktuelle Blick.
+   *
+   * frameDt (s, echte Framezeit wie FixedLoop.advance sie simuliert): Kamera-Stick-Rate × frameDt kommt
+   * VOR dem Sample auf den Blick — die Drehung des Frame-Intervalls verteilt sich so nach Tick-Zeit
+   * auf seine Ticks, gleich große Schritte bei jeder Bildrate. Keine Glättung.
    */
-  beginFrame(): void {
+  beginFrame(frameDt = 0): void {
+    if (frameDt > 0 && (this.yawRate !== 0 || this.pitchRate !== 0)) {
+      this.curYaw += this.yawRate * frameDt;
+      this.curPitch = clamp(this.curPitch + this.pitchRate * frameDt, -PITCH_LIMIT, PITCH_LIMIT);
+    }
     // Yaw nicht unbegrenzt wachsen lassen (Float-Präzision nach vielen Drehungen);
     // alle Werte gemeinsam verschieben, damit die Interpolation unverändert bleibt.
     if (Math.abs(this.curYaw) > 64 * Math.PI) {
@@ -373,8 +455,9 @@ export class InputState {
     if (this.override) return this.override(i, n);
 
     const out = this.out;
-    out.forward = (this.on(B_FORWARD, latch) ? 1 : 0) - (this.on(B_BACK, latch) ? 1 : 0);
-    out.side = (this.on(B_RIGHT, latch) ? 1 : 0) - (this.on(B_LEFT, latch) ? 1 : 0);
+    // Pad ODER Tastatur je Richtung — W + Stick zurück hebt sich auf wie W + S.
+    out.forward = (this.on(B_FORWARD, latch) || this.padFwd > 0 ? 1 : 0) - (this.on(B_BACK, latch) || this.padFwd < 0 ? 1 : 0);
+    out.side = (this.on(B_RIGHT, latch) || this.padSide > 0 ? 1 : 0) - (this.on(B_LEFT, latch) || this.padSide < 0 ? 1 : 0);
     // Druck + Loslassen zwischen zwei Ticks zählt in diesem Tick als gehalten (wie Source-Kbutton).
     out.jumpHeld = this.on(B_JUMP, latch) || pressed || wheelHeld;
     out.jumpPressed = pressed;

@@ -2411,3 +2411,359 @@ volle Höhe — der Fit-Zoom wählte überall 1 mit Füllgrad 1.00. Richtig: Unt
 In einem Element mit `zoom: z` ergibt `calc(100% - 52px)` sichtbar H − 52·z. Ein Fuß von 52 px skaliert also mit, die
 Höhe bleibt die des Elternteils. Pixel-Canvases darin so bemaßen, dass CSS-Breite × z ein ganzzahliges Vielfaches der
 Low-Res-Breite ist (Hand-Vorschau 150 px: 300 × 1.5 = 450 = 3×).
+
+## 248. Begrenzte Drehrate: der Engpass ist der Kettenanfang, nicht H20 (Plan 011 S1a, Sim)
+
+Im VELOCITY-Preset ist `airAccelerate · runSpeed · dt` (78) größer als der Cap (40) → der optimale Strafe-Winkel ist
+exakt 90°, der Blick liegt AUF der Flugrichtung, und die dreht bei 250 u/s mit ~1170 °/s (bei 1000 u/s ~180 °/s).
+Ein Ratenlimit kostet deshalb fast nur den Anlauf: H20 ≥ 90 % schon bei 150 °/s, die Zeit bis 500 u/s ≤ 1.15× erst
+ab 480 °/s. Wer nur "Tempo nach 20 Hops" misst, wählt die Stick-Rate viel zu klein. Zweitens: ein Bot mit
+Raten-Boost OHNE Rauschen kann in einen Zickzack-Grenzzyklus fallen (Blick hinter v, voller Schub dreht v schneller
+als der Stick, Kurs-Hysterese kippt die Seite) — eingefroren bei 591 u/s. Rauschfreie Einzelläufe nie allein werten;
+ein "Taste los, wenn Blick hinten"-Flicken der Hand verschlechterte dafür alle anderen Zellen (c ≈ 0 bei perfektem Folgen).
+
+## 249. Würfe aus der Dosen-/Feuerzeug-/Handy-Faust: "Bild-oben" zeigt IN die Handfläche (Plan 008, Animator Dose/Feuerzeug/Handy)
+
+Die Faust liegt im Bild über dem Gegenstand; VIEW_AXES.up hat im Handgelenk-Raum +0.39 entlang z (Handflächen-Normale ist
+−z). Gerade nach oben geworfen flog die Dose durch Handfläche und Finger (−2.4, Messung `hand-contact`-Stil je Frame).
+Dazu schlug ein langer Körper, der um die Bild-Tiefenachse dreht, mit den Enden kurz nach dem Abwurf durch die Hand.
+**Richtig:** Flugrichtung = Bild-oben ohne z-Anteil + `away`·(−z) (PropFlight.setAway, 0.5–0.85; Spin um die
+Längsachse mit offenem Deckel 1.5), Drehachse = Handflächen-Normale (Überschlag nach vorn), Finger öffnen VOR dem Abwurf
+(sonst steckt der Zeigefinger vorn in der abfliegenden Dose), Ring/kleiner Finger am Handy erst öffnen, wenn es weg ist,
+und erst nach dem Fang schließen (`quadIn`), Daumen eigens wegklappen. Der Flug wird im Raum des RUHENDEN Handgelenks
+gerechnet und die Hand-Bewegung (hx/hy/hz, Handgelenk-jointAdd) pro Frame herausgerechnet; Abwurf/Fang = Griff bei
+den Hand-Zuständen zu diesen Zeiten → kein Sprung. `envelope.ts` beachten: der Bogen nach links oben braucht
+Hand-Drift nach rechts, sonst verlässt die Dose die Hülle (die Hülle wird aus Dose/Karte/Messer SELBST gemessen —
+zirkulär: Dosen-Tricks dürfen nicht weiter als die alten 0.055 nach links).
+
+## 250. Gegenstand im Griff drehen = Durchdringung — Hand und Handgelenk drehen lassen (Plan 008, Animator Dose/Feuerzeug/Handy)
+
+Handy-Foto/Gimbal drehten das Handy per rotateView im Griff (73°), Feuerzeug-Surf schob es per offsetView aus dem Griff,
+Buzz rückte es in den Daumen. **Richtig:** die Hand bewegt den Gegenstand (hx/hy/hz, hroll, Handgelenk). Eine Drehung um
+die Blickachse exakt in die Handgelenk-Gelenke zerlegen (three `Euler.setFromRotationMatrix(…, 'ZXY')`, e = [−Beugen,
+Drehen, Seitneigen]) geht, sieht aber bei ±0.7 rad wie ein geknicktes Handgelenk aus (Band dreht mit) — für das Querdrehen
+lieber Unterarm-Rollen (hroll 0.9) + etwas Handgelenk-Drehen (−0.5) und die Hand anheben.
+
+## 251. Feuerzeug-Deckel: Scharnier auf der falschen Seite schlug in den Zeigefinger (Plan 008, Animator Dose/Feuerzeug/Handy)
+
+Offen (2.95 rad) steckte der Deckel 1.35 im Zeigefinger-Mittelglied; auch 1.7 rad noch −0.44. Scharnier auf die Rad-Seite
+(−x, wie beim echten Sturmfeuerzeug) → 0. Der Daumen schnippt jetzt die freie Ecke (+x).
+
+## 252. Crack per Zeigefinger: die Dose muss erst im Griff rutschen (Plan 008, Animator Dose/Feuerzeug/Handy)
+
+IK (Spreizen/Grund/Mittel/End gegen das Griff-Modell): der Zeigefinger erreicht das Laschen-Ende nicht (1.5 Einheiten zu
+kurz bei 45° Spreizung). Lasche zum Zeigefinger drehen (items/can LID_TURN) UND die Dose 2.5 entlang ihrer Achse nach
+unten rutschen lassen (Nachgreifen) → 0.4 Fehler. Weiter als ~0.5 (37°) zieht der Finger die Lasche nicht — sie schnappt
+dann allein auf (sieht echter aus).
+
+## 253. Allokations-Probe in Node: sie misst sonst den Test-Harness (Plan 008, Animator Dose/Feuerzeug/Handy)
+
+`--trace-gc` mit Standard-Semispace zählt bei 16 B/Frame gar nichts. Empfindlich: `--max-semi-space-size=1`. Dann aber:
+(1) eine lange Schleife im Skript-Top-Level läuft per OSR, der zweite Aufruf bis zur Neu-Optimierung im Baseline-Code —
+viele kurze Aufrufe einer `step(n)`-Funktion; (2) mehrere Gegenstände in EINEM Prozess machen gemeinsame Methoden
+polymorph (im Spiel ist immer nur einer aktiv); (3) parallel gestartete Prozesse kompilieren im Hintergrund zu spät —
+`--no-concurrent-recompilation --no-concurrent-osr --single-threaded-gc`. Danach deterministisch.
+Gefundene echte Boxer: Wackelfeder `PropTricks.spinKick` beim Dosen-Fang (HEAD: ~24 Scavenges/24 000 Frames — ersetzt
+durch geschlossenes Nachdrehen `PropFlight.carry`), `cond ? kommazahl : 0` (→ Math.max), Schluck-Schleife mit `if`,
+`TAU * ganzzahligesFeld * x / y` (→ Rate vorberechnet), und große Trick-Methoden, in denen Track.value/ramp2 das
+Inlining-Budget sprengen (Rückgaben werden HeapNumbers → kleine void-Helfer, Zeit über Felder: TossRig, inFlight).
+
+## 254. Kontaktblätter mit vollem Zustand (Plan 008, Animator Dose/Feuerzeug/Handy)
+
+`hand-audit trick` kann Feuerzeug-Zustände (Deckel offen, brennt) nicht vorbelegen. Eigenes Skript: ViewHand im Browser
+(`await import('/src/ui/hand/ViewHand.ts')`), frei mit 240 Hz laufen lassen, Frames als nicht-live Zellen (joints,
+propPos/Rot, param, frame-Felder) an `__vm.render`. Falle: im Vorlauf startet der Leerlauf (Dose: crack nach 1.2 s,
+Feuerzeug: Wieder-Zünden nach Ruhe) — Zustand JEDEN Vorlauf-Frame setzen (auch `calmT`).
+
+## 255. "Keine Durchdringung" reicht nicht — Schweben misst niemand (Plan 008, Animator Karte/Münze)
+
+Der Karten-Twirl bestand alle Tests (kein Glied tiefer als −0.3 in der Karte) und schwebte trotzdem 0.1–0.6 über der
+Daumenkuppe — im Seitenblatt deutlich als Spalt sichtbar, aus der Spielkamera nicht. Der Kontaktabstand schwankte mit
+dem Drehwinkel, weil die Drehachse (Kartenmitte) nicht durch die Stütze ging. **Richtig:** die Stütze auf die
+Drehachse legen und die Lage per FK aus genau den Gelenken dieses Frames rechnen (Pose + Finger-Versatz → Kuppen-Mitte,
+Unterkante = Kuppen-Mitte + Kapselradius + 0.05 entlang Karten-y). Dann ist der Abstand konstant 0.05, egal wie die Karte
+dreht und wie der Daumen wippt. Fürs Schaukeln (fan) um die Kuppen-MITTE drehen, nicht um den Berührpunkt: so rollt die
+Kante über die Kugel statt in sie hinein. Prüf-Skript: je Frame kleinster Abstand JE Handteil ausgeben (nicht nur das
+Minimum) — dann sieht man "thumb2 0.05" konstant oder eben "0.1 … 0.6" pendeln.
+
+## 256. Reichweite der Cartoon-Hand vor dem Trick-Design prüfen (Suche gegen die GANZE Kette) (Plan 008, Animator Karte/Münze)
+
+"Twirl zwischen Daumen und Mittelfinger" (Achse durch beide Kuppen) geht mit diesem Rig nicht: der Mittelfinger erreicht
+weder Ober- noch Diagonalecke der 88-mm-Karte (Reichweite ab Knöchel ~9.6, nötig ~12). Eine Kuppe hinter der Kartenecke
+fand die Suche nur, wenn sie allein die Kuppe bewertete — mit Grund-/Mittelglied gegen die Karte geprüft stieß der
+Zeigefinger immer hinein. **Richtig:** Gitter-Suche über die vier Gelenke mit Kosten aus ALLEN drei Gliedern gegen die
+Kartenpunkte (Lage zum Anschnipp-Zeitpunkt). Ergebnis: Zeigefinger schnellt mit dem Mittelglied an die linke untere
+Ecke (Kontakt 0.11), Drehachse durch die Daumenkuppe.
+
+## 257. French Drop: der direkte Weg "nach hinten in die Finger" ist durch den Zeigefinger versperrt (Plan 008, Animator Karte/Münze)
+
+Aus der Daumen-Klemme fällt die Münze nicht gerade in die Finger: der Zeigefinger liegt direkt hinter ihr (jede Bahn mit
+Anteil −Kamera: −0.5 … −1.4 sofort). Tabelle "Abstand über den Bahnanteil je Richtung" zeigte: nur nach links unten frei.
+Bahn daher zweiteilig (links unten am Zeigefinger vorbei, dann hinter ihn auf die Kuppen von Mittel-/Ringfinger,
+Kontakt 0.09), Bahn-Anteil quadratisch in der Zeit (Schwerkraft), DANN erst Dither (verdeckt) und DANN Faust-Pose — wird
+die Pose geschlossen, solange die Münze noch sichtbar ist (visible > 0.01), zählt der Test die Finger in der Münze.
+
+## 258. event-probe: der Takt springt zwischen Regimen — Abklingzeiten nicht "linear" stimmen (Plan 008, Animator Karte/Münze)
+
+L1 sync (ein deterministischer Bot) sprang bei Karten-Abklingzeiten 1.1/1.05/… zwischen "18 Tricks, 41.7 % frei,
+19.5/min" und "23 Tricks, 48.7 % frei, 24.4/min, Surf 79.5 %"; kürzere Tricks machten es teils SCHLECHTER (mehr Starts
+passen hinein). Mehrere Kombinationen probieren, die nächstgelegene im Band nehmen (hier HEAD-Abklingzeiten + Fächer 1.0:
+45.5 % / 22.7/min, Hinweis-Grenze 45). Messer L1 1.5°-Hand: 31.4/min (vorher 33.8) — im Band.
+
+## 259. Parallel-Agenten mit `process.env` im Browser-Code legen alle Viewer-Werkzeuge lahm (Plan 008, Animator Karte/Münze)
+
+Ein Strang tunte Konstanten per `Number(process.env.X ?? …)` in `ui/hand/*Tricks.ts` — im Node-Test geht das, im
+Dev-Viewer bricht jedes Modul (`process is not defined`), damit hand-audit, vm-hash, shoot. Ausweichen ohne fremde
+Dateien anzufassen: eigene Kopie von `tools/hand-audit.mjs` im Scratchpad mit
+`page.addInitScript(() => { window.process = { env: {} }; })` vor `page.goto`. Für eigene Strang-Arbeit: Tuning-Werte
+nie über process.env in Browser-Code, sondern im Scratch-Skript.
+
+## 260. Erst die Hand im Bild kartieren, dann Bahnen legen — mit der RICHTIGEN Lage des Gegenstands (Plan 008, Animator Jo-Jo/Kendama/Spinner)
+
+Bahnen in Bildrichtungen (rechts/oben/Kamera ab der Schlaufe) liefen quer durch die Hand: Around the World vorn durch
+Handfläche und Daumen (−2.4), Pass/Breakaway/Wiege begannen AM Anker (= im Mittelfinger). Hilfreich war eine Karte
+"ab welcher Tiefe c ist die Scheibe frei" über ein r/u-Raster (oberer UND unterer Rand des blockierten Intervalls —
+sonst sieht man Taschen wie die Ruhelage zwischen Kuppen und Daumen nicht). Falle: meine erste Karte hatte die
+Jo-Jo-Scheibe um 90° falsch (Achse = lokal y, nicht z; items/yoyo) und log; maßgeblich ist immer die Mesh-Messung
+(`tools/lib/handContact`). Ergebnis: `cam` zeigt beim Jo-Jo zur Handflächen-Seite; ATW geht rechts HINTER der Faust
+durch (Tiefe c = D·s·(2−|s|), C1-glatt), Würfe verlassen die Tasche über einen Austrittspunkt unten-vorn, Rückwege
+kommen kubisch (erst unten auf dessen Tiefe, dann hoch) herein.
+
+## 261. Fangpunkt fest, nicht per FK der sich schließenden Finger (Plan 008, Animator Jo-Jo/Kendama/Spinner)
+
+Die Jo-Jo-Ruhelage folgte der FK der aktuellen Finger: bei offener Hand lag sie an den Kuppen, beim Schließen sprang
+das Jo-Jo 5 Einheiten in 1/30 s, und der Wurf zog es mit den sich öffnenden Fingern durch Ring-/kleinen Finger.
+Fester Fangpunkt (FK der Griff-Pose, Ladezeit) + Finger-Schutz löste beides.
+
+## 262. Finger-Schutz als stetige Abbildung (Kugel-Wolke), nicht als Kontakt-Physik (Plan 008, Animator Jo-Jo/Kendama/Spinner)
+
+Gegenstand/zweiter Körper werden nach der Zeitleiste aus dem Hand-Modell geschoben: Wolke aus Kugeln (Jo-Jo: zwei
+Rand-Ringe NAHE DEN FLANKEN — volle 2.6 liegen bei |y| ≈ 0.9; ein Ring in der Mitte unterschätzte den Rand um
+0.3–0.5; Spinner: Rotor als volle Scheibe, Nabe als Kugel-Ring statt zwei langer Kugeln), Hüllkugel als Vorab-Test,
+Gradient per zentraler Differenz, einseitig mit weichem Einsatz und einer TOLERANZ AUS DER RUHELAGE (sonst schiebt er
+den ruhenden Griff). Grenzen: steckt ein Finger quer DURCH die Scheibe (Daumen auf der Lager-Kappe, wenn der Spinner
+seitlich abhebt), gibt es keinen kleinen Ausweg — dann Bahn/Finger ändern (Daumen spreizt vorher ab, Hüpfer statt
+linearem Schieben). Kosten ≤ 30 µs/Frame.
+
+## 263. Schnur: Punkte frei heißt nicht Sehnen frei (Plan 008, Animator Jo-Jo/Kendama/Spinner)
+
+`RopeHandGuard.project` schiebt nur die 9 Punkte; zwei freie Punkte links/rechts eines Fingers ließen die Sehne quer
+durch ihn laufen (gerade hängende Jo-Jo-Schnur in JEDEM Frame bis 1.4 durch Ring-/kleinen Finger). Neu (additiv)
+`projectChords`: Stichproben je Sehne, Endpunkte entlang des Gradienten so verschieben, dass die Stichprobe auf der
+Oberfläche liegt (4 Durchgänge × 8 Teilungen; 3 × 4 reichte nicht). Die erste Sehne (Schlaufe im Finger) auslassen —
+sie mitzunehmen machte es schlechter. Rest: die letzten Einheiten vor dem Fang (Schnur läuft zwischen den Fingern in
+die Faust, verdeckt) und die exakt vorgegebene Wiegen-Figur (Test verlangt Daumen-/Zeigefingerspitze exakt — offen).
+
+## 264. Posenwechsel liegen auf dem Frame-Raster — Schlaufe/Schutz dürfen nicht an ihnen hängen (Plan 008, Animator Jo-Jo/Kendama/Spinner)
+
+Mein erster Umbau (Hand öffnet beim Wurf: Pose relaxed → yoyo) ließ das Pendel bei 30 Hz um 9 px abweichen: die
+Schlaufe sitzt am Mittelfinger, die Pose wechselt im ersten Frame NACH der Marke. Lösung: Pose bleibt fest, Öffnen/
+Schließen als Gelenk-Versatz w(t)·(relaxed − yoyo) — geschlossen in der Trick-Zeit; der Schnur-Finger öffnet nur
+30 % (seine Bewegung stößt das Pendel an). Für Hand-Modell und Anker die ÜBERGEBENEN Gelenke + jointAdd nehmen
+(im Spiel exakt die gezeigte Hand, in Proben mit fester Pose konstant) — nicht selbst überblenden. Posen-Labels sind
+Vertrag (cosmetics.test fragt `pose === 'cradle'` bzw. `point`): dort Posenwechsel behalten.
+Beim Ziel-Abbruch das Hand-Modell UND den Anker in onInterrupt aus den aktuellen Gelenken setzen (sonst 0.2 Versatz
+zum Bild ohne Abbruch).
+
+## 265. Gekippter Ken: Unterarm-Rolle allein legt den Arm quer — Handgelenk mitnehmen (Plan 008, Animator Jo-Jo/Kendama/Spinner)
+
+Kippen um 1.2 rad nur über hroll legte Stulpe und Arm quer ins Bild. Aufteilung 50/50 Rolle + Handgelenk um dieselbe
+Bild-Tiefenachse (Euler ZXY wie ViewModel.applyJoints: x = −Beugen, y = Drehen, z = Seitneigen; Matrix aus Achse/Winkel
+zerlegt). Alle Drehpunkte (Bewegung, Arm, Handgelenk) liegen im selben Ursprung, Würfe rechnen mit der Gesamtrolle.
+Hinweis: Stulpe/Band hängen am Handgelenk-Knoten — jede Kippung in der Bildebene sieht wie eine Unterarm-Drehung aus.
+
+## 266. Kendama-Takt: längere Tricks + Abklingzeit ab START = Band gerissen (Plan 008, Animator Jo-Jo/Kendama/Spinner)
+
+Der Vorgänger verlängerte die Fänge (geführtes Einschwingen 0.66 s) und kürzte die Abklingzeiten ("Takt bleibt") —
+event-probe: 54–60 % Trick-Anteil (Band 25–45). Abklingzeiten zählen ab Trick-START: sind sie kürzer als der Trick,
+wirken sie nicht; kürzere Tricks erzeugen dann nur mehr Starts. Erst Raster (Loslassen × Einschwingen × Abklingzeit,
+parallel, geteilte Ausgabedatei vorher sichern und danach zurückspielen) fand eine Kombination ohne Verstoß.
+Nebenwirkungen des kürzeren Einschwingens: Sprung am Phasenwechsel (Schnur-Ansatz rollt mit der zurückkippenden Hand
+— Versatz in Phase 1 stetig einführen), Nachwackeln am Trick-Ende nicht ausgeklungen (Sprung beim Übergang in die
+Ruhe, je Framerate anders — bis zum Ende ausblenden).
+
+## 267. Werkzeug-Fallen (Plan 008, Animator Jo-Jo/Kendama/Spinner)
+
+- Such-Schalter per `process.env` in src-Dateien: im Browser gibt es kein `process` → Dev-Viewer hängt (Timeout im
+  Blatt-Skript). Vor jedem Rendern festschreiben; der Vorgänger hatte solche Reste im Jo-Jo hinterlassen.
+- Das Bild-Lesen zeigte bei gleichem Dateinamen scheinbar ein altes Blatt — für Vorher/Nachher neue Dateinamen.
+- hand-audit "rechts" (yaw 70) zeigt bei Jo-Jo/Kendama/Spinner fast nur den Unterarm; vorn-links (yaw −50,
+  pitch −15) zeigt Handfläche, Tasche und Schnur.
+- viewHand.test "wilde Eingaben" liegt allein bei 3.7 s, im Gesamtlauf bei ~5.0 s gegen ein 5-s-Limit — flackert
+  unter Last (auch ohne neue Testdateien). Mein Test senkt seine Prozess-Priorität und probt Allokation seriell.
+- anim-can-lighter-phone "allokationsfrei": LighterTricks/tossOpen zeigte deterministisch 24 Scavenges, obwohl weder
+  lighterTricks.ts noch seine Abhängigkeiten in dieser Sitzung geändert wurden (zu Sitzungsbeginn grün) — Strang
+  Dose/Feuerzeug/Handy prüfen.
+
+## 268. Audio: Belohnungs-SFX ducken die Musik auch bei sfx-Lautstärke 0 (Trailer-Musik)
+
+`checkpoint`, `finish` und `speedMilestone` rufen in `Sfx` `mixer.rewardDuck()` auf. Das läuft über den
+Musikbus, also auch dann, wenn die SFX stumm sind (`volumes.sfx = 0`). In einem reinen Musik-Render
+entsteht so ein 3.5–4-dB-Loch genau im Akzent. **Ausweg (offline):** erst bis hinter den Ziel-Beat planen,
+dann das Ereignis mit einer frühen Zeit abschicken. `Music.checkpoint` trägt den Akzent per RETRO auf
+dem schon geplanten Beat nach, der Duck fällt auf die frühe Zeit. Bei `finish` geht das nicht, weil der Riser
+ab der Ereigniszeit läuft.
+
+## 269. Audio: `setMuted` mitten im Offline-Render zerstört Automation (Trailer-Musik)
+
+`TechnoAudio.setMuted` wirkt für Hats/Ride/Shaker/Perc/Clap/Stabs/Pad nur auf die Planung, das ist
+unkritisch. Für `kick`, `acid`, `fx` und `rumble` setzt es dagegen AudioParams bei `ctx.currentTime`.
+Offline ist das immer 0, `cancelScheduledValues(0)` löscht also die gesamte bereits geplante Automation.
+Für zeitgesteuertes Ausdünnen lieber einen zweiten Render mit Stummschaltung von Anfang an und dann
+überblenden.
+
+## 270. Audio: Offline-Zeitbasis = ORIGIN 0.02 s + Limiter 6 ms (Trailer-Musik)
+
+Takt n ist offline bei 0.02 + n · BAR geplant und wird 6 ms später hörbar. Wer Takt 0 auf Dateianfang
+legen will, schneidet 26 ms ab. Danach liegen die gemessenen Crash-Onsets bei ±5 ms.
+
+## 271. Audio: L4-Anlauf exakt auf einen Takt legen (Trailer-Musik)
+
+Der Overdrive-Anlauf startet am ersten Beat, an dem gilt: Ziel ≥ 0.87 und geglättete Energie ≥ 0.74,
+aber Peak < 0.86 (sonst steigt der Layer ohne Anlauf). Der Energiesprung muss deshalb genau EIN 16tel
+vor diesem Beat kommen (Attack 0.3 s, Schritt 0.114 s). Kommt er zwei 16tel vorher, landet die Energie
+bei ~0.855, also knapp an der Kante.
+
+## 272. Werkzeug: ffmpeg unter C:\ffmpeg ist alt (Lavf59) (Trailer-Musik)
+
+`ebur128` kennt dort kein `framelog=`. Ohne die Option aufrufen und die letzte `Summary` parsen.
+`loudnorm` im Linear-Modus landet ~0.3 LU neben dem Ziel (−13.7 statt −14).
+
+## 273. Stick-Boost am Frame-Ende abgetastet → Drehung hängt an der Bildrate (Plan 011 S1b, Controller-Kern)
+
+Der Dreh-Boost setzt nach 0.15 s am Rand ein. Pro Frame `boostFactor(edgeTime)` abgetastet und × frameDt integriert,
+fällt der Einsatz auf eine Frame-Grenze: 60 Hz drehte in 1 s rund 3° (≈ 500 YAW_UNIT) anders als 144/240 Hz.
+**Richtig:** den Faktor über genau das Frame-Intervall mitteln (Integral der stückweise linearen Kurve,
+`PadInput.meanBoost`); dann teleskopiert die Summe und jede Frame-Zerlegung dreht gleich weit (±1 YAW_UNIT, Test
+`padInput.test.ts` "mit Boost").
+
+## 274. Den Druck, der ein Pad übernimmt, nicht verschlucken (Plan 011 S1b, Controller-Kern)
+
+Erste Fassung sperrte beim Übernehmen eines Pads alle schon gedrückten Knöpfe bis zum Loslassen. Chrome zeigt ein
+Pad aber erst NACH dem ersten Druck (`gamepadconnected` kommt mit ihm) — so ging genau dieser erste A-Druck im Titel
+verloren. **Richtig:** beim Übernehmen ab "nichts gedrückt" lesen (Flanke zählt). Sperren nur beim Kontextwechsel
+Menü ⇄ Spiel (A bestätigt → kein Sprung, bis A los ist; gehaltener Lauf-Stick navigiert nicht im Pause-Menü).
+
+## 275. `npm run sim` gegen HEAD vergleichen, ohne fremde Arbeit zu stashen (Plan 011 S1b, Controller-Kern)
+
+`git worktree add <scratch>/head HEAD`, dann `node_modules` als Junction verlinken
+(`powershell New-Item -ItemType Junction`; `cmd mklink /J` aus Git-Bash scheiterte still), Sim dort mit
+`node node_modules/tsx/dist/cli.mjs tools/sim.ts` laufen lassen, `cmp`. **Vor** `git worktree remove --force` die
+Junction mit `cmd //c rmdir <pfad>` lösen — sonst riskiert das Entfernen den Inhalt des echten node_modules.
+
+## 276. Pad-Fokus ist eine Klasse, kein DOM-Fokus (Plan 011 S1c, Menü per Pad)
+
+Echter `focus()` auf Knöpfen hieße: Enter/Leertaste aus dem Spiel lösen sie aus (Menu.render nimmt den Fokus deshalb
+weg). `ui/padNav` setzt nur `is-padfocus`; sichtbar per CSS erst unter `.vel-menu[data-input="pad"]`. Nur Textfelder
+bekommen beim Aktivieren echten Fokus (Tippen). Stile, die per `pointerenter` auswählen (ps2, hub …), folgen dem Pad-Fokus
+über `hoverSync` (pointerenter/mouseenter auf Element + Vorfahren) — keine Pad-Logik je Eintrag nötig.
+
+## 277. ps2: `.vel-btn:has(> .vel-kbd)` macht JEDEN Knopf mit Kappe zur festen Prompt-Leiste (Plan 011 S1c, Menü per Pad)
+
+In Training/Einstellungen/Steuerung/… wird jeder Bestands-Knopf mit `.vel-kbd` unten mittig fixiert (fallen.md #226).
+Glyphen deshalb IN die vorhandene Kappe füllen (`data-glyph`, Klasse `is-pad`), nie zusätzliche `.vel-kbd` anlegen.
+
+## 278. ps2: Bühne ist bis `is-live` unsichtbar und klicklos (Plan 011 S1c, Menü per Pad)
+
+`.ps2-ui` hat `visibility: hidden; pointer-events: none`, bis Boot/Mount `is-live` setzt. Ein Pad-Fokus, der im
+`renderView` des Mounts gesucht wird, findet nichts → nach `is-live` noch einmal `ensure()`.
+
+## 279. PadInput schluckt den Knopf, der ein Pad aktiv macht (Plan 011 S1c, Menü per Pad)
+
+Der erste Druck eines frisch erkannten Pads zählt erst nach dem Loslassen (S1b, gewollt). Werkzeuge wecken das Pad mit
+einer Richtung, nicht mit A — A startet im classic-/rave-Titel sofort ein Level, wenn es doch durchkommt.
+
+## 280. Stile ohne onNavigate: A erst nach der ersten Richtung auf den räumlichen Fokus (Plan 011 S1c, Menü per Pad)
+
+hub (Boot), arcade (Attract-Mode = Münze) brauchen A als eigene Taste. Vor der ersten Pad-Richtung geht A darum an
+`onAction('confirm')`, danach klickt es den Pad-Fokus.
+
+## 281. Aufräum-Listen, die beim Aufbau entstehen, nicht in render() wegwerfen (Plan 011 S1c, Menü per Pad)
+
+`render()` räumt die Rückrufe des alten Screens ab. Wer beim Aufbau (vor render) einen rAF/Refresher in dieselbe Liste
+legt, verliert ihn sofort. Lösung: beim Aufbau in `next…` sammeln, render() tauscht nach dem Abräumen.
+
+## 282. Gleiche Spezifität, späteres Stylesheet gewinnt (Plan 011 S1c, Menü per Pad)
+
+ps2.css wird lazy NACH menu.css geladen. `.vel-menu[data-input='pad'] [data-kbd-only]` (0,3,0) verlor gegen
+`.vel-menu.vel-style--ps2 .ps2-key` → F8-Kappe blieb am Pad sichtbar. Stil-eigene Regel mit `.vel-style--ps2` nötig.
+
+## 283. PlayStation-Formen: Ring neutral, Form farbig (Plan 011 S1c, Menü per Pad)
+
+Ring und Form in derselben Farbe lasen sich als "Kreis im Kreis" (○ in rotem Achteck). Ring grau, Form in Gerätefarbe.
+
+## 284. Feldname `tab` in ModerationView (Plan 011 S1c, Menü per Pad)
+
+Die neue SubView-Methode hieß zuerst `tab()` — ModerationView hat ein privates Feld `tab` (Reiter). → `onTab()`.
+
+## 285. Electron 45 auf Node 22.11: `npm install` grün, Binary fehlt (Plan 011 S2a, Electron)
+
+`electron/install.js` lädt `@electron/get` (inzwischen ESM) per `require`. Erst Node ≥ 22.12 kann das ohne Schalter
+(`engines: >= 22.12.0`). npm meldete trotzdem Erfolg, `require('electron')` warf danach "Electron failed to install
+correctly". **Richtig:** `cd node_modules/electron && node --experimental-require-module install.js` (oder Node ≥ 22.12).
+`tools/desktop/dev.mjs` und `smoke.ts` geben diesen Hinweis aus.
+
+## 286. `webContents.sendInputEvent` löst Menü-Rollen close/reload NICHT aus (Plan 011 S2a, Electron)
+
+Gegenprobe mit Standard-Menü (`Menu.setApplicationMenu(null)` auskommentiert): Strg+Shift+I (DevTools), Alt
+(Menüleiste) wirken über sendInputEvent, Strg+W/Strg+R/F5 aber nicht — der Check "Strg+W ohne Wirkung" war damit auch
+OHNE Fix grün (fallen.md #21). **Richtig:** echte OS-Tasten (WScript.Shell.SendKeys) — damit schließt Strg+W mit Menü das
+Fenster (rot), ohne Menü nichts (grün).
+
+## 287. SendKeys: nie per Fenstertitel aktivieren, und `app.process().pid` ist nicht der Fenster-Besitzer (Plan 011 S2a, Electron)
+
+`AppActivate('VELOCITY')` traf, nachdem das Spielfenster in der Gegenprobe zu war, ein ANDERES Fenster mit "Velocity" im
+Titel (Editor/Terminal im Projektordner) — Strg+R, F5, Strg+Shift+I gingen dorthin. Die Playwright-PID
+(`app.process().pid`) ist unter Windows nicht der Prozess, dem das Fenster gehört (GetForegroundWindow → andere PID).
+**Richtig:** PID per `app.evaluate(() => process.pid)` aus dem Hauptprozess, Fenster dort fokussieren, vor dem Senden
+`GetWindowThreadProcessId(GetForegroundWindow())` gegen diese PID prüfen, sonst nichts senden.
+
+## 288. CSP: Vite legt kleine Schriften als `data:` ins CSS (Plan 011 S2a, Electron)
+
+`assetsInlineLimit` (4 KB) macht aus mehreren woff/woff2-Dateien `data:font/...`-URLs → mit `font-src 'self'` 4
+CSP-Verstöße. **Richtig:** `font-src 'self' data:`. Sonst kam die App mit `script-src 'self'` ohne Ausnahme aus.
+
+## 289. tsx + `page.evaluate`/`app.evaluate`: benannte Pfeilfunktionen brauchen `__name` (Plan 011 S2a, Electron)
+
+tsx (esbuild keepNames) schreibt `const st = async (…) => …` als `__name(…)` um; im Renderer/Hauptprozess gibt es das
+nicht ("__name is not defined"). **Richtig:** im evaluate-Körper keine benannten Hilfsfunktionen (inline/`map`).
+
+## 290. `page.evaluate(string)` läuft in einer Funktion (Plan 011 S2a, Electron)
+
+Ein esbuild-IIFE mit `globalName` landet so nicht auf `window`. **Richtig:** `${code}\nwindow.x = x;` anhängen.
+
+## 291. beforeunload in Electron: `will-prevent-unload` + preventDefault (Plan 011 S2a, Electron)
+
+Mit Nutzer-Aktivierung und `beforeunload`-preventDefault bricht das Fenster-X sonst still ab (Gegenprobe: Exit nach 5 s
+nicht erfolgt). `contents.on('will-prevent-unload', e => e.preventDefault())` im Hauptprozess ignoriert die Wache →
+Exit 0 in ~230 ms. Playwright meldet den Dialog trotzdem; im Smoke wird er NICHT bestätigt (sonst verdeckt der Harness
+den Fix).
+
+## 292. URL-Parser normalisiert `%2e%2e` vorher (Plan 011 S2a, Electron)
+
+`new URL('app://velocity/%2e%2e/package.json').pathname` ist schon `/package.json` — kein Ausbruch, aber auch kein Test
+dafür. Echte Ausbruchsversuche sind `..%5c` (Backslash) und Laufwerkspfade (`C:%5c…`), `:` wird ganz gesperrt (auch
+NTFS-Datenströme `::$DATA`).
+
+## 293. Playwright wartet nach einer blockierten Navigation ewig (Electron) (Plan 011 S2b, Desktop-Smoke)
+
+Der Smoke blockiert `location.assign('https://example.com')` per `will-navigate` + `preventDefault`. Danach hingen in
+derselben Seite `page.waitForSelector` und `page.click` bis zum Timeout mit "waiting for navigation to finish" —
+Playwright hält die abgebrochene Navigation für noch laufend. `page.evaluate`/`waitForFunction` gehen weiter.
+**Richtig:** nach so einem Test nur noch `waitForFunction` und Klicks per `page.mouse.click(x, y)` auf das per
+`getBoundingClientRect` gemessene Ziel (bleibt eine echte Geste für Pointer Lock).
+
+## 294. ps2-Hauptmenü am Pad: räumlicher Fokus, kein Umlauf (Plan 011 S2b, Desktop-Smoke)
+
+Die Pfeiltasten laufen in ps2 im Kreis (`selectMain` modulo), das Pad aber nicht: `onNavigate` geht über `pnav`
+(ui/padNav, räumlich). "Einmal links vom ersten Eintrag = letzter" tat am Pad nichts. Werkzeuge, die per Pad zu
+einem Eintrag wollen, müssen räumlich laufen (menu-check: `menu-path.js`; Smoke: rechts, wo es nicht weitergeht
+runter, bis `.ps2-item.is-selected` stimmt) und vorher warten, bis die Bühne lebt (`.ps2-ui.is-live`, kein
+`.ps2-boot`) — ein A während des Boots überspringt nur, ein A danach öffnet schon "Spielen".
+
+## 295. dist-Grep "electron": auch Eigenschaftsnamen zählen (Plan 011 S2b)
+
+Sobald main.ts `platform()` importiert, landet `platform/desktop.ts` im Web-Bundle (Laufzeit-Erkennung, ein Build).
+Der Adapter schrieb `versions: { electron: bridge.versions.electron, … }` — der Minifier lässt Eigenschaftsnamen
+stehen, der Grep aus Plan 011 §2.2 fand "electron" zweimal. Kein Electron-Code, aber die Messung soll 0 sein.
+**Richtig:** das Bridge-Objekt durchreichen (`versions: bridge.versions`), Typen bleiben in bridgeTypes.

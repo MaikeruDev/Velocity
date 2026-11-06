@@ -39,8 +39,11 @@ import { TrainingProgress } from './TrainingProgress';
 import type { TrainingSessionApi, Verdict } from './trainingTypes';
 import { CENTER_BAND_BOTTOM, CENTER_BAND_TOP, stageJudges, stageLabel } from '../ui/hudLogic';
 import { HUD_RECTS } from '../ui/Hud';
-import { keyShortLabel } from './InputState';
 import type { InputManager } from './Input';
+import { PadSettingsStore } from './pad/padSettings';
+import type { GamepadLike } from './pad/PadInput';
+import type { InputDevice, PromptAction } from './pad/types';
+import type { RawMouseStatus } from '../ui/types';
 import type { InputAction } from './InputState';
 import { FixedLoop } from './Loop';
 import { GhostRecorder, GhostStore, ghostDiff, ghostPoseAt, levelSignature } from './Ghost';
@@ -65,6 +68,7 @@ import { ReplayRecorder } from './replay/recorder';
 import { placeFeet } from './replay/runSim';
 import { replayToGhost, verifyReplay } from './replay/verify';
 import { movementConfigFor } from './Settings';
+import { isCleanFinish, type LiveProgress } from '../platform/live';
 
 /**
  * Spielablauf: verbindet Loop, Input, Movement, Kamera, Lauf-Logik, Audio,
@@ -144,6 +148,8 @@ export interface GameDeps {
   readonly training?: TrainingProgress;
   /** Online-Schicht (Plan 009): Einreichen, Bestenliste, Ghosts. null/fehlt = offline. */
   readonly online?: OnlineService | null;
+  /** Pad-Einstellungen (Plan 011, `velocity.pad.v1`). Fehlt = Game legt den Store selbst an. */
+  readonly padSettings?: PadSettingsStore;
 }
 
 /** Gewählter Fremd-Ghost (Bestenliste, Plan 009): gilt für dieses Level, bis man ins Menü geht. */
@@ -187,6 +193,27 @@ export interface GhostDebugInfo {
   readonly pose: { readonly x: number; readonly y: number; readonly z: number; readonly yaw: number } | null;
   /** Ghost liegt gerade hinter dem Speedometer-Block (HUD dimmt ihn). */
   readonly overHud: boolean;
+}
+
+/** Eingabe für Tools (`__vel.input()`, Plan 011). */
+export interface PadDebugInfo {
+  readonly device: InputDevice;
+  readonly usingPad: boolean;
+  readonly controlMode: 'mouse' | 'pad';
+  readonly padConnected: boolean;
+  readonly padKind: InputDevice;
+  readonly menuContext: boolean;
+  /** Höchst-Drehrate des Kamera-Sticks (°/s) aus den Pad-Einstellungen. */
+  readonly maxRate: number;
+  readonly sticks: { readonly lx: number; readonly ly: number; readonly rx: number; readonly ry: number };
+  /** Digitale Richtung und Drehrate (rad/s) des letzten Frames. */
+  readonly output: { readonly fwd: number; readonly side: number; readonly yawRate: number; readonly pitchRate: number };
+  readonly rawStatus: RawMouseStatus;
+  /** Strg duckt gerade (Web: Vollbild + Keyboard Lock; Desktop: immer). */
+  readonly ctrlCrouch: boolean;
+  /** Pointer Lock aktiv / mit unadjustedMovement. */
+  readonly locked: boolean;
+  readonly rawInput: boolean;
 }
 
 export interface StartOptions {
@@ -314,6 +341,8 @@ export class Game {
   private readonly tuning: TuningPanel;
   private readonly notify: (message: string) => void;
   private readonly baseUrl: string;
+  /** Pad-Einstellungen (Plan 011): das Menü (Controller-Abschnitt) liest und schreibt hier. */
+  readonly padSettings: PadSettingsStore;
 
   readonly bus = new EventBus();
   readonly camera = new PerspectiveCamera(74, 16 / 9, 2, 30000);
@@ -329,6 +358,13 @@ export class Game {
   private gameState: GameState = 'title';
   private pausedFor: 'menu' | 'tuning' = 'menu';
   private lockless = false;
+  /**
+   * Steuer-Modus 'pad' (Plan 011 §2.2.6): die letzte Start-/Weiter-Geste kam vom Pad. Ein Pad-Druck ist
+   * keine User-Aktivierung (kein Pointer Lock, kein Vollbild, kein Ton) — also ohne Lock spielen,
+   * Fokus-/Sichtbarkeitsverlust pausiert. Klick ins Spiel → zurück auf Maus + Lock.
+   */
+  private padMode = false;
+  private cursorHidden = false;
   private muted = false;
   private levels: readonly LevelIndexEntry[] = [];
   private readonly levelCache = new Map<string, Promise<CompiledLevel>>();
@@ -535,6 +571,14 @@ export class Game {
   /** Debug: letzte Events mitschreiben (nur wenn eingeschaltet — kopiert, allokiert also). */
   eventRecorder: ((e: GameEvent) => void) | null = null;
 
+  /**
+   * Achievements (Plan 011 4.3): NUR echte Ziele, live geschaffte Lektionsstufen und angenommene Online-Läufe —
+   * nie Admin-Aktionen oder gespeicherte Bestzeiten. Am Desktop mit Steam hängt platform/steam.ts hier an.
+   */
+  onLiveProgress: ((e: LiveProgress) => void) | null = null;
+  /** Lektion: Bot/Override/Debug-Eingriff in dieser Sitzung → ihre Stufen zählen nicht für Achievements. */
+  private lessonTainted = false;
+
   constructor(deps: GameDeps) {
     this.canvas = deps.canvas;
     this.renderer = deps.renderer;
@@ -546,6 +590,7 @@ export class Game {
     this.hud = deps.hud;
     this.menu = deps.menu;
     this.tuning = deps.tuning;
+    this.padSettings = deps.padSettings ?? new PadSettingsStore();
     this.notify = deps.notify;
     this.baseUrl = deps.baseUrl;
     this.online = deps.online ?? null;
@@ -585,7 +630,7 @@ export class Game {
       tickRate: this.config.tickRate,
       onTick: this.onTick,
       onFrame: this.onFrame,
-      onFrameStart: () => this.input.beginFrame(),
+      onFrameStart: (frameDt) => this.input.beginFrame(frameDt),
     });
 
     this.hudData = {
@@ -641,6 +686,28 @@ export class Game {
     this.hud.setMovement(this.config);
     this.rig.setMovement(this.config);
     this.hud.visible = false;
+    this.input.configurePad(this.padSettings.get());
+    this.padSettings.subscribe((p) => {
+      this.input.configurePad(p);
+      this.applyPrompts();
+    });
+    // Menü am Controller-Kern: Pad-Speicher + Live-Pad (Stick-Test, Belegungs-Aufnahme) und das zuletzt benutzte Gerät
+    // (Glyphen, Pad-Fokus). Gerätewechsel schaltet HUD-Prompts und Menü im selben Aufruf um.
+    const input = this.input;
+    this.menu.setPad(this.padSettings, {
+      get connected() {
+        return input.pad.connected;
+      },
+      get sticks() {
+        return input.pad.sticks;
+      },
+      captureButton: (cb) => input.capturePadButton(cb),
+    });
+    this.menu.setInputDevice(this.input.device);
+    this.input.onDevice(() => {
+      this.applyPrompts();
+      this.menu.setInputDevice(this.input.device);
+    });
     this.applySettings(this.settings.get());
     this.settings.subscribe((s) => this.applySettings(s));
     this.unlocks.subscribe(() => this.applyCosmetics(this.settings.get()));
@@ -650,6 +717,7 @@ export class Game {
     this.wireOnline();
 
     window.addEventListener('resize', this.onResize);
+    window.addEventListener('blur', this.onWindowBlur);
     document.addEventListener('visibilitychange', this.onVisibility);
     this.canvas.addEventListener('click', this.onCanvasClick);
     this.onResize();
@@ -693,8 +761,48 @@ export class Game {
     return this.lockless;
   }
 
+  /** Steuer-Modus (Plan 011): 'pad' = ohne Pointer Lock gestartet, weil die Geste vom Pad kam. */
+  get controlMode(): 'mouse' | 'pad' {
+    return this.padMode ? 'pad' : 'mouse';
+  }
+
+  /** Zuletzt benutztes Eingabegerät, Pad-Zustand und Stellgrößen (Tools: `__vel.input()`). */
+  get inputInfo(): PadDebugInfo {
+    const pad = this.input.pad;
+    return {
+      device: this.input.device,
+      usingPad: this.input.usingPad,
+      controlMode: this.controlMode,
+      padConnected: pad.connected,
+      padKind: pad.kind,
+      menuContext: pad.menuContext,
+      maxRate: pad.maxYawRate,
+      sticks: { ...pad.sticks },
+      output: { ...pad.output },
+      rawStatus: this.input.rawStatus,
+      ctrlCrouch: this.input.ctrlCrouch,
+      locked: this.input.locked,
+      rawInput: this.input.rawInput,
+    };
+  }
+
+  /** Tools (`__vel.pad`): Fake-Pad einspeisen (null = echte Pads). */
+  setFakePad(pad: GamepadLike | null): void {
+    this.input.setFakePad(pad);
+  }
+
+  /** Tasten-Hinweis der Aktion auf dem aktuellen Gerät (InputManager.promptLabel). */
+  promptLabel(a: PromptAction): string {
+    return this.input.promptLabel(a);
+  }
+
   get lastFinish(): FinishResult | null {
     return this.finishResult;
+  }
+
+  /** Fremd-Ghost aus der Bestenliste, gegen den gerade gefahren wird (Rich Presence "Gegen Ghost"), sonst null. */
+  get ghostRace(): { readonly levelId: string; readonly label: string } | null {
+    return this.raceGhost;
   }
 
   get menuScreen(): string | null {
@@ -864,8 +972,10 @@ export class Game {
   async startLevel(id: string, opts: StartOptions = {}): Promise<boolean> {
     const gesture = opts.gesture ?? false;
     this.lockless = opts.lockless ?? false;
+    // Geste vom Pad → ohne Lock (er ginge ohnehin nicht, ein Pad-Druck ist keine Aktivierung).
+    this.padMode = gesture && !this.lockless && this.input.usingPad;
     let lock: Promise<boolean> | null = null;
-    if (!this.lockless && gesture) {
+    if (!this.lockless && !this.padMode && gesture) {
       lock = this.requestLockTracked();
       this.fullscreenFromGesture(lock);
     }
@@ -907,6 +1017,10 @@ export class Game {
     }
     this.gameState = 'playing';
     if (this.lockless) return true;
+    if (this.padMode) {
+      this.hintAudio();
+      return true;
+    }
     if (lock === null) {
       // Ohne Geste (Dev-Direktstart per ?level=) gibt es keinen Lock — erst ein Klick auf "Weiter".
       this.pause('menu');
@@ -994,6 +1108,14 @@ export class Game {
       this.resume();
       return;
     }
+    // Jede Weiter-Geste entscheidet neu: Pad → ohne Lock, Klick/Taste → Maus mit Lock.
+    this.padMode = this.input.usingPad;
+    if (this.padMode) {
+      this.unlockAudio();
+      this.resume();
+      this.hintAudio();
+      return;
+    }
     const p = this.requestLockTracked();
     this.fullscreenFromGesture(p);
     this.unlockAudio();
@@ -1011,6 +1133,7 @@ export class Game {
     const yaw = yawDeg !== undefined ? yawDeg : this.viewYaw / DEG;
     this.placeAt(pos, yaw);
     this.replayRec.invalidate('Teleport (Debug)');
+    if (this.session !== null) this.lessonTainted = true;
   }
 
   setVelocity(v: Vector3): void {
@@ -1019,6 +1142,7 @@ export class Game {
     this.movement.copySnapshot(this.cur);
     copySnap(this.cur, this.prev);
     this.replayRec.invalidate('Geschwindigkeit gesetzt (Debug)');
+    if (this.session !== null) this.lessonTainted = true;
   }
 
   setView(yaw: number, pitch: number): void {
@@ -1034,7 +1158,7 @@ export class Game {
     if (this.session === null) {
       this.tuning.setConfig(next);
       this.playerConfig = next;
-    }
+    } else this.lessonTainted = true;
     this.useConfig(next);
     return next;
   }
@@ -1217,6 +1341,7 @@ export class Game {
     this.loadToken++;
     this.clearBot();
     window.removeEventListener('resize', this.onResize);
+    window.removeEventListener('blur', this.onWindowBlur);
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.canvas.removeEventListener('click', this.onCanvasClick);
     this.input.dispose();
@@ -1307,7 +1432,8 @@ export class Game {
 
   private restartFromGesture(): void {
     if (!this.level) return;
-    const lock = this.lockless ? null : this.requestLockTracked();
+    if (!this.lockless) this.padMode = this.input.usingPad;
+    const lock = this.lockless || this.padMode ? null : this.requestLockTracked();
     if (lock) this.fullscreenFromGesture(lock);
     this.unlockAudio();
     this.restartRun();
@@ -1336,6 +1462,8 @@ export class Game {
    * Strg, und Strg+W bleibt im Spiel.
    */
   private fullscreenFromGesture(lock: Promise<boolean>): void {
+    // Desktop: der Anzeigemodus gilt schon ab Start (Hauptprozess) und springt beim Level nicht um (Plan 011 §2.3).
+    if (this.input.platformFullscreen) return;
     if (!this.settings.get().fullscreenOnStart) return;
     void lock.then(() => {
       // Inzwischen zurück im Titel? Dann kein Vollbild mehr erzwingen.
@@ -1372,6 +1500,26 @@ export class Game {
   private unlockAudio(): void {
     // Audio ist Beiwerk: ohne Gerät/Geste läuft das Spiel stumm weiter.
     this.audio.unlock().catch(() => undefined);
+  }
+
+  /**
+   * Pad-Start im Web: der AudioContext braucht eine echte Geste (Klick/Taste). Ist der Ton nach kurzer Zeit
+   * nicht da, ein Hinweis. Am Desktop (autoplayPolicy) läuft er von selbst.
+   */
+  private hintAudio(): void {
+    window.setTimeout(() => {
+      if (this.padMode && this.gameState === 'playing' && !this.audio.unlocked) this.hud.showNotice('Für Ton einmal klicken');
+    }, 800);
+  }
+
+  /** Tasten-Hinweise (Vorführung, Showkeys) aufs aktuelle Gerät ziehen — bei Belegungs- und Gerätewechsel. */
+  private applyPrompts(): void {
+    const demo = this.input.promptLabel('demo');
+    this.demoKey = demo !== '—' ? demo : null;
+    this.hud.setDemoKey(this.demoKey);
+    this.menu.setDemoKey(this.demoKey ?? '—');
+    const crouch = this.input.promptLabel('crouch');
+    this.hud.setKeyLabels(this.input.promptLabel('jump'), crouch !== '—' ? crouch : '-');
   }
 
   private nextLevelId(): string | null {
@@ -1458,6 +1606,7 @@ export class Game {
       this.lessonDefs.set(id, level.def.training);
     }
     this.session = session;
+    this.lessonTainted = false;
     // Lektionen erzwingen Auto-Sprint wie die Lehr-Config: ohne Sprint bleibt das Bodentempo bei 250 u/s — T1 RUTSCHEN
     // (ab 280) und T4 PRESTRAFE (ab 350) wären 0/20 (Review training-core, rv-tc3/nosprint.txt).
     const st = this.settings.get();
@@ -1589,6 +1738,9 @@ export class Game {
       const hullH = this.movement.hullMaxs.y - this.movement.hullMins.y;
       const out = this.lessonEvents;
       out.length = 0;
+      // Bot/Override steuert diesen Tick → keine Achievements aus der Sitzung (die Vorführung per H hält die
+      // Session an und zählt ohnehin keine Stufe, sie bleibt erlaubt). Nur ein Merker, nichts allokiert.
+      if (this.overrideActive && (this.demo === null || this.demoPlays)) this.lessonTainted = true;
       const t0 = this.costProbe ? performance.now() : 0;
       session.tick(dt, this.prev, this.cur, cmd, hullH, out);
       if (this.costProbe) this.lessonTickCpuSum += performance.now() - t0;
@@ -1720,9 +1872,9 @@ export class Game {
   }
 
   private showHint(id: HintId, verdict: Verdict | null): void {
-    const crouch = this.settings.get().keybinds.crouch[0];
-    const key = crouch !== undefined ? keyShortLabel(crouch) : '?';
-    this.hud.showNotice(hintText(id, verdict, key), 'coach');
+    // Ducken-Taste des aktuellen Geräts (Pad: z. B. RB) im Crouch-Hinweis.
+    const crouch = this.input.promptLabel('crouch');
+    this.hud.showNotice(hintText(id, verdict, crouch !== '—' ? crouch : '?'), 'coach');
   }
 
   private runTick(dt: number): void {
@@ -1809,6 +1961,16 @@ export class Game {
     this.ghostRec.sample(time, this.cur.pos, this.lastYaw);
     if (this.ghostTrack && this.ghostVisible) this.hudData.ghostDiff = ghostDiff(this.ghostTrack, 0, time);
     const online = this.submitRun(time);
+    // Achievements (Plan 011 4.3): nur ein sauberer Lauf zählt — dieselbe Regel wie die Bestenliste (isCleanFinish),
+    // unabhängig davon, was oben in Bestzeit/Freischaltungen gelandet ist.
+    this.onLiveProgress?.({
+      kind: 'finish',
+      levelId: this.levelId,
+      time,
+      clean: isCleanFinish(this.lastReplay, this.replayRec.invalid),
+      levels: this.levels,
+      lessons: this.lessons,
+    });
     const track = this.ghostRec.finish(this.levelSig, time, splits);
     if (res.best && track) this.ghostStore.save(this.levelId, track);
     else if (res.best) this.ghostStore.clear(this.levelId);
@@ -1906,6 +2068,8 @@ export class Game {
       if (loginTime !== null && token === this.submitToken) this.loginRun = { bytes, levelId: rep.header.levelId, time: loginTime, token };
       if (!on) return;
       const res = await on.submitRun(bytes);
+      // Vom Server nachgerechnet und angenommen (Achievement "erster verifizierter Lauf").
+      if (res.status === 'accepted') this.onLiveProgress?.({ kind: 'submit', backend: on.backend });
       st = res.status === 'accepted'
         ? { state: 'accepted', text: acceptedText(res), rank: res.rank, total: res.total, personalBest: res.personalBest }
         : { state: 'rejected', text: `Abgelehnt: ${rejectText(res)}` };
@@ -2003,6 +2167,7 @@ export class Game {
     show({ state: 'pending', text: 'Wird geprüft und eingereicht …' });
     try {
       const res = await on.submitRun(run.bytes);
+      if (res.status === 'accepted') this.onLiveProgress?.({ kind: 'submit', backend: on.backend });
       show(
         res.status === 'accepted'
           ? { state: 'accepted', text: acceptedText(res), rank: res.rank, total: res.total, personalBest: res.personalBest }
@@ -2147,6 +2312,9 @@ export class Game {
       this.showFinishMenu();
     }
 
+    // Pad-Knöpfe gehören dem Menü, solange es sichtbar ist (gilt ab dem nächsten poll).
+    this.input.setMenuContext(this.menu.visible);
+    this.updateCursor();
     this.updateLeaveGuard();
     this.updateCamera(alpha, frameDt);
     const fc = this.filmCam;
@@ -2457,6 +2625,8 @@ export class Game {
     // skipPending bleibt: restartLesson leert die Warteschlange der Session nicht — ein vorher übersprungenes
     // 'lessonStage' kommt trotzdem mit dem nächsten Tick und darf nicht gefeiert werden.
     s.restartLesson();
+    // Neue Sitzung von vorn: ein Bot von vorher hat in ihr nichts geschafft.
+    this.lessonTainted = false;
     this.stageTipSerial = s.tip.serial;
     this.hud.lessonJump();
     const sp = s.respawnPoint();
@@ -2475,6 +2645,16 @@ export class Game {
     const def = this.level?.def.training;
     if (s === null || !def || s.completedStageIds.length === 0) return;
     this.progress.record(this.levelId, def.stages, s.completedStageIds);
+    // Achievements (Plan 011 4.3): nur die Stufen DIESER Sitzung — Admin-Sterne gehen nie hier durch.
+    this.onLiveProgress?.({
+      kind: 'lesson',
+      lessonId: this.levelId,
+      stages: def.stages,
+      completed: s.completedStageIds,
+      clean: !this.lessonTainted,
+      levels: this.levels,
+      lessons: this.lessons,
+    });
   }
 
   /** Ergebnis der Lektion: speichern, Freischaltungen, Menü 'lessonDone'. */
@@ -2764,6 +2944,14 @@ export class Game {
     }
   }
 
+  /** Pad-Modus im Spiel: Mauszeiger weg (kein Lock, der ihn verstecken würde). */
+  private updateCursor(): void {
+    const hide = this.padMode && this.gameState === 'playing' && !this.menu.visible;
+    if (hide === this.cursorHidden) return;
+    this.cursorHidden = hide;
+    this.canvas.style.cursor = hide ? 'none' : '';
+  }
+
   private updateLeaveGuard(): void {
     // "Seite verlassen?" nur, solange ein echter Lauf läuft — nie im Playwright-Betrieb ohne Lock.
     const on = !this.lockless && this.session === null && this.run !== null && this.run.running && this.gameState !== 'title';
@@ -2784,18 +2972,12 @@ export class Game {
     this.hudData.showSpeedometer = s.showSpeedometer;
     this.hudData.showKeys = s.showKeys;
     this.showKeysSetting = s.showKeys;
-    // Vorführungs-Taste (Plan 007) für HUD-Hinweis, Pause und Tipps.
-    const demoCode = s.keybinds.demo[0];
-    this.demoKey = demoCode !== undefined ? keyShortLabel(demoCode) : null;
-    this.hud.setDemoKey(this.demoKey);
-    this.menu.setDemoKey(this.demoKey ?? '—');
     this.hand.enabled = s.showHand;
     this.hand.motionFx = s.motionFx;
     this.applyCosmetics(s);
     this.input.configure(s.keybinds, s.autoSprint || this.session !== null);
-    const jumpKey = s.keybinds.jump[0];
-    const crouchKey = s.keybinds.crouch[0];
-    this.hud.setKeyLabels(jumpKey !== undefined ? keyShortLabel(jumpKey) : 'RAD', crouchKey !== undefined ? keyShortLabel(crouchKey) : '-');
+    // Vorführungs-Taste (Plan 007) und Showkeys-Beschriftung — je nach Gerät Taste oder Pad-Knopf.
+    this.applyPrompts();
     this.coach.enabled = s.showHints;
     // pixelHeight ändert die Low-Res-Größe → HUD und Kamera nachziehen.
     this.syncLayout();
@@ -2919,11 +3101,25 @@ export class Game {
     if (document.visibilityState === 'hidden' && this.gameState === 'playing') this.pause('menu');
   };
 
+  /** Pad-Modus: Fenster verliert den Fokus (Alt-Tab, Overlay) → Pause. Mit Maus pausiert schon der Lock-Verlust. */
+  private readonly onWindowBlur = (): void => {
+    if (this.padMode && this.gameState === 'playing') this.pause('menu');
+  };
+
   private readonly onCanvasClick = (): void => {
     if (this.gameState === 'paused' && !this.menu.visible) this.requestResume();
     else if (this.gameState === 'playing' && !this.lockless && !this.input.locked) {
-      // Lock ging ohne Pause verloren (sollte nicht passieren) — Klick holt ihn zurück.
-      void this.requestLockTracked();
+      // Pad-Modus: Klick ins Spiel = zurück auf Maus (Klick ist eine Geste, Lock und Ton gehen jetzt).
+      // Sonst ging der Lock ohne Pause verloren (sollte nicht passieren) — Klick holt ihn zurück.
+      const p = this.requestLockTracked();
+      if (this.padMode) {
+        this.padMode = false;
+        this.unlockAudio();
+        const token = this.loadToken;
+        void p.then((ok) => {
+          if (!ok && token === this.loadToken) this.lockFailed();
+        });
+      }
     }
   };
 }

@@ -846,3 +846,98 @@ der Physik-Liste sind nur Validator-Proben: "Crouch-Kante 64.0 u Reserve 0.5 u <
 Auto-Hop-Landehöhe → Kante auf 66 u) und "Perfekter Bot zerfällt über den Start-Kasten" (auch mit allen
 Arcade-Schaltern aus, dort mit anderem Split). Die Review-Fixes selbst ändern keine Meldung; L1 zeilengleich,
 L2-Bot-Mediane durch die Hang-Schuld: sync 1.0 17.0 → 17.5 s, sync 0.7 18.7 → 19.5 s, Hand 3° 20.6 → 20.6 s.
+
+## Controller (Plan 011 §1.2, Strang S1a, 06.11.)
+
+Frage: Wie viel Drehrate braucht der Kamera-Stick, damit Strafen nicht zäh wird? Werkzeug **`npm run sim -- --section stick`**
+(`tools/sim/stick.ts`, Hand `tools/sim/StickHand.ts`, Kurve `src/engine/pad/stickCurve.ts`). Physik unverändert.
+
+**Ergebnis / Defaults:** Grundrate 420 °/s, Kurve ^2.4, Boost +50 % nach 0.15 s am Rand (Rampe 0.1 s, Spitze 630 °/s),
+Deadzone 0.12/0.95, Einstellbereich 180–900 °/s. Begründung und Kurzfassung: Plan 011 §1.2 "Umgesetzt S1a".
+
+- Engpass ist der Kettenanfang: bei 250 u/s dreht der perfekte Strafe die Flugrichtung mit ~1170 °/s (Cap 40 ⟂ v,
+  `airAccelerate · runSpeed · dt` = 78 > Cap → θ = 90°, Blick = Flugrichtung), bei 1000 u/s mit ~180 °/s. Die
+  H20-Hürde (≥ 90 %) ist deshalb schon bei 150 °/s erfüllt, die Zeit bis 500 u/s (≤ 1.15×) erst ab 480 °/s.
+- Hinkt der Blick nach, liegt die Wunschrichtung vor dem Optimum: weniger Gewinn, kein Verlust (Δ|v|² = cap² − c²,
+  c = wishdir·v).
+- StickHand-Modell: invertierte Kurve (die Hand kennt ihren Stick), Rauschen AR(1) τ 0.1 s auf der Auslenkung (am
+  Anschlag nur nach innen), mit Boost reitet sie den Rand (Schritt auf den Rückstand gekappt — großzügig). Rate wird
+  pro Physik-Tick integriert, nicht pro Frame.
+- +100 % Boost ohne Rauschen: Zickzack-Grenzzyklus (Blick hinter der Flugrichtung, voller Schub dreht v mit
+  ~720 °/s, Kurs-Hysterese kippt die Seite alle ~7 Ticks, H20 545–591). Verworfen; ein Tasten-Loslass-Modell in der
+  Hand behob es nicht und verschlechterte alle anderen Zellen (verworfen).
+
+
+### Sim-Ausgabe: Strafen mit begrenzter Drehrate (Plan 011 §1.2)
+
+Flacher Boden, Start mit runSpeed am Boden, Sprung gehalten, Kurs −Z (Hysterese 10°). Referenz = StrafeBot sync 1 ohne Ratenlimit.
+Kriterium: H20 ≥ 90 % der Referenz und Zeit bis 500 u/s ≤ 1.15×.
+
+#### A — StrafeBot sync 1 mit `maxTurnRate`
+
+| °/s | H5 | H10 | H20 | H20 / ∞ | t→500 (s) | t500 / ∞ | Kriterium | L1 (s) | L1-Slalom (s) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 90 | 466 | 628 | 863 | 74.3 % | 4.48 | 4.25× | nein | – | – |
+| 120 | 520 | 700 | 971 | 83.6 % | 3.45 | 3.27× | nein | – | – |
+| 150 | 565 | 754 | 1046 | 90.0 % | 2.82 | 2.67× | nein | – | – |
+| 180 | 603 | 796 | 1089 | 93.8 % | 2.41 | 2.28× | nein | – | – |
+| 240 | 655 | 843 | 1126 | 97.0 % | 1.90 | 1.80× | nein | 22.35 | 3.47 |
+| 300 | 683 | 864 | 1141 | 98.3 % | 1.60 | 1.52× | nein | 21.74 | 3.79 |
+| 360 | 697 | 874 | 1149 | 99.0 % | 1.41 | 1.34× | nein | 22.12 | 3.66 |
+| 450 | 707 | 882 | 1156 | 99.5 % | 1.24 | 1.18× | nein | 21.34 | 3.75 |
+| 540 | 712 | 886 | 1158 | 99.7 % | 1.16 | 1.10× | ja | 21.27 | 3.71 |
+| 630 | 714 | 888 | 1160 | 99.9 % | 1.10 | 1.04× | ja | 21.17 | 3.70 |
+| 720 | 716 | 889 | 1161 | 99.9 % | 1.08 | 1.02× | ja | 21.29 | 3.70 |
+| 900 | 717 | 890 | 1161 | 100.0 % | 1.06 | 1.01× | ja | 21.18 | 3.73 |
+| 1080 | 717 | 890 | 1162 | 100.0 % | 1.05 | 1.00× | ja | 21.11 | 3.71 |
+| ∞ | 717 | 890 | 1162 | 100.0 % | 1.05 | 1.00× | ja | 21.20 | 3.71 |
+
+#### B — StickHand: kleinste Grundrate, die das Kriterium erfüllt
+
+Raster 180…1230 °/s in 30er-Schritten. Boost: +50 % nach 0.15 s am Rand, Rampe 0.1 s. Rauschen: AR(1) auf der Auslenkung, 5 Seeds. "@30 %" = Rate bei 30 % Auslenkung mit dieser Grundrate (feinzielbar ≤ 25 °/s).
+
+| Kurve | Boost | Rauschen 0 % | Rauschen 3 % | Rauschen 6 % |
+| --- | --- | --- | --- | --- |
+| linear | aus | 480 (@30 %: 144) | 480 (@30 %: 144) | 510 (@30 %: 153) |
+| linear | +50 % | 360 (@30 %: 108) | 390 (@30 %: 117) | 450 (@30 %: 135) |
+| linear | +100 % | 840 (@30 %: 252) | 360 (@30 %: 108) | 450 (@30 %: 135) |
+| ^1.6 | aus | 480 (@30 %: 70) | 510 (@30 %: 74) | 510 (@30 %: 74) |
+| ^1.6 | +50 % | 360 (@30 %: 52) | 390 (@30 %: 57) | 480 (@30 %: 70) |
+| ^1.6 | +100 % | 930 (@30 %: 135) | 360 (@30 %: 52) | 450 (@30 %: 66) |
+| ^2.2 | aus | 480 (@30 %: 34) | 510 (@30 %: 36) | 510 (@30 %: 36) |
+| ^2.2 | +50 % | 360 (@30 %: 25) | 420 (@30 %: 30) | 480 (@30 %: 34) |
+| ^2.2 | +100 % | 960 (@30 %: 68) | 360 (@30 %: 25) | 480 (@30 %: 34) |
+| ^2.4 | aus | 480 (@30 %: 27) | 510 (@30 %: 28) | 510 (@30 %: 28) |
+| ^2.4 | +50 % | 360 (@30 %: 20) | 420 (@30 %: 23) | 480 (@30 %: 27) |
+| ^2.4 | +100 % | 990 (@30 %: 55) | 360 (@30 %: 20) | 480 (@30 %: 27) |
+| ^2.6 | aus | 480 (@30 %: 21) | 510 (@30 %: 22) | 510 (@30 %: 22) |
+| ^2.6 | +50 % | 360 (@30 %: 16) | 420 (@30 %: 18) | 480 (@30 %: 21) |
+| ^2.6 | +100 % | 990 (@30 %: 43) | 360 (@30 %: 16) | 480 (@30 %: 21) |
+| ^3 | aus | 480 (@30 %: 13) | 510 (@30 %: 14) | 540 (@30 %: 15) |
+| ^3 | +50 % | 360 (@30 %: 10) | 420 (@30 %: 11) | 480 (@30 %: 13) |
+| ^3 | +100 % | 1020 (@30 %: 28) | 360 (@30 %: 10) | 480 (@30 %: 13) |
+
+#### C — StickHand bei Grundrate 420 °/s (Default), H20 / ∞ und t500 / ∞
+
+| Kurve | Boost | °/s @30 % | Rauschen 0 % | Rauschen 3 % | Rauschen 6 % |
+| --- | --- | --- | --- | --- | --- |
+| linear | aus | 126 | 1154 (99.3 %) · 1.22× | 1152 (99.2 %) · 1.23× | 1146 (98.7 %) · 1.24× |
+| linear | +50 % | 126 | 1157 (99.6 %) · 1.10× | 1154 (99.4 %) · 1.12× | 1147 (98.7 %) · 1.19× |
+| linear | +100 % | 126 | 545 (46.9 %) · 1.07× | 1143 (98.4 %) · 1.09× | 1139 (98.1 %) · 1.17× |
+| ^1.6 | aus | 61 | 1154 (99.3 %) · 1.22× | 1151 (99.1 %) · 1.24× | 1142 (98.4 %) · 1.25× |
+| ^1.6 | +50 % | 61 | 1156 (99.5 %) · 1.10× | 1153 (99.3 %) · 1.12× | 1143 (98.4 %) · 1.19× |
+| ^1.6 | +100 % | 61 | 545 (46.9 %) · 1.07× | 1136 (97.8 %) · 1.10× | 1134 (97.6 %) · 1.18× |
+| ^2.2 | aus | 30 | 1154 (99.3 %) · 1.22× | 1149 (99.0 %) · 1.24× | 1137 (97.9 %) · 1.26× |
+| ^2.2 | +50 % | 30 | 1155 (99.4 %) · 1.10× | 1151 (99.1 %) · 1.12× | 1137 (97.9 %) · 1.20× |
+| ^2.2 | +100 % | 30 | 545 (46.9 %) · 1.07× | 1134 (97.6 %) · 1.10× | 1128 (97.1 %) · 1.19× |
+| ^2.4 | aus | 23 | 1154 (99.3 %) · 1.22× | 1149 (98.9 %) · 1.24× | 1135 (97.7 %) · 1.26× |
+| ^2.4 | +50 % | 23 | 1155 (99.4 %) · 1.10× | 1150 (99.0 %) · 1.12× | 1135 (97.7 %) · 1.21× |
+| ^2.4 | +100 % | 23 | 545 (46.9 %) · 1.07× | 1133 (97.6 %) · 1.10× | 1126 (96.9 %) · 1.19× |
+| ^2.6 | aus | 18 | 1154 (99.3 %) · 1.22× | 1148 (98.9 %) · 1.24× | 1133 (97.6 %) · 1.27× |
+| ^2.6 | +50 % | 18 | 1154 (99.4 %) · 1.10× | 1149 (98.9 %) · 1.13× | 1133 (97.6 %) · 1.21× |
+| ^2.6 | +100 % | 18 | 545 (46.9 %) · 1.07× | 1133 (97.5 %) · 1.10× | 1123 (96.7 %) · 1.19× |
+| ^3 | aus | 11 | 1154 (99.3 %) · 1.22× | 1147 (98.8 %) · 1.25× | 1129 (97.2 %) · 1.28× |
+| ^3 | +50 % | 11 | 1153 (99.3 %) · 1.10× | 1147 (98.8 %) · 1.13× | 1127 (97.1 %) · 1.22× |
+| ^3 | +100 % | 11 | 545 (46.9 %) · 1.07× | 1129 (97.2 %) · 1.10× | 1118 (96.3 %) · 1.20× |
+
+Referenz ∞: H20 1162 u/s, t→500 1.05 s.

@@ -1,5 +1,6 @@
 import { createClient, FunctionsFetchError, FunctionsHttpError, FunctionsRelayError } from '@supabase/supabase-js';
-import type { Session, SupabaseClient } from '@supabase/supabase-js';
+import type { Session, SupabaseClient, SupportedStorage } from '@supabase/supabase-js';
+import type { DesktopSessionVault } from '../platform/types';
 import type { AdminAuditRow, AdminPlayerRow, AdminRunRow, BoardRow, Database, Json, ProfileRpc, ProfileRpcBest } from './supabaseTypes';
 import { OnlineError } from './types';
 
@@ -74,11 +75,21 @@ export interface AdminPlayerFilter {
   readonly offset: number;
 }
 
+/** Desktop-Login (Plan 011 §3.1): Auth-URL für den System-Browser; flowId wählt beim Tausch den Verifier DIESES Flows. */
+export interface DiscordAuthUrl {
+  readonly url: string;
+  readonly flowId: string | null;
+}
+
 export interface SupabaseApi {
   getSession(): Promise<SessionInfo | null>;
   onAuthChange(cb: (s: SessionInfo | null) => void): () => void;
   /** OAuth-Redirect zu Discord (verlässt die Seite). */
   signInWithDiscord(redirectTo: string): Promise<void>;
+  /** Desktop: dieselbe Discord-Anmeldung ohne Seitenwechsel — der PKCE-Verifier liegt danach im Storage des Renderers. */
+  discordAuthUrl(redirectTo: string): Promise<DiscordAuthUrl>;
+  /** Desktop: Code aus dem Loopback-Rücksprung gegen eine Sitzung tauschen (speichert sie, feuert onAuthChange). */
+  exchangeCode(code: string, flowId: string | null): Promise<SessionInfo>;
   signOut(): Promise<void>;
   getProfile(uid: string): Promise<ProfileRow | null>;
   updateDisplayName(uid: string, name: string): Promise<void>;
@@ -250,9 +261,77 @@ async function httpError(res: Response): Promise<OnlineError> {
   return new OnlineError('server', msg);
 }
 
-export function createSupabaseApi(url: string, key: string): SupabaseApi {
+/** scopes 'identify': nur Name/Avatar, keine E-Mail-Freigabe nötig (Supabase fragt 'email' trotzdem mit an). */
+const DISCORD_SCOPES = 'identify';
+
+/** Fehler beim Code-Tausch: Netz → offline, sonst ist der Versuch verbraucht → neu anmelden. */
+function exchangeError(err: { message: string } | null): OnlineError {
+  const msg = err?.message ?? 'unbekannt';
+  if (/Failed to fetch|NetworkError|fetch failed|Load failed/i.test(msg)) return new OnlineError('offline', 'Anmeldung: keine Verbindung');
+  return new OnlineError('auth', `Anmeldung nicht abgeschlossen — bitte erneut anmelden (${msg})`);
+}
+
+/** Schlüssel, unter dem supabase-js die Sitzung ablegt (Default von createClient: Projekt-Ref aus dem Host). */
+export function sessionStorageKey(url: string): string {
+  return `sb-${new URL(url).hostname.split('.')[0]}-auth-token`;
+}
+
+/**
+ * Desktop (Plan 011, Review Phase 2): GENAU der Sitzungsschlüssel geht in den Tresor des Hauptprozesses (safeStorage),
+ * alles andere — PKCE-Verifier (`…-code-verifier`, `…-flow-<id>-code-verifier`), Flow-Index — bleibt in `base`
+ * (localStorage). Der letzte Stand liegt zusätzlich im Speicher: Lesen nach Schreiben wartet nie auf IPC, und schlägt
+ * der Tresor fehl (kein OS-Schlüsselspeicher, Modul fehlt), lebt die Sitzung nur bis zum Beenden — nie im Klartext.
+ */
+export function vaultStorage(vault: DesktopSessionVault, sessionKey: string, base: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>): SupportedStorage {
+  // undefined = noch nicht gelesen.
+  let cache: string | null | undefined;
+  // Alt-Stand aus der Zeit vor dem Tresor (Entwicklung) nicht im Klartext liegen lassen.
+  base.removeItem(sessionKey);
+  return {
+    getItem(k) {
+      if (k !== sessionKey) return base.getItem(k);
+      if (cache !== undefined) return cache;
+      const keep = (v: string | null): string | null => {
+        // Ein Schreiben während des Lesens gewinnt (es ist neuer als die Datei).
+        if (cache === undefined) cache = v;
+        return cache;
+      };
+      return vault.read().then(
+        (v) => keep(typeof v === 'string' ? v : null),
+        () => keep(null),
+      );
+    },
+    setItem(k, v) {
+      if (k !== sessionKey) return base.setItem(k, v);
+      cache = v;
+      return vault.write(v).then(
+        () => undefined,
+        () => undefined,
+      );
+    },
+    removeItem(k) {
+      if (k !== sessionKey) return base.removeItem(k);
+      cache = null;
+      return vault.remove().then(
+        () => undefined,
+        () => undefined,
+      );
+    },
+  };
+}
+
+export interface SupabaseApiOptions {
+  /** Desktop: Sitzung verschlüsselt im Hauptprozess (Plan 011). Fehlt er (Web), bleibt alles wie bisher in localStorage. */
+  readonly vault?: DesktopSessionVault | null;
+}
+
+export function createSupabaseApi(url: string, key: string, opts: SupabaseApiOptions = {}): SupabaseApi {
+  const vault = opts.vault ?? null;
+  const base = { flowType: 'pkce', persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } as const;
+  // Web: exakt die Optionen von vorher. Desktop: gleicher Schlüssel wie der Default, nur der Speicher dahinter ist anders.
+  const desktop = vault && typeof localStorage !== 'undefined' ? sessionStorageKey(url) : null;
   const sb: SupabaseClient<Database> = createClient<Database>(url, key, {
-    auth: { flowType: 'pkce', persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+    auth: vault && desktop !== null ? { ...base, storageKey: desktop, storage: vaultStorage(vault, desktop, localStorage) } : base,
   });
 
   return {
@@ -266,9 +345,26 @@ export function createSupabaseApi(url: string, key: string): SupabaseApi {
       return () => data.subscription.unsubscribe();
     },
     async signInWithDiscord(redirectTo) {
-      // scopes 'identify': nur Name/Avatar, keine E-Mail-Freigabe nötig (Supabase fragt 'email' trotzdem mit an).
-      const { error } = await sb.auth.signInWithOAuth({ provider: 'discord', options: { redirectTo, scopes: 'identify' } });
+      const { error } = await sb.auth.signInWithOAuth({ provider: 'discord', options: { redirectTo, scopes: DISCORD_SCOPES } });
       if (error) throw dbError(error, 'Discord-Anmeldung');
+    },
+    async discordAuthUrl(redirectTo) {
+      // skipBrowserRedirect: supabase-js erzeugt PKCE-Paar + URL, navigiert aber nicht (die Seite bleibt stehen).
+      const { data, error } = await sb.auth.signInWithOAuth({ provider: 'discord', options: { redirectTo, scopes: DISCORD_SCOPES, skipBrowserRedirect: true } });
+      if (error || !data.url) throw dbError(error, 'Discord-Anmeldung');
+      return { url: data.url, flowId: data.flowId ?? null };
+    },
+    async exchangeCode(code, flowId) {
+      let res: Awaited<ReturnType<typeof sb.auth.exchangeCodeForSession>>;
+      try {
+        res = await sb.auth.exchangeCodeForSession(code, flowId ? { flowId } : undefined);
+      } catch (err) {
+        throw exchangeError(err instanceof Error ? err : null);
+      }
+      if (res.error) throw exchangeError(res.error);
+      const s = sessionInfo(res.data.session);
+      if (!s) throw new OnlineError('auth', 'Anmeldung nicht abgeschlossen — keine Sitzung erhalten');
+      return s;
     },
     async signOut() {
       const { error } = await sb.auth.signOut({ scope: 'local' });

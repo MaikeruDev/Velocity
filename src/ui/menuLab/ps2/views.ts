@@ -5,9 +5,9 @@
  * 3D-Objekte, DOM-Anker, Fokus-Halo, Navigation zwischen Ansichten, Prompt-Leiste.
  * Menü-Code, kein Frame-Pfad: Closures und Neuaufbau sind hier unkritisch.
  */
-import type { AdminAuditEntry, AdminPlayer, AdminRun, AdminService, FrontDoorBoard, FrontDoorBoardEntry, FrontDoorContext, FrontDoorCosmetic, FrontDoorLevel, MedalId, PlayerProfile } from '../types';
+import type { AdminAuditEntry, AdminPlayer, AdminRun, AdminService, FrontDoorBoard, FrontDoorBoardEntry, FrontDoorContext, FrontDoorCosmetic, FrontDoorLevel, FrontDoorPrompt, MedalId, PlayerProfile } from '../types';
 import { medalFor } from '../../medals';
-import { accountName, avatar, button, el, fmtTime, keycap, medalChip } from './dom';
+import { accountName, avatar, button, el, fmtTime, glyphCap, medalChip } from './dom';
 import type { FgKind, FgObj } from './scene';
 import { rgb } from './models';
 import type { Rgb } from './models';
@@ -15,7 +15,8 @@ import type { Rgb } from './models';
 export type SubViewId = 'training' | 'board' | 'cosmetics' | 'profile' | 'moderation';
 
 export interface PromptSpec {
-  readonly keys: readonly string[];
+  /** Hinweise (Plan 011 §1.6): Tasten je Gerät aus ctx.input. */
+  readonly keys: readonly FrontDoorPrompt[];
   readonly label: string;
   /** Klickbar: 'confirm' / 'back' wie Enter/Esc, null = nur Anzeige. */
   readonly action: 'confirm' | 'back' | null;
@@ -52,6 +53,8 @@ export interface SubView {
   /** Auswahl → Klassen + 3D-Fokus. */
   select(): void;
   navigate(dx: number, dy: number): void;
+  /** LB/RB (Pad): Reiter/Strecke wechseln. Fehlt = nichts. */
+  onTab?(dir: -1 | 1): void;
   confirm(): void;
   prompts(): readonly PromptSpec[];
   /** Neuer ctx (Daten); Standard: rebuild. */
@@ -232,7 +235,7 @@ export class TrainingView implements SubView {
     d.replaceChildren();
     const l = c.training.lessons[this.sel];
     if (!l) return;
-    const start = button('ps2-btn ps2-btn--primary', () => this.confirm(), keycap('Enter', true), `${l.short} starten`);
+    const start = button('ps2-btn ps2-btn--primary', () => this.confirm(), glyphCap(c.input, 'confirm'), `${l.short} starten`);
     if (c.training.playable) c.markLockButton(start);
     else start.disabled = true;
     const what = l.stars === 0 ? 'Noch nicht bestanden' : l.stars === 3 ? 'Meister — alle Sterne' : l.stars === 2 ? 'Bonus geschafft — Meister fehlt' : 'Bestanden — Bonus offen';
@@ -273,9 +276,9 @@ export class TrainingView implements SubView {
 
   prompts(): readonly PromptSpec[] {
     return [
-      { keys: ['▲', '▼', '◀', '▶'], label: 'Lektion', action: null },
-      { keys: ['Enter'], label: 'Starten', action: 'confirm', lock: true },
-      { keys: ['Esc'], label: 'Zurück', action: 'back' },
+      { keys: ['nav'], label: 'Lektion', action: null },
+      { keys: ['confirm'], label: 'Starten', action: 'confirm', lock: true },
+      { keys: ['back'], label: 'Zurück', action: 'back' },
     ];
   }
 
@@ -476,6 +479,10 @@ export class BoardView implements SubView {
     }
   }
 
+  onTab(dir: -1 | 1): void {
+    this.setLevel(this.level + dir);
+  }
+
   confirm(): void {
     const c = this.host.ctx();
     const lv = c.levels[this.level];
@@ -488,10 +495,10 @@ export class BoardView implements SubView {
 
   prompts(): readonly PromptSpec[] {
     return [
-      { keys: ['▲', '▼'], label: 'Strecke', action: null },
-      { keys: ['◀', '▶'], label: 'Zeile', action: null },
-      { keys: ['Enter'], label: 'Ghost', action: 'confirm', lock: true },
-      { keys: ['Esc'], label: 'Zurück', action: 'back' },
+      { keys: this.host.ctx().input.pad ? ['tabs'] : ['navY'], label: 'Strecke', action: null },
+      { keys: this.host.ctx().input.pad ? ['nav'] : ['navX'], label: this.host.ctx().input.pad ? 'Wählen' : 'Zeile', action: null },
+      { keys: ['confirm'], label: this.host.ctx().input.pad ? 'OK' : 'Ghost', action: 'confirm', lock: true },
+      { keys: ['back'], label: 'Zurück', action: 'back' },
     ];
   }
 
@@ -591,7 +598,8 @@ export class CosmeticsView implements SubView {
     const it = this.all()[this.sel];
     if (!n || !it) return;
     n.replaceChildren();
-    const status = !it.unlocked ? (it.conditionLong ?? 'gesperrt') : !it.implemented ? 'Kommt mit dem nächsten Update' : it.equipped ? 'Ausgerüstet' : 'Frei — Enter rüstet aus';
+    const ok = this.host.ctx().input.glyphs('confirm')[0]?.text ?? 'Enter';
+    const status = !it.unlocked ? (it.conditionLong ?? 'gesperrt') : !it.implemented ? 'Kommt mit dem nächsten Update' : it.equipped ? 'Ausgerüstet' : `Frei — ${ok} rüstet aus`;
     n.append(el('span', 'ps2-detail-name', it.name), el('span', 'ps2-detail-sub', status));
     if (it.kind === 'item' && it.id !== 'none') n.append(el('span', 'ps2-detail-sub', 'Mit Gegenstand macht die Hand Tricks — je schneller, desto wilder.'));
   }
@@ -629,9 +637,9 @@ export class CosmeticsView implements SubView {
 
   prompts(): readonly PromptSpec[] {
     return [
-      { keys: ['◀', '▶', '▲', '▼'], label: 'Wählen', action: null },
-      { keys: ['Enter'], label: 'Ausrüsten', action: 'confirm' },
-      { keys: ['Esc'], label: 'Zurück', action: 'back' },
+      { keys: ['nav'], label: 'Wählen', action: null },
+      { keys: ['confirm'], label: 'Ausrüsten', action: 'confirm' },
+      { keys: ['back'], label: 'Zurück', action: 'back' },
     ];
   }
 
@@ -803,9 +811,9 @@ export class ProfileView implements SubView {
 
   prompts(): readonly PromptSpec[] {
     return [
-      { keys: ['▲', '▼'], label: 'Strecke', action: null },
-      { keys: ['Enter'], label: 'Ghost', action: 'confirm', lock: true },
-      { keys: ['Esc'], label: 'Zurück', action: 'back' },
+      { keys: this.host.ctx().input.pad ? ['nav'] : ['navY'], label: this.host.ctx().input.pad ? 'Wählen' : 'Strecke', action: null },
+      { keys: ['confirm'], label: this.host.ctx().input.pad ? 'OK' : 'Ghost', action: 'confirm', lock: true },
+      { keys: ['back'], label: 'Zurück', action: 'back' },
     ];
   }
 
@@ -1338,14 +1346,24 @@ export class ModerationView implements SubView {
     this.setTab(order[wrap(order.indexOf(this.tab) + dx, order.length)]);
   }
 
+  onTab(dir: -1 | 1): void {
+    this.navigate(dir, 0);
+  }
+
   confirm(): void {
     // Enter löst in der Moderation bewusst nichts aus (alles Destruktive braucht den Doppel-Klick).
   }
 
   prompts(): readonly PromptSpec[] {
     return [
-      { keys: ['◀', '▶'], label: 'Reiter', action: null },
-      { keys: ['Esc'], label: 'Zurück', action: 'back' },
+      ...(this.host.ctx().input.pad
+        ? [
+            { keys: ['tabs'], label: 'Reiter', action: null },
+            { keys: ['nav'], label: 'Wählen', action: null },
+            { keys: ['confirm'], label: 'OK', action: 'confirm' },
+          ] satisfies PromptSpec[]
+        : [{ keys: ['navX'], label: 'Reiter', action: null }] satisfies PromptSpec[]),
+      { keys: ['back'], label: 'Zurück', action: 'back' },
     ];
   }
 

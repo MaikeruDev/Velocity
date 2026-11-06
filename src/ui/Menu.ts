@@ -17,6 +17,15 @@ import { hasSkin } from '../render/viewmodel/skins';
 import { BIND_ACTIONS, GLOVE_IDS, HELD_ITEM_IDS } from '../engine/settingsTypes';
 import type { InputAction } from '../engine/InputState';
 import { MOUSE_CODES, isBindableCode, keyLabel } from '../engine/InputState';
+import type { GlyphStyle, InputDevice, PadBindAction, PadButtonCode, PadSettings } from '../engine/pad/types';
+import { PAD_LIMITS, PAD_PRESETS, isBindablePadCode } from '../engine/pad/types';
+import type { PadSettingsPatch, PadSettingsStore } from '../engine/pad/padSettings';
+import { padPresetOf } from '../engine/pad/padSettings';
+import type { DisplayMode, PlatformApi } from '../platform';
+import { WEB_PLATFORM } from '../platform/web';
+import { PadNav, hoverSync } from './padNav';
+import { fillGlyphs, glyphFamily, glyphNode, padCodeGlyph, promptGlyphs, refreshGlyphs, stickGlyph } from './padGlyphs';
+import type { FrontDoorGlyph, FrontDoorGlyphFamily, FrontDoorInput, FrontDoorPrompt } from './menuLab/types';
 import type { MovementPresetId } from '../player/MovementConfig';
 import type { LevelIndexEntry, StageRank, TrainingIndexEntry } from '../world/level/LevelFormat';
 import type { LessonStars, TrainingProgressView } from '../engine/trainingTypes';
@@ -64,6 +73,7 @@ import { FRONT_DOOR_ASSETS } from './menuLab/assets';
  * und zeigt bei Ablehnung einen Hinweis statt stumm nichts zu tun.
  */
 
+
 type Listener<K extends keyof MenuEvents> = (payload: MenuEvents[K]) => void;
 type ListenerMap = { [K in keyof MenuEvents]: Set<Listener<K>> };
 
@@ -107,6 +117,7 @@ type FrontDoorCalls = Pick<
   | 'signIn'
   | 'signOut'
   | 'fullscreen'
+  | 'quit'
   | 'startMusic'
   | 'markLockButton'
   | 'board'
@@ -194,6 +205,25 @@ export interface LessonPauseInfo {
   showResult(): void;
 }
 
+/**
+ * Was das Menü vom Pad live braucht (Einstellungen → Controller). Game reicht ein Objekt über `input.pad`
+ * (connected/sticks) und `input.capturePadButton` durch.
+ */
+export interface MenuPadDevice {
+  /** Ein Pad ist verbunden und wurde benutzt. */
+  readonly connected: boolean;
+  /** Rohwerte der Sticks (−1…1, y nach unten positiv) für die Test-Anzeige. */
+  readonly sticks: { readonly lx: number; readonly ly: number; readonly rx: number; readonly ry: number };
+  /**
+   * Belegungs-Dialog: den NÄCHSTEN gedrückten Pad-Knopf melden, statt daraus Menü-Aktionen zu machen (auch A/B).
+   * null = abgebrochen (B halten, Start, Esc, Zeitüberschreitung). Rückgabe bricht still ab.
+   */
+  captureButton(onCode: (code: PadButtonCode | null) => void): () => void;
+}
+
+/** Pad-Belegung im Menü: welche Aktionen, in dieser Reihenfolge ('pause' ist fest auf Start/Menu). */
+const PAD_BIND_ROWS: readonly PadBindAction[] = ['jump', 'crouch', 'sprint', 'respawn', 'demo', 'restart'];
+
 /** Grundlagen-Lektionen, die das Ergebnis ohne Medaille anbietet (nach den prepLessons des Levels): Strafen, Tempo. */
 const TIP_LESSONS: readonly string[] = ['t3', 't4'];
 
@@ -224,6 +254,7 @@ export class Menu {
     demo: new Set(),
     skipStage: new Set(),
     raceGhost: new Set(),
+    quit: new Set(),
   };
 
   private current: MenuScreen | null = null;
@@ -278,8 +309,49 @@ export class Menu {
   private profileUid: string | null = null;
   private profileSeq = 0;
   private profileReturn: 'title' | 'leaderboard' = 'title';
+  /** Zuletzt benutztes Eingabegerät (InputManager.onDevice → setInputDevice). */
+  private device: InputDevice = 'keyboard';
+  /** Pad-Einstellungen (velocity.pad.v1) und Live-Pad, null = kein Controller-Kern. */
+  private pad: PadSettingsStore | null = null;
+  private padDevice: MenuPadDevice | null = null;
+  private padUnsub: (() => void) | null = null;
+  /** Zuletzt gesehene Symbol-Familie (Wechsel → Glyphen neu). */
+  private lastFamily: FrontDoorGlyphFamily = 'keyboard';
+  /** Pad-Fokus der Bestands-Screens. */
+  private readonly nav = new PadNav({ onFocus: (el) => el.dispatchEvent(new FocusEvent('focus')) });
+  /** Pad-Fokus für Front Doors ohne onNavigate (hub/rave/arcade): Hover-Zustand des Stils nachziehen. */
+  private readonly doorNav = new PadNav({ onFocus: (el) => hoverSync(el, this.door?.root ?? null) });
+  /**
+   * Erst nach der ersten Pad-Richtung klickt A den räumlichen Fokus solcher Stile — davor ist A ihre eigene Taste
+   * (Boot/Intro überspringen, Münze, Start), wie Enter.
+   */
+  private doorNavUsed = false;
+  /** Aktualisiert Pad-Felder (Belegung, Werte) bei Store- oder Familienwechsel. Pro Screen neu. */
+  private padRefreshers: (() => void)[] = [];
+  /** Aufräumen beim Screenwechsel (Stick-Test-rAF). */
+  private screenCleanups: (() => void)[] = [];
+  /** Während des Aufbaus gesammelt, render() übernimmt sie (die alten laufen vorher ab). */
+  private nextPadRefreshers: (() => void)[] = [];
+  private nextCleanups: (() => void)[] = [];
+  private padCapture: { readonly button: HTMLButtonElement; readonly stop: () => void } | null = null;
+  /** Lebendiges Eingabe-Objekt für Front Doors (FrontDoorContext.input). */
+  private readonly inputApi: FrontDoorInput;
+  /** Plattform (Plan 011): Beenden, Anzeigemodus, Admin nur mit --dev. main.ts setzt sie vor dem ersten Screen. */
+  private platform: PlatformApi = WEB_PLATFORM;
+  /** Zuletzt bekannter Anzeigemodus am Desktop (Einstellungen zeigen ihn ohne await). */
+  private displayMode: DisplayMode = 'windowed';
 
   constructor(root: HTMLElement, settings: SettingsStore, best: BestTimes, unlocks: UnlockStore) {
+    const menu = this;
+    this.inputApi = {
+      get family(): FrontDoorGlyphFamily {
+        return menu.family;
+      },
+      get pad(): boolean {
+        return menu.padMode;
+      },
+      glyphs: (p) => this.glyphs(p),
+    };
     this.settings = settings;
     this.best = best;
     this.unlocks = unlocks;
@@ -306,6 +378,177 @@ export class Menu {
       else if (this.current === 'title') this.updateDoor();
     });
     this.applyStyleClass();
+    this.el.dataset.input = 'keyboard';
+    this.el.dataset.glyphs = 'keyboard';
+  }
+
+  // ------------------------------------------------------------------ Plattform (Plan 011 §2.3/§2.5)
+
+  /** Plattform übernehmen (main.ts, vor dem ersten Screen). Front-Door-Rückrufe werden neu gebaut (quit). */
+  setPlatform(p: PlatformApi): void {
+    this.platform = p;
+    this.doorCalls = null;
+    this.el.dataset.platform = p.kind;
+    p.window
+      ?.getMode()
+      .then((m) => {
+        this.displayMode = m;
+        for (const r of this.refreshers) r(this.settings.get());
+      })
+      .catch(() => undefined);
+    if (this.current === 'title') this.showTitle();
+  }
+
+  /** Admin-Menü/F8: im Web immer, am Desktop nur mit --dev (sonst entwertet es Achievements, Plan 011 §2.2.13). */
+  get adminAllowed(): boolean {
+    return this.platform.kind === 'web' || this.platform.dev;
+  }
+
+  /** Anzeigemodus am Desktop setzen (Einstellungen); der Hauptprozess merkt ihn sich in desktop.json. */
+  private setDisplayMode(m: DisplayMode): void {
+    const w = this.platform.window;
+    if (!w) return;
+    this.displayMode = m;
+    for (const r of this.refreshers) r(this.settings.get());
+    void w
+      .setMode(m)
+      .then((got) => {
+        this.displayMode = got;
+        for (const r of this.refreshers) r(this.settings.get());
+      })
+      .catch(() => undefined);
+  }
+
+  /** "Beenden" zweistufig: erster Druck fragt nach, zweiter beendet; nach 3 s ohne Bestätigung zurück. */
+  private quitBtn(label: string, cls: string): HTMLButtonElement {
+    let armed = 0;
+    const b = this.btn(label, `vel-quit-btn ${cls}`.trim(), () => {
+      if (armed !== 0) {
+        window.clearTimeout(armed);
+        armed = 0;
+        this.emit('quit', undefined);
+        return;
+      }
+      text.textContent = 'Wirklich beenden?';
+      b.classList.add('is-armed');
+      armed = window.setTimeout(() => {
+        armed = 0;
+        text.textContent = label;
+        b.classList.remove('is-armed');
+      }, 3000);
+    });
+    const text = b.firstElementChild ?? b;
+    return b;
+  }
+
+  // ------------------------------------------------------------------ Eingabegerät / Controller (Plan 011)
+
+  /** Symbol-Familie der Hinweise: Gerät + Einstellung "Tasten-Symbole". */
+  get family(): FrontDoorGlyphFamily {
+    return glyphFamily(this.device, this.pad?.get().glyphs ?? 'auto');
+  }
+
+  /** Zuletzt wurde ein Gamepad benutzt. */
+  get padMode(): boolean {
+    return this.device !== 'keyboard';
+  }
+
+  /** Symbole eines Hinweises in der aktuellen Familie (Pad-Aktionen folgen der Belegung). */
+  glyphs(p: FrontDoorPrompt): readonly FrontDoorGlyph[] {
+    return promptGlyphs(p, this.family, { demoKey: this.demoKey, padBinds: this.pad?.get().binds ?? null });
+  }
+
+  /**
+   * Zuletzt benutztes Gerät (InputManager.onDevice). Schaltet im selben Aufruf: Fokus-Rahmen, Glyphen der Hinweise,
+   * Front Door (onInput bzw. update).
+   */
+  setInputDevice(d: InputDevice): void {
+    if (d === this.device) return;
+    this.device = d;
+    this.applyInput();
+  }
+
+  /** Controller-Kern (Game/main): Einstellungs-Speicher + Live-Pad. null = keiner (Abschnitt zeigt das). */
+  setPad(store: PadSettingsStore | null, dev: MenuPadDevice | null): void {
+    this.padUnsub?.();
+    this.padUnsub = null;
+    this.pad = store;
+    this.padDevice = dev;
+    if (store) {
+      this.padUnsub = store.subscribe(() => {
+        for (const r of this.padRefreshers) r();
+        this.applyInput();
+      });
+    }
+    // Offene Screens mit Controller-Abschnitt neu bauen (Kern kam nach dem Öffnen).
+    if (this.current === 'settings') this.render('settings', this.buildSettings());
+    else if (this.current === 'controls') this.render('controls', this.buildControls());
+    this.applyInput();
+  }
+
+  /** Gerät/Familie am Root spiegeln (CSS: Fokus-Rahmen nur am Pad) und Hinweise neu füllen, ohne Neuaufbau. */
+  private applyInput(): void {
+    const fam = this.family;
+    const famChanged = fam !== this.lastFamily;
+    const modeChanged = this.el.dataset.input !== (this.padMode ? 'pad' : 'keyboard');
+    this.lastFamily = fam;
+    this.el.dataset.input = this.padMode ? 'pad' : 'keyboard';
+    this.el.dataset.glyphs = fam;
+    if (!famChanged && !modeChanged) return;
+    for (const r of this.padRefreshers) r();
+    const d = this.door;
+    if (d !== null && this.current === 'title') {
+      if (d.inst.onInput) d.inst.onInput();
+      else this.updateDoor();
+      if (this.padMode && !d.inst.onNavigate) this.doorNav.ensure();
+      return;
+    }
+    refreshGlyphs(this.el, (p) => this.glyphs(p));
+    for (const e of this.el.querySelectorAll('.vel-start-main')) e.textContent = this.startMain();
+    if (this.padMode) this.nav.ensure();
+  }
+
+  /** Beschriftung des großen Startknopfs: am Pad gibt es nichts zu klicken. */
+  private startMain(): string {
+    return this.padMode ? 'Starten' : 'Klicken zum Starten';
+  }
+
+  private padNavigate(dx: number, dy: number): void {
+    const d = this.door;
+    if (this.current === 'title' && d !== null) {
+      if (d.inst.onNavigate?.(dx, dy)) return;
+      this.doorNavUsed = true;
+      this.doorNav.move(dx, dy);
+      return;
+    }
+    this.nav.move(dx, dy);
+  }
+
+  /** LB/RB: Reiter des Screens (Bestenliste: Strecke), sonst Abschnitt (Panel) springen. */
+  private padTab(dir: -1 | 1): void {
+    const d = this.door;
+    if (this.current === 'title' && d !== null) {
+      d.inst.onTab?.(dir);
+      return;
+    }
+    if (this.current === 'leaderboard' && this.levels.length > 0) {
+      const i = Math.max(0, this.levels.findIndex((l) => l.id === this.boardLevel));
+      const n = this.levels.length;
+      this.showLeaderboard(this.levels[(((i + dir) % n) + n) % n].id);
+      return;
+    }
+    this.nav.jumpSection(dir, '.vel-panel');
+  }
+
+  /** A am Pad: fokussiertes Element auslösen. false = keins (dann gilt die Bildschirm-Standardaktion). */
+  private padConfirm(): boolean {
+    const d = this.door;
+    if (this.current === 'title' && d !== null) {
+      // Stile mit eigener Navigation klicken selbst (onAction 'confirm'); sonst der räumliche Fokus.
+      if (d.inst.onNavigate || !this.doorNavUsed) return false;
+      return this.doorNav.ensure() !== null && this.doorNav.activate();
+    }
+    return this.nav.ensure() !== null && this.nav.activate();
   }
 
   get visible(): boolean {
@@ -505,6 +748,10 @@ export class Menu {
         // Für Werkzeuge (tools/menu/shot.ts): Front Door steht.
         this.el.dataset.door = 'ready';
         this.applyLockStatus();
+        // Stile ohne eigene Pad-Navigation: räumlicher Fokus über ihre Knöpfe.
+        this.doorNav.setRoot(inst.onNavigate ? null : root);
+        this.doorNavUsed = false;
+        if (this.padMode && !inst.onNavigate) this.doorNav.ensure();
       },
       (err: unknown) => {
         console.error(`Menü-Stil "${id}" konnte nicht geladen werden`, err);
@@ -528,6 +775,7 @@ export class Menu {
     if (d === null) return;
     this.door = null;
     this.doorSeq++;
+    this.doorNav.setRoot(null);
     delete this.el.dataset.door;
     try {
       d.inst.unmount();
@@ -623,6 +871,9 @@ export class Menu {
       version: `v${GAME_VERSION} · Physik ${PHYSICS_VERSION} · ${import.meta.env.DEV ? 'dev' : 'build'}`,
       reducedMotion: typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches,
       assets: FRONT_DOOR_ASSETS,
+      input: this.inputApi,
+      platform: this.platform.kind,
+      adminMenu: this.adminAllowed,
       ...this.frontDoorCalls(),
     };
   }
@@ -658,6 +909,7 @@ export class Menu {
       signIn: () => this.online?.signIn(),
       signOut: () => this.online?.signOut(),
       fullscreen: () => this.emit('fullscreen', undefined),
+      quit: this.platform.caps.quit ? () => this.emit('quit', undefined) : null,
       startMusic: () => {
         this.beatClock.audio?.unlock().catch(() => undefined);
       },
@@ -925,6 +1177,7 @@ export class Menu {
    * über den Knopf im System-Panel oder F8. Kein Passwort — Einzelspieler.
    */
   showAdmin(): void {
+    if (!this.adminAllowed) return;
     if (this.current === 'title' || this.current === 'pause') this.adminReturn = this.current;
     this.render('admin', this.buildAdmin());
   }
@@ -938,6 +1191,11 @@ export class Menu {
     this.unmountDoor();
     this.stopPreview();
     this.endCapture();
+    this.endPadCapture();
+    for (const c of this.screenCleanups) c();
+    this.screenCleanups = [];
+    this.padRefreshers = [];
+    this.nav.setRoot(null);
     this.el.hidden = true;
     this.current = null;
     this.adminRefresh = null;
@@ -952,9 +1210,52 @@ export class Menu {
   handleAction(a: InputAction): boolean {
     if (!this.visible || this.current === null) return false;
     if (a === 'toggleTuning' || a === 'toggleMute') return false;
+    // Pad-Richtungen (PadInput im Menü-Kontext, mit Wiederholung) gehören immer dem Menü, auch während der
+    // Ergebnis-Sperre (nur Fokus, kein Auslösen).
+    switch (a) {
+      case 'navUp':
+        this.padNavigate(0, -1);
+        return true;
+      case 'navDown':
+        this.padNavigate(0, 1);
+        return true;
+      case 'navLeft':
+        this.padNavigate(-1, 0);
+        return true;
+      case 'navRight':
+        this.padNavigate(1, 0);
+        return true;
+      default:
+        break;
+    }
     if (performance.now() < this.guardUntil) return true;
+    if (a === 'tabPrev' || a === 'tabNext') {
+      this.padTab(a === 'tabPrev' ? -1 : 1);
+      return true;
+    }
     // Lock-Versuch läuft: Enter/R-Spam nicht als neue Anfragen durchreichen (Chrome drosselt).
     if (this.lockStatus.pending && (a === 'confirm' || a === 'restart')) return true;
+    if (this.padMode) {
+      // Pad: A klickt den sichtbaren Fokus (sonst wüsste man nicht, was A tut).
+      if (a === 'confirm' && this.padConfirm()) return true;
+      if (a === 'pause') {
+        // B in einem Textfeld: nur das Feld verlassen.
+        const ae = document.activeElement;
+        if ((ae instanceof HTMLInputElement || ae instanceof HTMLTextAreaElement) && this.el.contains(ae)) {
+          ae.blur();
+          return true;
+        }
+        if (this.padCapture) {
+          this.endPadCapture();
+          return true;
+        }
+        // Pause: B/Start = weiter (am Pad braucht es keinen Pointer Lock, Plan 011 §2.2.6).
+        if (this.current === 'pause') {
+          this.emit('resume', undefined);
+          return true;
+        }
+      }
+    }
     switch (this.current) {
       case 'title':
         if (this.menuStyle !== 'classic') {
@@ -1023,6 +1324,10 @@ export class Menu {
     this.unmountDoor();
     this.stopPreview();
     this.unsubscribe();
+    this.padUnsub?.();
+    this.endPadCapture();
+    this.nav.dispose();
+    this.doorNav.dispose();
     this.endCapture();
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keydown', this.onCaptureKey, true);
@@ -1049,6 +1354,14 @@ export class Menu {
     this.previewStart = null;
     this.stopPreview();
     this.endCapture();
+    this.endPadCapture();
+    for (const c of this.screenCleanups) c();
+    this.screenCleanups = this.nextCleanups;
+    this.nextCleanups = [];
+    this.padRefreshers = this.nextPadRefreshers;
+    this.nextPadRefreshers = [];
+    // Derselbe Screen neu gebaut (Daten) → Pad-Fokus wiederfinden statt auf den Start zu springen.
+    const same = id === this.current;
     if (id !== 'admin') this.adminRefresh = null;
     // Jeder andere Screen (auch ein neuer Titel) baut die Front Door ab.
     if (this.door && this.door.root !== screen) this.unmountDoor();
@@ -1061,6 +1374,13 @@ export class Menu {
     // Fokus nicht automatisch auf Buttons: eine Leertaste aus dem Spiel würde sie sonst auslösen.
     const active = document.activeElement;
     if (active instanceof HTMLElement && !this.el.contains(active) && active !== document.body) active.blur();
+    // Pad-Fokus: Front Door bekommt ihren eigenen Bereich (renderDoor), Bestands-Screens den Screen.
+    const isDoor = screen.classList.contains('vel-frontdoor');
+    this.nav.setRoot(isDoor ? null : screen, same);
+    if (!isDoor) {
+      refreshGlyphs(screen, (p) => this.glyphs(p));
+      if (this.padMode) this.nav.ensure();
+    }
   }
 
   private back(): void {
@@ -1085,7 +1405,7 @@ export class Menu {
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     // F8: Admin-Menü aus Titel/Pause auf und wieder zu. Hier statt als InputAction: reine
     // Menü-Navigation; im Spiel (Pointer Lock) ist das Menü unsichtbar und F8 tut nichts.
-    if (e.code === 'F8' && this.visible && !e.repeat && this.capture === null) {
+    if (e.code === 'F8' && this.visible && !e.repeat && this.capture === null && this.adminAllowed) {
       if (this.current === 'title' || this.current === 'pause') {
         e.preventDefault();
         this.showAdmin();
@@ -1151,6 +1471,13 @@ export class Menu {
   }
 
   private readonly onCaptureKey = (e: KeyboardEvent): void => {
+    if (this.padCapture && !this.capture && e.code === 'Escape') {
+      // Pad-Belegung per Tastatur abbrechen — Esc darf dann nicht noch "Zurück" auslösen.
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      this.endPadCapture();
+      return;
+    }
     const cap = this.capture;
     if (!cap) return;
     // Nichts davon darf das Spiel oder die Menü-Aktionen erreichen (Esc hieße sonst "Zurück").
@@ -1214,6 +1541,325 @@ export class Menu {
     return r;
   }
 
+  // ------------------------------------------------------------------ Controller (Plan 011 §1.7)
+
+  /** Familie für Pad-Anzeigen (Belegung, Steuerung) — auch wenn gerade die Tastatur benutzt wird. */
+  private padFamily(): 'xbox' | 'playstation' {
+    const f = this.family;
+    if (f !== 'keyboard') return f;
+    return this.pad?.get().glyphs === 'playstation' ? 'playstation' : 'xbox';
+  }
+
+  private startPadCapture(action: PadBindAction, slot: number, b: HTMLButtonElement): void {
+    const same = this.padCapture?.button === b;
+    this.endPadCapture();
+    this.endCapture();
+    if (same) return; // zweiter Druck auf dasselbe Feld = abbrechen
+    const dev = this.padDevice;
+    if (!dev) return;
+    b.textContent = 'Knopf …';
+    b.setAttribute('aria-pressed', 'true');
+    let stop: () => void = () => undefined;
+    this.padCapture = { button: b, stop: () => stop() };
+    stop = dev.captureButton((code) => {
+      // Abbruch/Zeit (null) oder Knopf: Aufnahme ist im InputManager schon vorbei.
+      stop = () => undefined;
+      this.endPadCapture();
+      // Start/Menu bleibt Pause, Home gehört dem System.
+      if (code !== null && isBindablePadCode(code) && code !== 'PadMenu') this.assignPadBind(action, slot, code);
+    });
+  }
+
+  private endPadCapture(): void {
+    const c = this.padCapture;
+    if (!c) return;
+    this.padCapture = null;
+    c.stop();
+    for (const r of this.padRefreshers) r();
+  }
+
+  /** Knopf einer Aktion zuweisen (null = Platz leeren); derselbe Knopf verschwindet aus den anderen Aktionen. */
+  private assignPadBind(action: PadBindAction, slot: number, code: PadButtonCode | null): void {
+    const store = this.pad;
+    if (!store) return;
+    const b = store.get().binds;
+    const next: Record<PadBindAction, PadButtonCode[]> = {
+      jump: [...b.jump],
+      crouch: [...b.crouch],
+      sprint: [...b.sprint],
+      respawn: [...b.respawn],
+      demo: [...b.demo],
+      restart: [...b.restart],
+      pause: [...b.pause],
+    };
+    if (code !== null) for (const a of PAD_BIND_ROWS) next[a] = next[a].filter((c) => c !== code);
+    const list = next[action];
+    if (code === null) {
+      if (slot < list.length) list.splice(slot, 1);
+    } else if (slot < list.length) list[slot] = code;
+    else list.push(code);
+    store.update({ binds: next });
+    for (const r of this.padRefreshers) r();
+  }
+
+  /** Belegungszeile "Springen: [LB] [A]" — Feld drücken, dann Pad-Knopf. */
+  private padBindRow(action: PadBindAction, label: () => string): HTMLElement {
+    const wrap = h('div', 'vel-seg vel-bind vel-pad-bind');
+    const buttons = [0, 1].map((slot) => {
+      const b = h('button', 'vel-btn', '');
+      b.type = 'button';
+      b.dataset.padBind = `${action}.${slot}`;
+      b.addEventListener('click', () => this.startPadCapture(action, slot, b));
+      wrap.append(b);
+      return b;
+    });
+    const r = row(label(), wrap, null);
+    const labelEl = r.querySelector('.vel-setting-label');
+    const refresh = (): void => {
+      const list = this.pad?.get().binds[action] ?? [];
+      const fam = this.padFamily();
+      buttons.forEach((b, i) => {
+        if (this.padCapture?.button === b) return;
+        const c = list[i];
+        b.replaceChildren(c !== undefined ? glyphNode(padCodeGlyph(c, fam)) : '—');
+        b.title = c !== undefined ? padCodeGlyph(c, fam).name : 'frei';
+        b.setAttribute('aria-pressed', 'false');
+      });
+      if (labelEl) labelEl.textContent = label();
+    };
+    refresh();
+    this.nextPadRefreshers.push(refresh);
+    return r;
+  }
+
+  /** Regler für eine Pad-Zahl (Grenzen aus PAD_LIMITS, der Store klemmt). */
+  private padRange(label: string, key: PadNumKey, step: number, fmt: (v: number) => string): HTMLElement {
+    const [min, max] = PAD_LIMITS[key];
+    const input = h('input', 'vel-range');
+    input.type = 'range';
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    input.setAttribute('aria-label', label);
+    input.dataset.pad = key;
+    const value = h('span', 'vel-setting-value');
+    const refresh = (): void => {
+      const v = this.pad?.get()[key] ?? min;
+      input.value = String(v);
+      input.style.setProperty('--fill', `${((Math.min(max, Math.max(min, v)) - min) / (max - min)) * 100}%`);
+      value.textContent = fmt(v);
+    };
+    input.addEventListener('input', () => {
+      const v = Number(input.value);
+      if (Number.isFinite(v)) this.pad?.update(numPatch(key, v));
+    });
+    refresh();
+    this.nextPadRefreshers.push(refresh);
+    return row(label, input, value);
+  }
+
+  private padToggle(label: string, get: (s: PadSettings) => boolean, set: (v: boolean) => PadSettingsPatch): HTMLElement {
+    const b = h('button', 'vel-btn vel-toggle');
+    b.type = 'button';
+    const refresh = (): void => {
+      const on = this.pad ? get(this.pad.get()) : false;
+      b.setAttribute('aria-pressed', String(on));
+      b.textContent = on ? 'An' : 'Aus';
+    };
+    b.addEventListener('click', () => {
+      if (this.pad) this.pad.update(set(!get(this.pad.get())));
+    });
+    refresh();
+    this.nextPadRefreshers.push(refresh);
+    return row(label, b, null);
+  }
+
+  private padSegmented<T extends string>(label: string, options: readonly { readonly value: T; readonly label: string }[], get: () => T | null, set: (v: T) => void): HTMLElement {
+    const wrap = h('div', 'vel-seg');
+    const buttons = options.map((opt) => {
+      const b = h('button', 'vel-btn', opt.label);
+      b.type = 'button';
+      b.addEventListener('click', () => set(opt.value));
+      wrap.append(b);
+      return b;
+    });
+    const refresh = (): void => {
+      const v = get();
+      options.forEach((opt, i) => buttons[i].setAttribute('aria-pressed', String(opt.value === v)));
+    };
+    refresh();
+    this.nextPadRefreshers.push(refresh);
+    return row(label, wrap, null);
+  }
+
+  /**
+   * Stick-Test (Plan 011 §1.7): beide Sticks als 24×24-Pixel-Raster (ganzzahlig ×2 hoch), Ringe = Deadzone innen/außen,
+   * Punkt = Rohwert, cyan sobald er die Deadzone verlässt. Läuft nur, solange Einstellungen offen sind.
+   */
+  private padTest(): HTMLElement {
+    const S = 24;
+    const canvas = h('canvas', 'vel-pad-test');
+    canvas.width = S * 2 + 4;
+    canvas.height = S;
+    const state = h('span', 'vel-pad-state', '');
+    const g = canvas.getContext('2d');
+    let bg: ImageData | null = null;
+    let bgSig = '';
+    const ringBg = (inner: number, outer: number): ImageData | null => {
+      if (!g) return null;
+      const img = g.createImageData(canvas.width, canvas.height);
+      const put = (x: number, y: number, r: number, gg: number, b: number): void => {
+        const i = (y * canvas.width + x) * 4;
+        img.data[i] = r;
+        img.data[i + 1] = gg;
+        img.data[i + 2] = b;
+        img.data[i + 3] = 255;
+      };
+      for (let k = 0; k < 2; k++) {
+        const ox = k * (S + 4);
+        for (let y = 0; y < S; y++) {
+          for (let x = 0; x < S; x++) {
+            const d = Math.hypot(x + 0.5 - S / 2, y + 0.5 - S / 2) / (S / 2 - 0.5);
+            if (Math.abs(d - outer) < 0.06 || Math.abs(d - 1) < 0.05) put(ox + x, y, 0x6a, 0x72, 0xa8);
+            else if (Math.abs(d - inner) < 0.07 && inner > 0.02) put(ox + x, y, 0xff, 0x3f, 0xd0);
+            else if (d < 1) put(ox + x, y, 0x0b, 0x08, 0x20);
+          }
+        }
+      }
+      return img;
+    };
+    let raf = 0;
+    let lastState = '';
+    const frame = (): void => {
+      raf = requestAnimationFrame(frame);
+      const p = this.pad?.get();
+      const dev = this.padDevice;
+      if (!g || !p) return;
+      const sig = `${p.deadzoneInner}/${p.deadzoneOuter}`;
+      if (sig !== bgSig) {
+        bg = ringBg(p.deadzoneInner, p.deadzoneOuter);
+        bgSig = sig;
+      }
+      if (bg) g.putImageData(bg, 0, 0);
+      const st = dev?.connected ? 'Pad verbunden — Sticks bewegen' : 'Kein Controller — einstecken und eine Taste drücken';
+      if (st !== lastState) {
+        state.textContent = st;
+        lastState = st;
+      }
+      if (!dev) return;
+      const dot = (k: number, x: number, y: number, inner: number): void => {
+        const m = Math.hypot(x, y);
+        const cx = k * (S + 4) + Math.round(S / 2 - 0.5 + Math.max(-1, Math.min(1, x)) * (S / 2 - 1.5));
+        const cy = Math.round(S / 2 - 0.5 + Math.max(-1, Math.min(1, y)) * (S / 2 - 1.5));
+        g.fillStyle = m > inner ? '#33f0ff' : '#eef1ff';
+        g.fillRect(cx - 1, cy - 1, 3, 3);
+      };
+      dot(0, dev.sticks.lx, dev.sticks.ly, p.moveDeadzone);
+      dot(1, dev.sticks.rx, dev.sticks.ry, p.deadzoneInner);
+    };
+    raf = requestAnimationFrame(frame);
+    this.nextCleanups.push(() => cancelAnimationFrame(raf));
+    return h('div', 'vel-pad-test-row', canvas, h('span', 'vel-pad-test-text', h('small', '', 'Links Laufen · Rechts Blick'), state));
+  }
+
+  /** Einstellungen → Controller: Kamera, Deadzone, Kurve, Symbole, Belegung + Presets, Stick-Test. */
+  private buildPadPanel(): HTMLElement {
+    const store = this.pad;
+    const panel = h('div', 'vel-panel vel-pad-panel', h('h2', 'vel-h2', 'Controller'));
+    if (!store) {
+      panel.append(h('p', 'vel-hint', 'Controller-Unterstützung fehlt in diesem Build.'));
+      return panel;
+    }
+    const deg = (v: number): string => `${Math.round(v)}°/s`;
+    const yaw = this.padRange('Kamera X', 'yawRate', 10, deg);
+    yaw.querySelector('input')?.setAttribute('data-pad-initial', '');
+    panel.append(
+      this.padTest(),
+      yaw,
+      this.padRange('Kamera Y', 'pitchRate', 10, deg),
+      h('div', 'vel-setting-hint', 'Drehrate (links/rechts, hoch/runter) bei vollem Ausschlag. Zum Strafen hoch lassen — langsames Drehen kostet in der Luft Tempo.'),
+      this.padToggle('Y invertieren', (p) => p.invertY, (v) => ({ invertY: v })),
+      this.padRange('Deadzone innen', 'deadzoneInner', 0.01, PERCENT),
+      this.padRange('Deadzone Rand', 'deadzoneOuter', 0.01, PERCENT),
+      this.padRange('Antwortkurve', 'curve', 0.1, (v) => `^${v.toFixed(1)}`),
+      h('div', 'vel-setting-hint', '1.0 = linear. Höher = feiner um die Mitte, schnell am Rand. Keine Glättung, keine Verzögerung. Deadzone Rand: ab hier zählt voller Ausschlag.'),
+      this.padRange('Dreh-Boost', 'boost', 0.05, (v) => (v > 0 ? `+${Math.round(v * 100)}%` : 'aus')),
+      h('div', 'vel-setting-hint', 'Dreh-Boost: Stick am Rand gehalten dreht nach kurzer Zeit schneller (für 180°-Wenden).'),
+      this.padRange('Diagonal-Band', 'diagonalBand', 1, (v) => `${Math.round(v)}°`),
+      h('div', 'vel-setting-hint', 'Der Bewegungs-Stick ist digital wie ', mono('WASD'), ' (immer volles Tempo). Schräg nur in diesem Winkel — kleiner = sauberes ', mono('A'), '/', mono('D'), '.'),
+      this.padSegmented<GlyphStyle>(
+        'Tasten-Symbole',
+        [
+          { value: 'auto', label: 'Auto' },
+          { value: 'xbox', label: 'Xbox' },
+          { value: 'playstation', label: 'PlayStation' },
+        ],
+        () => store.get().glyphs,
+        (v) => store.update({ glyphs: v }),
+      ),
+      h('div', 'vel-setting-hint', 'Auto erkennt das Pad. Unter Steam Input meldet sich oft jedes Pad als Xbox — dann hier festlegen.'),
+      h('h3', 'vel-h3', 'Belegung'),
+      this.padSegmented<'bumper' | 'classic'>(
+        'Vorlage',
+        [
+          { value: 'bumper', label: 'Bumper-Sprung' },
+          { value: 'classic', label: 'Klassisch' },
+        ],
+        () => padPresetOf(store.get().binds),
+        (v) => store.applyPreset(v),
+      ),
+      this.padBindRow('jump', () => 'Springen'),
+      this.padBindRow('crouch', () => 'Ducken'),
+      this.padBindRow('sprint', () => (this.settings.get().autoSprint ? 'Langsamer' : 'Sprint')),
+      this.padBindRow('respawn', () => 'Checkpoint'),
+      this.padBindRow('demo', () => 'Vorführung'),
+      this.padBindRow('restart', () => 'Neustart'),
+      h(
+        'div',
+        'vel-setting-hint',
+        'Feld wählen, dann Knopf drücken (5 s; B halten, Start oder Esc bricht ab). ',
+        'Neustart: Knopf kurz halten. Bumper-Sprung: Sprung auf der Schulter, der Daumen bleibt am Kamera-Stick. Start = Pause.',
+      ),
+      h('div', 'vel-row', this.btn('Controller-Standard', 'vel-btn--small', () => store.reset())),
+    );
+    return panel;
+  }
+
+  /** Steuerung: Pad-Belegung als Glyphen-Liste (folgt Familie und Belegung). */
+  private buildPadControls(): HTMLElement {
+    const dl = h('dl', 'vel-keys vel-pad-keys');
+    const fill = (): void => {
+      const fam = this.padFamily();
+      const binds = this.pad?.get().binds ?? PAD_PRESETS.bumper;
+      const caps = (codes: readonly PadButtonCode[]): HTMLElement[] => codes.map((c) => glyphNode(padCodeGlyph(c, fam)));
+      const auto = this.settings.get().autoSprint;
+      const rows: [HTMLElement[], string][] = [
+        [[glyphNode(stickGlyph('L', fam))], 'Laufen und Strafen — 8 Richtungen, immer volles Tempo'],
+        [[glyphNode(stickGlyph('R', fam))], 'Blick — Drehrate, einstellbar unter Einstellungen → Controller'],
+        [caps(binds.jump), 'Springen — halten = Auto-Hop'],
+        [caps(binds.crouch), 'Ducken'],
+        [caps(binds.sprint), auto ? 'Langsamer laufen' : 'Sprint'],
+        [caps(binds.respawn), 'Zurück zum letzten Checkpoint'],
+        [caps(binds.demo), 'Training: Vorführung'],
+        [caps(binds.restart), 'Neustart — kurz halten'],
+        [caps(binds.pause), 'Pause'],
+        [[...promptGlyphs('nav', fam, { demoKey: this.demoKey, padBinds: binds }).map(glyphNode), glyphNode(padCodeGlyph('PadA', fam)), glyphNode(padCodeGlyph('PadB', fam))], 'Menü: wählen, OK, zurück'],
+        [[glyphNode(padCodeGlyph('PadLB', fam)), glyphNode(padCodeGlyph('PadRB', fam))], 'Menü: Reiter / Abschnitt wechseln'],
+      ];
+      dl.replaceChildren();
+      for (const [ks, what] of rows) dl.append(h('dt', '', ...(ks.length > 0 ? ks : [h('span', 'vel-dim', '—')])), h('dd', 'vel-text', what));
+    };
+    fill();
+    this.nextPadRefreshers.push(fill);
+    return h(
+      'div',
+      'vel-panel vel-pad-controls',
+      h('h2', 'vel-h2', 'Controller'),
+      dl,
+      h('p', 'vel-hint', 'Mit Pad braucht das Spiel keine gefangene Maus. Ein Mausklick ins Spiel schaltet zurück auf Maus.'),
+    );
+  }
+
   private setSelected(i: number, focus = false): void {
     this.selected = i;
     const buttons = this.el.querySelectorAll<HTMLButtonElement>('.vel-level');
@@ -1274,8 +1920,23 @@ export class Menu {
     return p;
   }
 
+  /**
+   * Tasten-Kappe eines Knopfs. Bekannte Kürzel werden zum Hinweis (data-glyph) und wechseln mit dem Gerät zu A/B bzw.
+   * ✕/○ — dieselbe Kappe, damit Stil-CSS wie ps2s Prompt-Leiste (`.vel-btn:has(> .vel-kbd)`) weiter greift.
+   */
+  private kbd(label: string): HTMLElement {
+    const p: FrontDoorPrompt | null =
+      label === 'Esc' ? 'back' : label === 'Enter' ? 'confirm' : label === 'R' ? 'restart' : label === 'F' ? 'respawn' : label === this.demoKey ? 'demo' : null;
+    const s = h('span', 'vel-kbd', label);
+    if (p !== null) {
+      s.dataset.glyph = p;
+      fillGlyphs(s, this.glyphs(p));
+    } else s.dataset.kbdOnly = '1'; // F8 & Co.: gibt es am Pad nicht (CSS blendet aus)
+    return s;
+  }
+
   private btn(label: Child, cls: string, onClick: () => void, kbd?: string): HTMLButtonElement {
-    const b = h('button', `vel-btn ${cls}`.trim(), h('span', '', label), kbd ? h('span', 'vel-kbd', kbd) : null);
+    const b = h('button', `vel-btn ${cls}`.trim(), h('span', '', label), kbd ? this.kbd(kbd) : null);
     b.type = 'button';
     b.addEventListener('click', () => {
       if (performance.now() < this.guardUntil) return;
@@ -1329,7 +1990,7 @@ export class Menu {
     const start = h(
       'button',
       'vel-btn vel-btn--primary vel-start',
-      h('span', 'vel-start-main', 'Klicken zum Starten'),
+      h('span', 'vel-start-main', this.startMain()),
       h('span', 'vel-start-level', this.startLabel()),
     );
     start.type = 'button';
@@ -1388,9 +2049,10 @@ export class Menu {
       h(
         'div',
         'vel-row vel-side-tools',
-        this.btn('Admin', 'vel-btn--small vel-admin-btn', () => this.showAdmin(), 'F8'),
+        this.adminAllowed ? this.btn('Admin', 'vel-btn--small vel-admin-btn', () => this.showAdmin(), 'F8') : null,
         this.btn('Menü-Labor', 'vel-btn--small vel-lab-btn', () => this.showLab()),
       ),
+      this.platform.caps.quit ? this.quitBtn('Beenden', '') : null,
     );
 
     return h(
@@ -1506,7 +2168,7 @@ export class Menu {
     const start = h(
       'button',
       'vel-btn vel-btn--primary vel-start',
-      h('span', 'vel-start-main', 'Klicken zum Starten'),
+      h('span', 'vel-start-main', this.startMain()),
       h('span', 'vel-start-level', sel ? `${sel.short} ${lessonName(sel)}` : ''),
     );
     start.type = 'button';
@@ -1645,6 +2307,7 @@ export class Menu {
         this.btn('Einstellungen', '', () => this.showSettings()),
         this.btn('Steuerung', '', () => this.showControls()),
         this.btn('Levelauswahl', '', () => this.emit('toTitle', undefined)),
+        this.platform.caps.quit ? this.quitBtn('Spiel beenden', '') : null,
       ),
       this.lockHint('Die Maus ist frei. Klick auf „Weiter“, um zurück ins Spiel zu kommen.'),
     );
@@ -2294,20 +2957,23 @@ export class Menu {
           'vel-panel',
           h('h2', 'vel-h2', 'Tasten'),
           dl,
-          h(
-            'p',
-            'vel-hint',
-            mono('Strg'),
-            ' zählt nur im Vollbild — sonst macht ',
-            mono('Strg'),
-            '+',
-            mono('W'),
-            ' den Tab zu. „Vollbild beim Start“ (Einstellungen) erledigt das. Belegung: Einstellungen → Tasten.',
-          ),
+          this.platform.kind === 'desktop'
+            ? h('p', 'vel-hint', mono('Strg'), ' duckt immer (keine Browser-Kürzel am Desktop). Belegung: Einstellungen → Tasten.')
+            : h(
+                'p',
+                'vel-hint',
+                mono('Strg'),
+                ' zählt nur im Vollbild — sonst macht ',
+                mono('Strg'),
+                '+',
+                mono('W'),
+                ' den Tab zu. „Vollbild beim Start“ (Einstellungen) erledigt das. Belegung: Einstellungen → Tasten.',
+              ),
         ),
         h(
           'div',
           'vel-col',
+          this.buildPadControls(),
           h(
             'div',
             'vel-panel vel-howto',
@@ -2437,8 +3103,15 @@ export class Menu {
       this.bindRow('sprint', (v) => (v.autoSprint ? 'Langsamer' : 'Sprint')),
       this.bindRow('demo', () => 'Vorführung'),
       h('div', 'vel-setting-hint', 'Feld anklicken, dann Taste oder Maustaste drücken. ', mono('Esc'), ' bricht ab, ', mono('Entf'), ' leert. Mausrad springt immer.'),
-      this.toggle('Vollbild beim Start', (v) => v.fullscreenOnStart, (v) => ({ fullscreenOnStart: v })),
-      h('div', 'vel-setting-hint', 'Mit Vollbild duckt ', mono('Strg'), ' sofort, und ', mono('Strg'), '+', mono('W'), ' schließt nicht den Tab.'),
+      ...(this.platform.window
+        ? [
+            this.displayModeRow(),
+            h('div', 'vel-setting-hint', 'Gilt sofort und beim nächsten Start. ', mono('Strg'), ' duckt in beiden Modi.'),
+          ]
+        : [
+            this.toggle('Vollbild beim Start', (v) => v.fullscreenOnStart, (v) => ({ fullscreenOnStart: v })),
+            h('div', 'vel-setting-hint', 'Mit Vollbild duckt ', mono('Strg'), ' sofort, und ', mono('Strg'), '+', mono('W'), ' schließt nicht den Tab.'),
+          ]),
     );
 
     const online = h(
@@ -2497,7 +3170,7 @@ export class Menu {
           this.btn('Zurück', 'vel-btn--small', () => this.back(), 'Esc'),
         ),
       ),
-      h('div', 'vel-settings-grid', h('div', 'vel-col', mouse, movement, keys, online), h('div', 'vel-col', camera, audio, gfx)),
+      h('div', 'vel-settings-grid', h('div', 'vel-col', mouse, movement, keys, online), h('div', 'vel-col', this.buildPadPanel(), camera, audio, gfx)),
     );
   }
 
@@ -2760,6 +3433,35 @@ export class Menu {
     return row(label, b, null);
   }
 
+  /** Desktop: "Anzeigemodus" statt "Vollbild beim Start" (Hauptprozess-Fenster, keine Geste nötig). */
+  private displayModeRow(): HTMLElement {
+    const wrap = h('div', 'vel-seg');
+    const opts: readonly { readonly value: DisplayMode; readonly label: string }[] = [
+      { value: 'fullscreen', label: 'Vollbild' },
+      { value: 'windowed', label: 'Fenster' },
+    ];
+    const buttons = opts.map((o) => {
+      const b = h('button', 'vel-btn', o.label);
+      b.type = 'button';
+      b.dataset.displayMode = o.value;
+      b.addEventListener('click', () => this.setDisplayMode(o.value));
+      wrap.append(b);
+      return b;
+    });
+    const refresh = (): void => opts.forEach((o, i) => buttons[i].setAttribute('aria-pressed', String(o.value === this.displayMode)));
+    refresh();
+    this.refreshers.push(refresh);
+    // Vollbild kann auch über System → Vollbild umgeschaltet worden sein: beim Öffnen frisch lesen.
+    this.platform.window
+      ?.getMode()
+      .then((m) => {
+        this.displayMode = m;
+        refresh();
+      })
+      .catch(() => undefined);
+    return row('Anzeigemodus', wrap, null);
+  }
+
   private segmented<T extends string | number>(
     label: string,
     options: readonly { readonly value: T; readonly label: string }[],
@@ -2872,6 +3574,7 @@ function isMenuEvent(k: string): k is keyof MenuEvents {
     k === 'toTitle' ||
     k === 'nextLevel' ||
     k === 'fullscreen' ||
+    k === 'quit' ||
     k === 'adminBest' ||
     k === 'demo' ||
     k === 'skipStage' ||
@@ -2967,4 +3670,26 @@ function boardNameButton(name: HTMLElement, onClick: (() => void) | null): HTMLE
   b.title = 'Profil ansehen';
   b.addEventListener('click', onClick);
   return b;
+}
+
+/** Zahlenfelder der Pad-Einstellungen mit Regler im Menü. */
+type PadNumKey = 'yawRate' | 'pitchRate' | 'deadzoneInner' | 'deadzoneOuter' | 'curve' | 'boost' | 'diagonalBand';
+
+function numPatch(key: PadNumKey, v: number): PadSettingsPatch {
+  switch (key) {
+    case 'yawRate':
+      return { yawRate: v };
+    case 'pitchRate':
+      return { pitchRate: v };
+    case 'deadzoneInner':
+      return { deadzoneInner: v };
+    case 'deadzoneOuter':
+      return { deadzoneOuter: v };
+    case 'curve':
+      return { curve: v };
+    case 'boost':
+      return { boost: v };
+    case 'diagonalBand':
+      return { diagonalBand: v };
+  }
 }

@@ -3,6 +3,13 @@ import type { PlayerInput } from '../player/types';
 import { InputState, MOUSE_CODES } from './InputState';
 import type { InputAction, InputNotice, InputOverride } from './InputState';
 import type { RawMouseStatus } from '../ui/types';
+import { PadInput } from './pad/PadInput';
+import type { GamepadLike, GamepadSource, PadCaptureCallback } from './pad/PadInput';
+import { promptLabelFor } from './pad/prompts';
+import type { InputDevice, PadButtonCode, PadSettings, PromptAction } from './pad/types';
+import { DEFAULT_PAD_SETTINGS, PAD_CAPTURE_TIMEOUT } from './pad/types';
+import type { DisplayMode, PlatformApi } from '../platform/types';
+import { WEB_PLATFORM } from '../platform/web';
 
 export type { InputAction, InputNotice, InputOverride } from './InputState';
 
@@ -16,6 +23,10 @@ export type { InputAction, InputNotice, InputOverride } from './InputState';
  *   yaw / pitch             — in onFrame für die Kamera (roh, sofort)
  *   consumeActions()        — jeden Frame, auch im Menü (sonst stauen sich Aktionen)
  *   anyKeyDown()            — Vorführung (Plan 007): "beliebige Taste beendet sie"
+ *
+ * Controller (Plan 011): beginFrame(frameDt) fragt zuerst das Gamepad ab (PadInput), dann sampelt
+ * InputState. Game meldet per setMenuContext, ob das Menü die Pad-Knöpfe bekommt. `device` ist das
+ * zuletzt benutzte Gerät (Prompts), onDevice meldet Wechsel.
  */
 
 /** Keyboard Lock API (Chromium) — fehlt in lib.dom, daher lokal. */
@@ -70,6 +81,10 @@ const LOCK_GRACE_MAX_COUNTS = 150;
 
 type LockListener = (locked: boolean) => void;
 type NoticeListener = (n: InputNotice) => void;
+type DeviceListener = (d: InputDevice) => void;
+
+/** Ohne gamepadconnected-Event trotzdem gelegentlich nachsehen (Pads, die schon vor dem Laden da waren). */
+const PAD_PROBE_SECONDS = 1;
 
 export class InputManager {
   /** DOM-freier Kern (für Tools/Tests zugänglich). */
@@ -96,12 +111,41 @@ export class InputManager {
   private disposed = false;
   /** Tasten-/Maustasten-/Rad-Drücke seit dem letzten anyKeyDown() (ohne Wiederholungen). */
   private presses = 0;
+  /** Laufende Pad-Aufnahme: Esc bricht sie ab (Pad hat kein Esc, die Tastatur schon). */
+  private captureEsc: (() => void) | null = null;
+  private readonly deviceListeners = new Set<DeviceListener>();
+  /** Zuletzt benutzt: Tastatur/Maus oder der erkannte Pad-Typ (ohne Glyphen-Einstellung). */
+  private rawDevice: InputDevice = 'keyboard';
+  private effDevice: InputDevice = 'keyboard';
+  private padSettings: PadSettings = DEFAULT_PAD_SETTINGS;
+  /** Verbundene Pads laut Events — 0 = getGamepads() nicht jeden Frame aufrufen (allokiert ein Array). */
+  private padCount = 0;
+  private padProbe = 0;
+  /** Debug/Tools (`__vel.pad`): ersetzt navigator.getGamepads komplett. */
+  private fakePads: (GamepadLike | null)[] | null = null;
+  /** Gamepad-Abfrage (Plan 011, DOM-frei); Tools lesen sticks/output. */
+  readonly pad: PadInput;
+  /** Plattform (Plan 011 §2.3/§2.4): am Desktop Vollbild über das Hauptprozess-Fenster, Strg duckt immer. */
+  private readonly platform: PlatformApi;
+  /** Desktop: zuletzt bekannter Anzeigemodus (getMode ist async, `fullscreen` muss synchron antworten). */
+  private desktopMode: DisplayMode = 'windowed';
 
-  constructor(target: PointerLockTarget, getSettings: () => GameSettings) {
+  constructor(target: PointerLockTarget, getSettings: () => GameSettings, platform: PlatformApi = WEB_PLATFORM) {
     this.target = target;
     this.getSettings = getSettings;
-    // Strg-Ducken erst mit Keyboard Lock: im Fenster schließt Strg+W den Tab (nicht abfangbar).
-    this.state.setCtrlCrouch(false);
+    this.platform = platform;
+    this.pad = new PadInput(this.state, this.padSource);
+    this.pad.configure(this.padSettings);
+    this.state.setPadBindings(this.padSettings.binds);
+    // Web: Strg-Ducken erst mit Keyboard Lock — im Fenster schließt Strg+W den Tab (nicht abfangbar).
+    // Desktop: kein App-Menü, also keine Browser-Kürzel → Strg duckt immer (Plan 011 §2.4).
+    this.state.setCtrlCrouch(this.desktop);
+    platform.window
+      ?.getMode()
+      .then((m) => {
+        this.desktopMode = m;
+      })
+      .catch(() => undefined);
     document.addEventListener('pointerlockchange', this.onPointerLockChange);
     document.addEventListener('mousemove', this.onMouseMove);
     document.addEventListener('visibilitychange', this.onVisibility);
@@ -115,8 +159,129 @@ export class InputManager {
     window.addEventListener('blur', this.onBlur);
     window.addEventListener('contextmenu', this.onContextMenu);
     window.addEventListener('beforeunload', this.onBeforeUnload);
+    window.addEventListener('gamepadconnected', this.onPadConnected);
+    window.addEventListener('gamepaddisconnected', this.onPadDisconnected);
     this.isLocked = document.pointerLockElement === this.target;
   }
+
+  // ---------------------------------------------------------------- Controller (Plan 011)
+
+  /** Pad-Einstellungen übernehmen (selten, darf allokieren). */
+  configurePad(s: PadSettings): void {
+    this.padSettings = s;
+    this.pad.configure(s);
+    if (s.binds !== this.state.padBindings) this.state.setPadBindings(s.binds);
+    this.updateDevice();
+  }
+
+  /**
+   * Zuletzt benutztes Eingabegerät für Prompts/Glyphen: 'keyboard' nach Taste/Klick/Maus im Lock, sonst der
+   * Pad-Typ. Die Einstellung "Tasten-Symbole" (glyphs ungleich auto) schlägt die Erkennung.
+   */
+  get device(): InputDevice {
+    return this.effDevice;
+  }
+
+  /** Letzte Eingabe kam vom Pad (Game: Start ohne Pointer Lock). Unabhängig von der Glyphen-Einstellung. */
+  get usingPad(): boolean {
+    return this.rawDevice !== 'keyboard';
+  }
+
+  onDevice(cb: DeviceListener): () => void {
+    this.deviceListeners.add(cb);
+    return () => this.deviceListeners.delete(cb);
+  }
+
+  /** Tasten-Hinweis für eine Aktion auf dem aktuellen Gerät ("SPACE", "LB", "×" …). */
+  promptLabel(a: PromptAction): string {
+    return promptLabelFor(a, this.effDevice, this.state.bindings, this.padSettings.binds);
+  }
+
+  /** Menü sichtbar → Pad-Knöpfe werden Menü-Aktionen (confirm/pause/nav…/tab…), keine Spiel-Eingabe. */
+  setMenuContext(on: boolean): void {
+    this.pad.setMenuContext(on);
+  }
+
+  /**
+   * Belegungs-Dialog: den NÄCHSTEN Pad-Knopf melden statt Menü-Aktionen (auch A/B). Abbruch → cb(null): B halten
+   * (0.6 s), Start, Esc auf der Tastatur, Zeitüberschreitung (s), Pad weg, Fokusverlust. Rückgabe = still abbrechen.
+   */
+  capturePadButton(cb: PadCaptureCallback, timeout = PAD_CAPTURE_TIMEOUT): () => void {
+    const stop = this.pad.capture((code) => {
+      this.captureEsc = null;
+      cb(code);
+    }, timeout);
+    this.captureEsc = () => {
+      this.captureEsc = null;
+      stop();
+      cb(null);
+    };
+    return () => {
+      this.captureEsc = null;
+      stop();
+    };
+  }
+
+  /** Wie capturePadButton als Promise (null = abgebrochen). */
+  nextPadButton(timeout = PAD_CAPTURE_TIMEOUT): Promise<PadButtonCode | null> {
+    return new Promise((resolve) => {
+      this.capturePadButton(resolve, timeout);
+    });
+  }
+
+  /** Tools (`__vel.pad`): Fake-Pad statt navigator.getGamepads; null = echte Pads. */
+  setFakePad(pad: GamepadLike | null): void {
+    this.fakePads = pad ? [pad] : null;
+  }
+
+  private readonly padSource: GamepadSource = () => {
+    if (this.fakePads !== null) return this.fakePads;
+    if (this.padCount <= 0 && this.padProbe > 0) return null;
+    this.padProbe = this.padCount <= 0 ? PAD_PROBE_SECONDS : 0;
+    const nav: Navigator & { getGamepads?: () => (Gamepad | null)[] } = navigator;
+    try {
+      const pads = nav.getGamepads ? nav.getGamepads() : null;
+      // Probe fand ein Pad ohne Event (schon vor dem Laden verbunden) → ab jetzt jeden Frame abfragen.
+      if (pads !== null && this.padCount <= 0) {
+        for (const p of pads) {
+          if (p !== null && p.connected) {
+            this.padCount = 1;
+            break;
+          }
+        }
+      }
+      return pads;
+    } catch {
+      // Unsicherer Kontext / Permissions-Policy: kein Pad.
+      return null;
+    }
+  };
+
+  private setRawDevice(d: InputDevice): void {
+    if (d === this.rawDevice) return;
+    this.rawDevice = d;
+    this.updateDevice();
+  }
+
+  private updateDevice(): void {
+    const raw = this.rawDevice;
+    const g = this.padSettings.glyphs;
+    const eff: InputDevice = raw === 'keyboard' || g === 'auto' ? raw : g;
+    if (eff === this.effDevice) return;
+    this.effDevice = eff;
+    for (const fn of this.deviceListeners) fn(eff);
+  }
+
+  private readonly onPadConnected = (): void => {
+    this.padCount++;
+    this.padProbe = 0;
+  };
+
+  private readonly onPadDisconnected = (): void => {
+    this.padCount = Math.max(0, this.padCount - 1);
+    // Der nächste poll sieht das Pad nicht mehr, PadInput lässt los und pausiert im Spiel.
+    this.padProbe = 0;
+  };
 
   /** Belegung und Auto-Sprint aus den Einstellungen übernehmen (selten, darf allokieren). */
   configure(binds: KeyBinds, autoSprint: boolean): void {
@@ -160,7 +325,17 @@ export class InputManager {
     return this.pendingLock !== null;
   }
 
-  /** Strg zählt gerade als Ducken (nur im Vollbild mit Keyboard Lock). */
+  /** Desktop-Hülle: Vollbild/Kürzel regelt der Hauptprozess. */
+  get desktop(): boolean {
+    return this.platform.kind === 'desktop';
+  }
+
+  /** Vollbild ist ein Anzeigemodus der Plattform (Desktop) statt Browser-Vollbild mit Geste. */
+  get platformFullscreen(): boolean {
+    return this.platform.window !== null;
+  }
+
+  /** Strg zählt gerade als Ducken (Web: nur im Vollbild mit Keyboard Lock; Desktop: immer). */
   get ctrlCrouch(): boolean {
     return this.state.ctrlCrouchEnabled;
   }
@@ -294,9 +469,20 @@ export class InputManager {
     this.leaveGuard = on;
   }
 
-  /** Blick-Sample vor den Ticks jedes Frames (FixedLoop.onFrameStart). */
-  beginFrame(): void {
-    this.state.beginFrame();
+  /**
+   * Vor den Ticks jedes Frames (FixedLoop.onFrameStart): Gamepad abfragen, dann Blick-Sample.
+   * frameDt = simulierte Framezeit (Kamera-Stick-Rate mal frameDt).
+   */
+  beginFrame(frameDt = 0): void {
+    if (this.padProbe > 0) this.padProbe -= frameDt > 0 ? frameDt : 0;
+    const wasConnected = this.pad.connected;
+    this.pad.poll(frameDt);
+    // Pad weg ohne Event: wieder nur proben statt jeden Frame getGamepads().
+    if (wasConnected && !this.pad.connected && this.fakePads === null) this.padCount = 0;
+    if (this.pad.consumeActivity()) this.setRawDevice(this.pad.kind);
+    else if (!this.pad.connected && this.rawDevice !== 'keyboard') this.setRawDevice('keyboard');
+    if (this.pad.consumePresses()) this.presses++;
+    this.state.beginFrame(frameDt);
   }
 
   /** Eingabe für Tick i von n, u = Tick-Zeit im Frame (Subtick-Yaw). Das Objekt wird wiederverwendet — gültig bis zum nächsten Aufruf. */
@@ -331,6 +517,13 @@ export class InputManager {
 
   /** Vollbild umschalten; im Vollbild zusätzlich Keyboard Lock (falls verfügbar). Aus einer User-Geste aufrufen. */
   async toggleFullscreen(): Promise<boolean> {
+    const w = this.platform.window;
+    if (w) {
+      // Desktop: Anzeigemodus des Fensters, frisch gelesen (kann auch aus den Einstellungen geändert sein).
+      const cur = await w.getMode().catch(() => this.desktopMode);
+      this.desktopMode = await w.setMode(cur === 'fullscreen' ? 'windowed' : 'fullscreen').catch(() => cur);
+      return this.desktopMode === 'fullscreen';
+    }
     if (document.fullscreenElement) {
       keyboardLock()?.unlock();
       this.setKeyboardLocked(false);
@@ -353,6 +546,17 @@ export class InputManager {
    */
   enterFullscreen(): Promise<boolean> {
     if (this.disposed) return Promise.resolve(false);
+    const w = this.platform.window;
+    if (w) {
+      // Desktop: ohne Geste und ohne Keyboard Lock (Strg duckt dort ohnehin).
+      return w.setMode('fullscreen').then(
+        (m) => {
+          this.desktopMode = m;
+          return m === 'fullscreen';
+        },
+        () => false,
+      );
+    }
     const el = document.documentElement;
     const wasFull = document.fullscreenElement !== null;
     let req: Promise<void>;
@@ -381,6 +585,7 @@ export class InputManager {
 
   /** Vollbild aktiv? */
   get fullscreen(): boolean {
+    if (this.platform.window) return this.desktopMode === 'fullscreen';
     return document.fullscreenElement !== null;
   }
 
@@ -400,8 +605,11 @@ export class InputManager {
     window.removeEventListener('blur', this.onBlur);
     window.removeEventListener('contextmenu', this.onContextMenu);
     window.removeEventListener('beforeunload', this.onBeforeUnload);
+    window.removeEventListener('gamepadconnected', this.onPadConnected);
+    window.removeEventListener('gamepaddisconnected', this.onPadDisconnected);
     this.lockListeners.clear();
     this.noticeListeners.clear();
+    this.deviceListeners.clear();
     this.state.releaseAll();
     if (document.pointerLockElement === this.target) document.exitPointerLock();
   }
@@ -410,7 +618,7 @@ export class InputManager {
 
   private setKeyboardLocked(on: boolean): void {
     this.keyboardLocked = on;
-    this.state.setCtrlCrouch(on);
+    this.state.setCtrlCrouch(on || this.desktop);
   }
 
   private notify(n: InputNotice): void {
@@ -451,6 +659,8 @@ export class InputManager {
     const dx = e.movementX;
     const dy = e.movementY;
     if (dx === 0 && dy === 0) return;
+    // Maus im Lock = Spielen mit der Maus (ohne Lock zählt Bewegung nicht: Zittern neben dem Pad).
+    if (this.rawDevice !== 'keyboard') this.setRawDevice('keyboard');
     if (this.graceEvents > 0) {
       this.graceEvents--;
       if (
@@ -466,6 +676,13 @@ export class InputManager {
   };
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {
+    if (this.captureEsc !== null && e.code === 'Escape') {
+      // Esc bricht nur die Aufnahme ab, nicht noch "Zurück" im Menü.
+      e.preventDefault();
+      this.captureEsc();
+      return;
+    }
+    if (this.rawDevice !== 'keyboard') this.setRawDevice('keyboard');
     if (this.isLocked && e.code === 'Escape') {
       // Nur mit Keyboard Lock (Vollbild) kommt Esc im Lock hier an — Chrome lässt den
       // Pointer Lock dann stehen. Ohne Freigabe hinge die Maus unsichtbar hinter dem
@@ -523,6 +740,8 @@ export class InputManager {
    * werden im Lock geschluckt — sonst verlässt eine Sprungtaste die Seite.
    */
   private readonly onMouseDown = (e: MouseEvent): void => {
+    // Klick (auch im Menü) = Maus-Bedienung: Prompts wechseln, Start fordert wieder den Lock an.
+    if (this.rawDevice !== 'keyboard') this.setRawDevice('keyboard');
     if (!this.isLocked) return;
     const code = MOUSE_CODES[e.button];
     if (code === undefined) return;
@@ -554,10 +773,14 @@ export class InputManager {
 
   private readonly onBlur = (): void => {
     this.state.releaseAll();
+    this.pad.releaseAll();
   };
 
   private readonly onVisibility = (): void => {
-    if (document.visibilityState !== 'visible') this.state.releaseAll();
+    if (document.visibilityState !== 'visible') {
+      this.state.releaseAll();
+      this.pad.releaseAll();
+    }
   };
 
   private readonly onContextMenu = (e: MouseEvent): void => {
@@ -569,6 +792,9 @@ export class InputManager {
    * fragt „Seite verlassen?“ statt den Tab samt Lauf sofort zu schließen.
    */
   private readonly onBeforeUnload = (e: BeforeUnloadEvent): void => {
+    // Desktop: keine Wache — in Electron bricht preventDefault das Schließen still ab (Fenster-X täte nichts).
+    // Der Lauf ist beim Schließen verloren wie beim Alt-F4 in jedem Spiel (Plan 011 §2.4).
+    if (this.desktop) return;
     if (!this.isLocked && !this.leaveGuard) return;
     e.preventDefault();
     // Ältere Browser zeigen den Dialog nur mit gesetztem returnValue.

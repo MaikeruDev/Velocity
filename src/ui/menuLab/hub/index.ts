@@ -535,7 +535,7 @@ class HubDoor implements FrontDoor {
         body.push(el('h2', 'hub-title', 'Labor'));
         body.push(el('p', 'hub-text', 'Menü-Stil wechseln. Hinter der Tür: Admin (auch F8).'));
         acts.push({ label: 'Menü-Labor', sub: 'Stil wechseln', run: () => ctx.openLab(), tone: 'primary' });
-        acts.push({ label: 'Admin', sub: 'F8', run: () => ctx.openAdmin(), tone: 'quiet' });
+        if (ctx.adminMenu) acts.push({ label: 'Admin', sub: 'F8', run: () => ctx.openAdmin(), tone: 'quiet' });
         body.push(el('p', 'hub-version-line', ctx.version));
         break;
       }

@@ -157,3 +157,98 @@ describe('PS2-Ansichten gegen den Mock (Profil + Moderation)', () => {
     onBoards(null);
   });
 });
+
+// ------------------------------------------------------------------ Plan 011 §1.5/§1.6: Glyphen + Pad-Navigation
+
+import { glyphFamily, padCodeGlyph, promptGlyphs } from '../src/ui/padGlyphs';
+import { pickInDirection } from '../src/ui/padNav';
+import { FRONT_DOOR_PROMPTS } from '../src/ui/menuLab/types';
+import type { FrontDoorGlyphFamily } from '../src/ui/menuLab/types';
+import { PAD_BUTTONS, PAD_PRESETS } from '../src/engine/pad/types';
+
+describe('Glyphen (Plan 011 §1.6)', () => {
+  const families: readonly FrontDoorGlyphFamily[] = ['keyboard', 'xbox', 'playstation'];
+  const src = { demoKey: 'H', padBinds: PAD_PRESETS.bumper };
+
+  it('jeder Hinweis × Gerät hat Symbole (Tastatur: Reiter bewusst ohne Taste)', () => {
+    for (const fam of families) {
+      for (const p of FRONT_DOOR_PROMPTS) {
+        const g = promptGlyphs(p, fam, src);
+        const noKey = fam === 'keyboard' && (p === 'tabs' || p === 'tabPrev' || p === 'tabNext');
+        if (noKey) expect(g, `${fam}/${p}`).toEqual([]);
+        else expect(g.length, `${fam}/${p}`).toBeGreaterThan(0);
+        if (p === 'tabs' && fam !== 'keyboard') expect(g.length).toBe(2);
+        for (const x of g) {
+          expect(x.family).toBe(fam);
+          expect(x.text.length, `${fam}/${p}`).toBeGreaterThan(0);
+          expect(x.name.length, `${fam}/${p}`).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  it('PlayStation bestätigt mit Kreuz, zurück mit Kreis (westlich); Xbox mit A/B', () => {
+    expect(promptGlyphs('confirm', 'playstation', src)[0]).toMatchObject({ kind: 'face', symbol: 'cross' });
+    expect(promptGlyphs('back', 'playstation', src)[0]).toMatchObject({ kind: 'face', symbol: 'circle' });
+    expect(promptGlyphs('confirm', 'xbox', src)[0]).toMatchObject({ kind: 'face', text: 'A', symbol: null });
+    expect(promptGlyphs('back', 'xbox', src)[0]).toMatchObject({ text: 'B' });
+    expect(promptGlyphs('tabs', 'playstation', src).map((x) => x.text)).toEqual(['L1', 'R1']);
+  });
+
+  it('Spiel-Aktionen folgen der Pad-Belegung, Tastatur der Vorführungs-Taste', () => {
+    expect(promptGlyphs('demo', 'keyboard', { demoKey: 'G', padBinds: null })[0].text).toBe('G');
+    const binds = { ...PAD_PRESETS.bumper, respawn: ['PadLT' as const] };
+    expect(promptGlyphs('respawn', 'xbox', { demoKey: 'H', padBinds: binds })[0]).toMatchObject({ text: 'LT', kind: 'trigger' });
+    expect(promptGlyphs('restart', 'xbox', { demoKey: 'H', padBinds: { ...binds, restart: [] } })).toEqual([]);
+  });
+
+  it('jeder Pad-Knopf hat je Familie eine Glyphe, Formen nur bei PlayStation-Gesichtstasten', () => {
+    for (const fam of ['xbox', 'playstation'] as const) {
+      for (const c of PAD_BUTTONS) {
+        const g = padCodeGlyph(c, fam);
+        expect(g.text.length, `${fam}/${c}`).toBeGreaterThan(0);
+        expect(g.symbol !== null, `${fam}/${c}`).toBe(fam === 'playstation' && g.kind === 'face');
+      }
+    }
+  });
+
+  it('Familie: Tastatur bleibt Tastatur, Einstellung schlägt Erkennung, unbekanntes Pad = Xbox', () => {
+    expect(glyphFamily('keyboard', 'playstation')).toBe('keyboard');
+    expect(glyphFamily('xbox', 'playstation')).toBe('playstation');
+    expect(glyphFamily('playstation', 'auto')).toBe('playstation');
+    expect(glyphFamily('generic', 'auto')).toBe('xbox');
+  });
+});
+
+describe('Pad-Navigation: Richtungswahl (Plan 011 §1.5)', () => {
+  const r = (x: number, y: number, w = 100, h = 40) => ({ x, y, w, h });
+
+  it('nimmt in einer Spalte den direkten Nachbarn, nicht den nächsten Mittelpunkt schräg', () => {
+    const from = r(0, 0);
+    const cands = [r(0, 60), r(110, 10), r(0, 120)];
+    expect(pickInDirection(from, cands, 0, 1)).toBe(0);
+    expect(pickInDirection(from, cands, 1, 0)).toBe(1);
+    expect(pickInDirection(from, cands, 0, -1)).toBe(-1);
+  });
+
+  it('ein breiter Knopf darüber ist nicht "rechts" (fallen.md #242)', () => {
+    const from = r(0, 100);
+    const wide = r(-50, 0, 600, 40);
+    expect(pickInDirection(from, [wide], 1, 0)).toBe(-1);
+    expect(pickInDirection(from, [wide], 0, -1)).toBe(0);
+  });
+
+  it('angehobener Nachbar (Versatz < ¼) zählt als seitlich, nicht als oben', () => {
+    const from = r(0, 0);
+    const lifted = r(120, -8);
+    expect(pickInDirection(from, [lifted], 0, -1)).toBe(-1);
+    expect(pickInDirection(from, [lifted], 1, 0)).toBe(0);
+  });
+
+  it('bevorzugt überlappende Spannen vor näheren, aber versetzten Kandidaten', () => {
+    const from = r(0, 0);
+    const aligned = r(0, 200);
+    const offset = r(300, 50);
+    expect(pickInDirection(from, [offset, aligned], 0, 1)).toBe(1);
+  });
+});

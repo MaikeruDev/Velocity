@@ -1209,6 +1209,11 @@
   color: var(--ps2-dim);
 }
 
+/* Beenden wartet auf Bestätigung (Desktop, Plan 011 §2.5). */
+.vel-menu.vel-style--ps2 .ps2-sys-item.is-armed .ps2-sys-label {
+  color: #ff6a5a;
+}
+
 /* ------------------------------------------------------------------ Ruhe */
 
 @media (prefers-reduced-motion: reduce) {
@@ -2914,4 +2919,67 @@
   white-space: normal;
   overflow: visible;
   overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------------ Controller (Plan 011 §1.5/§1.6) */
+
+/* Tasten-Symbole im Raster des Stils: Pixel-Einheiten ganzzahlig je --k (1 / 1.5 / 2 → 2/3/4 bzw. 3/4/5 px). */
+.vel-menu.vel-style--ps2 .vel-frontdoor--ps2 {
+  --pg-u: calc(2px * var(--k));
+  --pg-ud: calc(1px + 2px * var(--k));
+  --pg-h: calc(24px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .vel-frontdoor--ps2 .vel-pg {
+  font-size: calc(16px * var(--k));
+}
+
+
+/* F8 & Co. gibt es am Pad nicht (ps2-Kappen sind sonst stärker als die Regel in menu.css). */
+.vel-menu.vel-style--ps2[data-input='pad'] [data-kbd-only] {
+  display: none;
+}
+
+.vel-menu.vel-style--ps2 .ps2-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-keys[hidden] {
+  display: none;
+}
+
+/* Kappen der Stil-Knöpfe: Pad-Symbole tragen ihren eigenen Ring — die Mulde des Primärknopfs bleibt dunkel. */
+.vel-menu.vel-style--ps2 .ps2-btn .vel-pg--face::before,
+.vel-menu.vel-style--ps2 .ps2-btn .vel-pg--stick::before {
+  background: var(--ps2-ink);
+}
+
+/* Pad-Fokus: harte Kante wie die Auswahl, kein Glow. */
+.vel-menu.vel-style--ps2[data-input='pad'] .is-padfocus {
+  outline: calc(2px * var(--k)) solid var(--cyan);
+  outline-offset: calc(3px * var(--k));
+}
+
+.vel-menu.vel-style--ps2[data-input='pad'] .vel-btn.is-padfocus {
+  color: var(--ps2-ink);
+  background: #eef1ff;
+  border-color: #fff;
+}
+
+/* Gewählte Einträge zeigen ihre Auswahl schon selbst (Glas, 3D-Halo) — dort reicht die dünne Linie. */
+.vel-menu.vel-style--ps2[data-input='pad'] :is(.ps2-item, .ps2-save, .ps2-sys-item, .ps2-lesson, .ps2-board-disc, .ps2-inv).is-padfocus {
+  outline-width: 1px;
+}
+
+/* Kappen der Bestands-Screens, die Pad-Symbole tragen: Kappen-Optik des Stils aus (auch in der Prompt-Leiste). */
+.vel-menu.vel-style--ps2 .vel-kbd.is-pad,
+.vel-menu.vel-style--ps2 .vel-btn .vel-kbd.is-pad,
+.vel-menu.vel-style--ps2 .vel-screen .vel-btn:has(> .vel-kbd.is-pad) .vel-kbd.is-pad {
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
 }

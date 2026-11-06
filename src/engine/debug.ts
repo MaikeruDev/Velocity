@@ -14,7 +14,10 @@ import type { AnyTrick } from '../ui/hand/ViewHand';
 import { HAND_POSES } from '../ui/hand/poses';
 import type { HandPose } from '../ui/hand/poses';
 import type { GameEvent } from './events';
-import type { BotInfo, BotKind, BotOptions, Game, GameState, GhostDebugInfo, OnlineDebugInfo } from './Game';
+import type { BotInfo, BotKind, BotOptions, Game, GameState, GhostDebugInfo, OnlineDebugInfo, PadDebugInfo } from './Game';
+import type { GamepadLike } from './pad/PadInput';
+import type { PadButtonCode } from './pad/types';
+import { PAD_BUTTONS } from './pad/types';
 import type { LeaderboardPage } from '../online/types';
 import { base64ToBytes, unpackReplay } from './replay/codec';
 import { verifyReplay } from './replay/verify';
@@ -224,6 +227,18 @@ export interface SnapshotInfo {
   readonly dataUrl: string;
 }
 
+/**
+ * Fake-Gamepad für Tools (`__vel.pad`, Plan 011): Patch auf den letzten Stand. axes = [lx, ly, rx, ry]
+ * (Gamepad-Konvention, y unten +), buttons: true/false bzw. Wert 0..1 (Trigger). id bestimmt den Typ
+ * (z. B. "DualSense … Vendor: 054c"). connected false = Pad abgezogen.
+ */
+export interface FakePadPatch {
+  readonly id?: string;
+  readonly connected?: boolean;
+  readonly axes?: readonly number[];
+  readonly buttons?: Partial<Readonly<Record<PadButtonCode, boolean | number>>>;
+}
+
 /** Eingabe-Funktion aus dem Tool: bekommt den Live-Zustand, liefert die gedrückten Tasten (Rest = los). */
 export type OverrideFn = (state: PlayerSnapshot, tickIndex: number, ticks: number) => Partial<PlayerInput>;
 
@@ -327,6 +342,10 @@ export interface VelHandle {
   raceGhost(levelId: string, runId: string | null, label?: string): void;
   /** Replay (Base64, packReplay) im Browser verifizieren — Determinismus-Gegenprobe zu Node. */
   verifyReplay(b64: string): Promise<VerifyResult & { readonly levelId: string }>;
+  /** Fake-Gamepad setzen/ändern (Patch, s. FakePadPatch); null = Fake weg, echte Pads. Gibt input() zurück. */
+  pad(patch: FakePadPatch | null): PadDebugInfo;
+  /** Eingabegerät, Steuer-Modus, Pad-Zustand, Stick-Werte und Drehrate. */
+  input(): PadDebugInfo;
 }
 
 declare global {
@@ -350,6 +369,7 @@ export interface DebugDeps {
 export function installDebug(deps: DebugDeps): VelHandle {
   const { game, audio, settings, unlocks } = deps;
   const log: RecordedEvent[] = [];
+  let fake: FakePad | null = null;
   let recording = false;
   const record = (on: boolean): void => {
     if (on === recording) return;
@@ -550,6 +570,17 @@ export function installDebug(deps: DebugDeps): VelHandle {
       const level = await game.levelById(rep.header.levelId);
       return { ...verifyReplay(rep, level), levelId: rep.header.levelId };
     },
+    pad: (patch) => {
+      if (patch === null) {
+        fake = null;
+        game.setFakePad(null);
+      } else {
+        fake = applyFakePad(fake, patch);
+        game.setFakePad(fake);
+      }
+      return game.inputInfo;
+    },
+    input: () => game.inputInfo,
     frameCost: () => game.takeFrameCost(),
     benchHud: (n) => benchHud(game, n ?? 3000),
     benchLesson: (n) => game.benchLesson(n ?? 20000),
@@ -648,6 +679,43 @@ function benchHud(game: Game, n: number): { normal: number; lesson: number; less
     frames += block;
   }
   return { normal: variants[0].sum / frames, lesson: variants[1].sum / frames, lessonDemo: variants[2].sum / frames };
+}
+
+interface FakeButton {
+  pressed: boolean;
+  value: number;
+}
+
+interface FakePad extends GamepadLike {
+  id: string;
+  connected: boolean;
+  readonly buttons: FakeButton[];
+  readonly axes: number[];
+}
+
+/** Fake-Pad im Standard-Mapping anlegen bzw. per Patch ändern (Objekt bleibt dasselbe, PadInput liest es je Frame). */
+function applyFakePad(prev: FakePad | null, p: FakePadPatch): FakePad {
+  const pad: FakePad = prev ?? {
+    id: 'Fake Pad (STANDARD GAMEPAD Vendor: 045e Product: 0b13)',
+    index: 0,
+    connected: true,
+    mapping: 'standard',
+    buttons: PAD_BUTTONS.map(() => ({ pressed: false, value: 0 })),
+    axes: [0, 0, 0, 0],
+  };
+  if (p.id !== undefined) pad.id = p.id;
+  if (p.connected !== undefined) pad.connected = p.connected;
+  if (p.axes) for (let i = 0; i < 4 && i < p.axes.length; i++) pad.axes[i] = Number.isFinite(p.axes[i]) ? p.axes[i] : 0;
+  if (p.buttons) {
+    for (let i = 0; i < PAD_BUTTONS.length; i++) {
+      const v = p.buttons[PAD_BUTTONS[i]];
+      if (v === undefined) continue;
+      const value = typeof v === 'number' ? Math.max(0, Math.min(1, v)) : v ? 1 : 0;
+      pad.buttons[i].value = value;
+      pad.buttons[i].pressed = value > 0.5;
+    }
+  }
+  return pad;
 }
 
 /** FPS-Anzeige für ?debug — per Intervall, nicht im Frame-Pfad. */

@@ -5,6 +5,7 @@ import type { RenderSettings } from '../render/types';
 import { MOVEMENT_PRESETS, withMovement } from '../player/MovementConfig';
 import type { MovementConfig, MovementPresetId } from '../player/MovementConfig';
 import { sanitizeName } from '../online/types';
+import { defaultStorage, type StorageLike } from './storage';
 
 /**
  * Persistenz für Einstellungen und Bestzeiten. localStorage kann fehlen oder
@@ -12,12 +13,9 @@ import { sanitizeName } from '../online/types';
  * weiter, nur eben nicht über den Reload hinaus.
  */
 
-/** Minimaler Storage-Ausschnitt — Tests geben ein Map-basiertes Fake hinein. */
-export interface StorageLike {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-  removeItem(key: string): void;
-}
+// Aus storage.ts re-exportiert, damit bestehende Importe weiter gehen (Plan 011 Phase 0).
+export type { StorageLike } from './storage';
+export { defaultStorage } from './storage';
 
 export const SETTINGS_KEY = 'velocity.settings.v1';
 export const BEST_KEY = 'velocity.best.v1';
@@ -45,15 +43,6 @@ export const SETTING_RANGES = {
   effect: { min: 0, max: 1 },
   colorBits: { min: 2, max: 8 },
 } as const;
-
-export function defaultStorage(): StorageLike | null {
-  try {
-    const s = globalThis.localStorage;
-    return s ?? null;
-  } catch {
-    return null;
-  }
-}
 
 export class SettingsStore {
   private readonly storage: StorageLike | null;

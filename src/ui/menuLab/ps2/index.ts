@@ -9,9 +9,11 @@
  * Eigenes CSS: ./ps2.css, alles unter .vel-menu.vel-style--ps2.
  */
 import './ps2.css';
-import type { FrontDoor, FrontDoorAction, FrontDoorContext, FrontDoorFactory, FrontDoorLevel, MedalId } from '../types';
+import type { FrontDoor, FrontDoorAction, FrontDoorContext, FrontDoorFactory, FrontDoorLevel, FrontDoorPrompt, MedalId } from '../types';
 import { MEDAL_NAMES } from '../../medals';
-import { accountName, avatar, button, el, fmtTime, keycap, medalChip } from './dom';
+import { PadNav, hoverSync } from '../../padNav';
+import { refreshGlyphs } from '../../padGlyphs';
+import { accountName, avatar, button, el, fmtTime, glyphCap, keycap, keyGlyph, medalChip } from './dom';
 import type { FgKind, FgObj } from './scene';
 import { BOOT_LEN, levelColor, Ps2Scene } from './scene';
 import { rgb } from './models';
@@ -42,15 +44,19 @@ const MAIN_ITEMS: readonly MainItem[] = [
 ];
 
 /** Systemliste (Reihenfolge = Pfeil-Navigation). */
-type SysId = 'settings' | 'controls' | 'fullscreen' | 'lab' | 'admin' | 'moderation';
+type SysId = 'settings' | 'controls' | 'fullscreen' | 'lab' | 'admin' | 'moderation' | 'quit';
 const MOD_ITEM: { id: SysId; label: string; hint: string } = { id: 'moderation', label: 'Moderation', hint: 'Läufe löschen, Spieler sperren, Protokoll (nur Entwickler)' };
 const SYS_ITEMS: readonly { id: SysId; label: string; hint: string }[] = [
   { id: 'settings', label: 'Einstellungen', hint: 'Maus, Sicht, Movement, Grafik, Ton' },
   { id: 'controls', label: 'Steuerung', hint: 'Tasten belegen' },
   { id: 'fullscreen', label: 'Vollbild', hint: 'Bildschirm füllen (F11 geht auch)' },
   { id: 'lab', label: 'Menü-Labor', hint: 'Anderen Hauptmenü-Stil ausprobieren' },
-  { id: 'admin', label: 'Admin', hint: 'Freischaltungen und Medaillen setzen (F8)' },
 ];
+const ADMIN_ITEM: { id: SysId; label: string; hint: string } = { id: 'admin', label: 'Admin', hint: 'Freischaltungen und Medaillen setzen (F8)' };
+/** Desktop: Vollbild heißt dort Anzeigemodus (Fenster des Hauptprozesses, kein F11). */
+const FULLSCREEN_DESKTOP: { id: SysId; label: string; hint: string } = { id: 'fullscreen', label: 'Vollbild', hint: 'Vollbild oder Fenster umschalten' };
+const QUIT_ITEM: { id: SysId; label: string; hint: string } = { id: 'quit', label: 'Beenden', hint: 'VELOCITY schließen' };
+const QUIT_CONFIRM = { label: 'Wirklich beenden?', hint: 'Noch einmal bestätigen' };
 
 /** Bleibt über Mounts erhalten (die Front Door wird bei jeder Rückkehr neu gemountet). */
 const memory: { view: View; main: number; card: number; sys: number; params: SubViewParams } = { view: 'main', main: 0, card: 0, sys: 0, params: {} };
@@ -95,6 +101,11 @@ class Ps2Door implements FrontDoor {
   /** DOM-Anker im nächsten Frame neu messen (ein getBoundingClientRect-Satz, nicht je Frame). */
   private measurePending = false;
   private resizeObs: ResizeObserver | null = null;
+  /**
+   * Pad-Fokus (Plan 011 §1.5): räumlich über die Knöpfe der Bühne; die Auswahl des Stils (3D-Fokus, Infotafel) folgt
+   * per Hover-Sync. Disc-Auswahl: links/rechts dreht die Bahn, hoch/runter wählt unter den Aktionen der Tafel.
+   */
+  private readonly pnav = new PadNav({ onFocus: (e) => hoverSync(e, this.stage) });
 
   private view: View = 'main';
   private levelSel = 0;
@@ -148,6 +159,8 @@ class Ps2Door implements FrontDoor {
   private itemBtns: HTMLButtonElement[] = [];
   private saveBtns: HTMLButtonElement[] = [];
   private sysBtns: HTMLButtonElement[] = [];
+  /** "Beenden" einmal gedrückt, wartet auf die Bestätigung. */
+  private quitArmed = false;
   private infoBox: HTMLElement | null = null;
   private detailBox: HTMLElement | null = null;
   private panelBox: HTMLElement | null = null;
@@ -227,6 +240,8 @@ class Ps2Door implements FrontDoor {
       scene.bootT = BOOT_LEN;
       this.ui.classList.add('is-live', 'is-instant');
       scene.snap();
+      // Erst jetzt ist die Bühne bedienbar (vorher pointer-events aus) → Pad-Fokus setzen.
+      if (ctx.input.pad) this.pnav.ensure();
     }
     this.lastT = performance.now();
     this.raf = requestAnimationFrame(this.frame);
@@ -267,6 +282,7 @@ class Ps2Door implements FrontDoor {
     }
     this.resizeObs?.disconnect();
     this.resizeObs = null;
+    this.pnav.dispose();
     onBoards(null);
     this.sub?.dispose();
     this.sub = null;
@@ -354,13 +370,56 @@ class Ps2Door implements FrontDoor {
       return;
     }
     if (performance.now() < this.skipGuardUntil) return;
-    if (a === 'confirm') this.confirm();
-    else if (a === 'back') {
+    if (a === 'confirm') {
+      // Pad: A löst den sichtbaren Fokus aus (Klick, synchron — gilt als Geste wie Enter).
+      if (this.ctx?.input.pad && this.pnav.ensure() !== null && this.pnav.activate()) return;
+      this.confirm();
+    } else if (a === 'back') {
       // Esc in einem Eingabefeld (Moderation): nur das Feld verlassen, nicht die Ansicht
       const ae = document.activeElement;
       if (ae instanceof HTMLInputElement && this.root?.contains(ae)) ae.blur();
       else this.back();
     }
+  }
+
+  onNavigate(dx: number, dy: number): boolean {
+    if (this.booting) {
+      this.skipBoot();
+      return true;
+    }
+    if (this.view === 'discs') {
+      // Die Bahn ist 3D (keine Knöpfe): links/rechts dreht sie, hoch/runter wechselt die Aktion der Tafel.
+      if (dx !== 0) this.moveLevel(dx);
+      else this.pnav.step(dy);
+      this.dirty = true;
+      return true;
+    }
+    if (!this.pnav.move(dx, dy)) this.pnav.ensure();
+    this.dirty = true;
+    return true;
+  }
+
+  onTab(dir: -1 | 1): boolean {
+    if (this.booting) return true;
+    if (this.sub?.onTab) {
+      this.sub.onTab(dir);
+      // Fokus auf den neuen Reiter (sonst fände der Neuaufbau den alten wieder).
+      const sel = this.stage?.querySelector<HTMLElement>('button.is-selected');
+      if (sel) this.pnav.focus(sel, false);
+      else this.pnav.ensure();
+    } else if (this.view === 'discs') this.moveLevel(dir);
+    this.dirty = true;
+    return true;
+  }
+
+  /** Gerät gewechselt: Symbole an Ort und Stelle, Prompt-Leiste neu, Fokus zeigen — ohne Neuaufbau. */
+  onInput(): void {
+    const r = this.root;
+    const c = this.ctx;
+    if (!r || !c) return;
+    refreshGlyphs(r, (p: FrontDoorPrompt) => c.input.glyphs(p), keyGlyph);
+    this.renderPrompts();
+    if (c.input.pad) this.pnav.ensure();
   }
 
   // ------------------------------------------------------------------ Boot
@@ -388,6 +447,7 @@ class Ps2Door implements FrontDoor {
     this.bootBox?.remove();
     this.bootBox = null;
     this.ui?.classList.add('is-live');
+    if (this.ctx?.input.pad) this.pnav.ensure();
     this.scene?.restartPop();
     this.dirty = true;
   }
@@ -465,33 +525,41 @@ class Ps2Door implements FrontDoor {
       if (lock) this.ctx?.markLockButton(b);
       p.append(b);
     };
-    const lr = [keycap('◀'), keycap('▶')];
+    const c = this.ctx;
+    if (!c) return;
+    const cap = (k: FrontDoorPrompt): HTMLElement[] => {
+      const g = glyphCap(c.input, k);
+      return g.hidden ? [] : [g];
+    };
+    const pad = c.input.pad;
     if (this.sub) {
       for (const pr of this.sub.prompts()) {
-        const keys = pr.keys.map((k) => keycap(k, k.length > 1));
+        const keys = pr.keys.flatMap(cap);
+        if (keys.length === 0) continue;
         item(keys, pr.label, pr.action === 'confirm' ? () => this.confirm() : pr.action === 'back' ? () => this.back() : null, pr.lock === true);
       }
       return;
     }
     switch (this.view) {
       case 'main':
-        item(lr, 'Wählen', null);
-        item([keycap('Enter', true)], 'OK', () => this.confirm());
+        item(cap(pad ? 'nav' : 'navX'), 'Wählen', null);
+        item(cap('confirm'), 'OK', () => this.confirm());
         break;
       case 'discs':
-        item(lr, 'Disc', null);
-        item([keycap('Enter', true)], 'Starten', () => this.confirm(), true);
-        item([keycap('Esc', true)], 'Zurück', () => this.back());
+        item(cap('navX'), 'Disc', null);
+        if (pad) item(cap('navY'), 'Aktion', null);
+        item(cap('confirm'), pad ? 'OK' : 'Starten', () => this.confirm(), true);
+        item(cap('back'), 'Zurück', () => this.back());
         break;
       case 'card':
-        item([keycap('◀'), keycap('▶'), keycap('▲'), keycap('▼')], 'Slot', null);
-        item([keycap('Enter', true)], 'Laden', () => this.confirm(), this.cardSlotIsLevel());
-        item([keycap('Esc', true)], 'Zurück', () => this.back());
+        item(cap('nav'), 'Slot', null);
+        item(cap('confirm'), pad ? 'OK' : 'Laden', () => this.confirm(), this.cardSlotIsLevel());
+        item(cap('back'), 'Zurück', () => this.back());
         break;
       case 'system':
-        item([keycap('▲'), keycap('▼')], 'Wählen', null);
-        item([keycap('Enter', true)], 'OK', () => this.confirm());
-        item([keycap('Esc', true)], 'Zurück', () => this.back());
+        item(cap(pad ? 'nav' : 'navY'), 'Wählen', null);
+        item(cap('confirm'), 'OK', () => this.confirm());
+        item(cap('back'), 'Zurück', () => this.back());
         break;
     }
   }
@@ -588,6 +656,7 @@ class Ps2Door implements FrontDoor {
     this.itemBtns = [];
     this.saveBtns = [];
     this.sysBtns = [];
+    this.quitArmed = false;
     this.infoBox = null;
     this.detailBox = null;
     this.panelBox = null;
@@ -615,6 +684,9 @@ class Ps2Door implements FrontDoor {
     if (this.crumb) this.crumb.textContent = this.view === 'main' ? '' : 'Hauptmenü';
     this.renderPrompts();
     this.applySelection();
+    // Pad-Fokus: neue Ansicht → Startelement, Neuaufbau derselben (keep) → wiederfinden.
+    this.pnav.setRoot(this.view === 'discs' ? this.panelBox : stage, keep);
+    if (this.ctx.input.pad) this.pnav.ensure();
     this.sizeLogos();
     this.measure();
     // Schriften/Logo können das Layout noch verschieben → im nächsten Frame noch einmal messen.
@@ -700,7 +772,7 @@ class Ps2Door implements FrontDoor {
     const meta = el('div', 'ps2-info-meta');
     const actions = el('div', 'ps2-info-actions');
     const primary = (label: string): HTMLButtonElement => {
-      const b = button('ps2-btn ps2-btn--primary', () => this.activateMain(memory.main), keycap('Enter', true), label);
+      const b = button('ps2-btn ps2-btn--primary', () => this.activateMain(memory.main), glyphCap(c.input, 'confirm'), label);
       actions.append(b);
       return b;
     };
@@ -739,7 +811,7 @@ class Ps2Door implements FrontDoor {
           const b = button('ps2-btn ps2-btn--primary', () => this.ctx?.play(rec.id), `${rec.short} starten`);
           this.ctx?.markLockButton(b);
           actions.append(b);
-          actions.append(button('ps2-btn', () => this.ctx?.openTraining(), keycap('Enter', true), 'Lektionen'));
+          actions.append(button('ps2-btn', () => this.ctx?.openTraining(), glyphCap(c.input, 'confirm'), 'Lektionen'));
         } else {
           primary('Lektionen');
           if (rec && t.playable) {
@@ -873,7 +945,7 @@ class Ps2Door implements FrontDoor {
       }
     }
     const actions = el('div', 'ps2-info-actions');
-    const start = button('ps2-btn ps2-btn--primary ps2-btn--start', () => this.ctx?.play(lv.id), keycap('Enter', true), 'Starten');
+    const start = button('ps2-btn ps2-btn--primary ps2-btn--start', () => this.ctx?.play(lv.id), glyphCap(c.input, 'confirm'), 'Starten');
     this.ctx?.markLockButton(start);
     actions.append(start, button('ps2-btn', () => this.go('board', { levelId: lv.id }), 'Bestenliste'));
     box.append(head, best, ladder);
@@ -1065,7 +1137,12 @@ class Ps2Door implements FrontDoor {
     const list = el('div', 'ps2-sys-list');
     this.sysItems().forEach((it, i) => {
       const b = button(`ps2-sys-item${it.id === 'admin' ? ' ps2-sys-item--quiet' : ''}`, () => this.activateSys(i), el('span', 'ps2-sys-label', it.label), el('span', 'ps2-sys-hint', it.hint));
-      if (it.id === 'admin') b.append(keycap('F8', true));
+      if (it.id === 'admin') {
+        // F8 gibt es nur auf der Tastatur (am Pad ausgeblendet, ps2.css).
+        const f8 = keycap('F8', true);
+        f8.dataset.kbdOnly = '1';
+        b.append(f8);
+      }
       b.addEventListener('pointerenter', () => this.selectSys(i));
       list.append(b);
       this.sysBtns.push(b);
@@ -1080,15 +1157,38 @@ class Ps2Door implements FrontDoor {
     );
   }
 
-  /** Systemliste; Moderation nur für Entwickler mit Moderations-Dienst. */
+  /**
+   * Systemliste; Moderation nur für Entwickler mit Moderations-Dienst, Admin nur wenn erlaubt (Desktop: --dev),
+   * Beenden nur am Desktop (ctx.quit).
+   */
   private sysItems(): readonly { id: SysId; label: string; hint: string }[] {
     const c = this.ctx;
-    return c && c.account.dev && c.admin() !== null ? [...SYS_ITEMS.slice(0, 4), MOD_ITEM, SYS_ITEMS[4]] : SYS_ITEMS;
+    if (!c) return SYS_ITEMS;
+    const out = c.platform === 'desktop' ? SYS_ITEMS.map((it) => (it.id === 'fullscreen' ? FULLSCREEN_DESKTOP : it)) : [...SYS_ITEMS];
+    if (c.account.dev && c.admin() !== null) out.push(MOD_ITEM);
+    if (c.adminMenu) out.push(ADMIN_ITEM);
+    if (c.quit) out.push(QUIT_ITEM);
+    return out;
+  }
+
+  /** Beenden-Eintrag zurück auf "Beenden" (Auswahl verlassen = nicht bestätigt). */
+  private disarmQuit(): void {
+    if (!this.quitArmed) return;
+    this.quitArmed = false;
+    const i = this.sysItems().findIndex((it) => it.id === 'quit');
+    const b = this.sysBtns[i];
+    if (!b) return;
+    b.classList.remove('is-armed');
+    const l = b.querySelector('.ps2-sys-label');
+    const hnt = b.querySelector('.ps2-sys-hint');
+    if (l) l.textContent = QUIT_ITEM.label;
+    if (hnt) hnt.textContent = QUIT_ITEM.hint;
   }
 
   private selectSys(i: number): void {
     const n = this.sysItems().length;
     memory.sys = ((i % n) + n) % n;
+    if (this.sysItems()[memory.sys]?.id !== 'quit') this.disarmQuit();
     this.applySelection();
   }
 
@@ -1096,7 +1196,25 @@ class Ps2Door implements FrontDoor {
     const c = this.ctx;
     if (!c || this.booting) return;
     memory.sys = i;
-    switch (this.sysItems()[i]?.id) {
+    const id = this.sysItems()[i]?.id;
+    if (id !== 'quit') this.disarmQuit();
+    switch (id) {
+      case 'quit': {
+        if (!c.quit) break;
+        // Zweistufig: erster Druck fragt nach, der zweite beendet.
+        if (this.quitArmed) {
+          c.quit();
+          break;
+        }
+        this.quitArmed = true;
+        const b = this.sysBtns[i];
+        b?.classList.add('is-armed');
+        const l = b?.querySelector('.ps2-sys-label');
+        const hnt = b?.querySelector('.ps2-sys-hint');
+        if (l) l.textContent = QUIT_CONFIRM.label;
+        if (hnt) hnt.textContent = QUIT_CONFIRM.hint;
+        break;
+      }
       case 'settings':
         c.openSettings();
         break;

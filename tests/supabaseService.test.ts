@@ -6,8 +6,10 @@ import { PHYSICS_VERSION } from '../src/engine/replay/format';
 import { levelHash } from '../src/engine/replay/hash';
 import { PENDING_KEY, PENDING_MAX_AGE_MS, hasPendingRun, savePendingRun, takePendingRun } from '../src/online/pendingSubmit';
 import { SupabaseService } from '../src/online/SupabaseService';
-import { parseAdminDelete, parseProfileRpc } from '../src/online/supabaseApi';
-import type { AdminDeleteResponse, AdminPlayerFilter, AdminRunFilter, BestRow, BoardQuery, ProfileRow, SessionInfo, SubmitResponse, SupabaseApi } from '../src/online/supabaseApi';
+import type { ExternalLogin } from '../src/online/SupabaseService';
+import { parseAdminDelete, parseProfileRpc, sessionStorageKey, vaultStorage } from '../src/online/supabaseApi';
+import type { AdminDeleteResponse, AdminPlayerFilter, AdminRunFilter, BestRow, BoardQuery, DiscordAuthUrl, ProfileRow, SessionInfo, SubmitResponse, SupabaseApi } from '../src/online/supabaseApi';
+import type { DesktopAuthBegin, DesktopAuthResult, DesktopSessionVault } from '../src/platform/types';
 import type { AdminAuditRow, AdminPlayerRow, AdminRunRow, BoardRow, ProfileRpc } from '../src/online/supabaseTypes';
 import { OnlineError } from '../src/online/types';
 import type { PlayerIdentity } from '../src/online/types';
@@ -62,6 +64,21 @@ class FakeApi implements SupabaseApi {
   }
   async signInWithDiscord(redirectTo: string): Promise<void> {
     this.redirects.push(redirectTo);
+  }
+  // ---- Desktop-Login (Plan 011 §3.1): Auth-URL ohne Seitenwechsel, Code-Tausch → Sitzung + Ereignis wie supabase-js
+  authUrlCalls: string[] = [];
+  exchanges: { code: string; flowId: string | null }[] = [];
+  exchangeAnswer: SessionInfo | OnlineError = { uid: ME, metaName: 'Fuchs', metaAvatar: null };
+  async discordAuthUrl(redirectTo: string): Promise<DiscordAuthUrl> {
+    this.authUrlCalls.push(redirectTo);
+    return { url: `https://abc.supabase.co/auth/v1/authorize?provider=discord&redirect_to=${encodeURIComponent(redirectTo)}`, flowId: 'flow-1' };
+  }
+  async exchangeCode(code: string, flowId: string | null): Promise<SessionInfo> {
+    this.exchanges.push({ code, flowId });
+    if (this.exchangeAnswer instanceof OnlineError) throw this.exchangeAnswer;
+    this.session = this.exchangeAnswer;
+    this.authCb?.(this.exchangeAnswer);
+    return this.exchangeAnswer;
   }
   async signOut(): Promise<void> {
     this.session = null;
@@ -196,6 +213,9 @@ describe('SupabaseService (gemockter Client)', () => {
     const svc = service(api);
     await svc.signIn();
     expect(api.redirects).toEqual(['http://localhost:5173/']);
+    // Web-Pfad unverändert: kein Desktop-Login, kein Code-Tausch im Dienst.
+    expect(api.authUrlCalls).toEqual([]);
+    expect(api.exchanges).toEqual([]);
     expect(svc.identity).toBeNull();
   });
 
@@ -503,5 +523,254 @@ describe('SupabaseService.admin (gemockter Client)', () => {
     expect(api.adminCalls.at(-1)).toBe(`audit 10 0 ${OTHER}`);
     expect(log.total).toBe(2);
     expect(log.items).toEqual([{ id: 2, at: '2026-11-06T09:00:00Z', actorUid: ME, actorName: 'Fuchs', action: 'rename', targetUid: OTHER, targetName: 'Neu', runId: null, detail: { from: 'Alt', to: 'Neu' } }]);
+  });
+});
+
+// ------------------------------------------------------------------ Desktop-Login (Plan 011 §3.1)
+
+const LOOPBACK = 'http://127.0.0.1:47823/auth/callback?state=0123456789abcdef0123456789abcdef';
+
+/** Attrappe von platform.auth: der Test spielt den Browser-Rücksprung von Hand. */
+class FakeLogin implements ExternalLogin {
+  begins = 0;
+  cancels = 0;
+  opened: string[] = [];
+  beginAnswer: DesktopAuthBegin | Error = { ok: true, redirectUrl: LOOPBACK };
+  /** Antwort statt des wartenden Ergebnisses (z. B. unlesbar = fremder Absender). */
+  openAnswer: unknown = null;
+  private pending: Promise<DesktopAuthResult> | null = null;
+  private settle: ((r: DesktopAuthResult) => void) | null = null;
+  async begin(): Promise<DesktopAuthBegin> {
+    this.begins++;
+    if (this.beginAnswer instanceof Error) throw this.beginAnswer;
+    return this.beginAnswer;
+  }
+  openExternal(url: string): Promise<DesktopAuthResult> {
+    this.opened.push(url);
+    if (this.openAnswer !== null) return Promise.resolve(this.openAnswer as DesktopAuthResult);
+    // Wie der Hauptprozess: jedes Öffnen wartet auf DENSELBEN Rücksprung.
+    if (!this.pending) {
+      this.pending = new Promise((r) => {
+        this.settle = r;
+      });
+    }
+    return this.pending;
+  }
+  cancel(): void {
+    this.cancels++;
+  }
+  callback(r: DesktopAuthResult): void {
+    this.settle?.(r);
+    this.pending = null;
+    this.settle = null;
+  }
+}
+
+const ticks = async (): Promise<void> => {
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+};
+
+function desktopService(api: FakeApi, login: FakeLogin): SupabaseService {
+  return new SupabaseService({ api, loadLevel, externalLogin: login });
+}
+
+describe('SupabaseService Desktop-Login (externalLogin = platform.auth)', () => {
+  it('Code → Sitzung: Empfänger, Auth-URL mit der Loopback-Adresse, Browser, Tausch mit flowId; kein Seiten-Redirect', async () => {
+    const api = new FakeApi();
+    api.profile = { id: ME, displayName: 'Fuchs', avatarUrl: null, dev: false };
+    const login = new FakeLogin();
+    const svc = desktopService(api, login);
+    const seen: (PlayerIdentity | null)[] = [];
+    svc.onIdentityChange((id) => seen.push(id));
+    let done = false;
+    const p = svc.signIn().then(() => {
+      done = true;
+    });
+    await ticks();
+    expect(login.begins).toBe(1);
+    expect(api.authUrlCalls).toEqual([LOOPBACK]);
+    expect(login.opened).toEqual([`https://abc.supabase.co/auth/v1/authorize?provider=discord&redirect_to=${encodeURIComponent(LOOPBACK)}`]);
+    // signIn wartet auf den Rücksprung — die Seite bleibt stehen, noch niemand angemeldet.
+    expect(done).toBe(false);
+    expect(svc.identity).toBeNull();
+    login.callback({ ok: true, code: 'code-1234' });
+    await p;
+    expect(api.exchanges).toEqual([{ code: 'code-1234', flowId: 'flow-1' }]);
+    expect(svc.identity).toMatchObject({ uid: ME, name: 'Fuchs', provider: 'discord' });
+    expect(seen.at(-1)?.uid).toBe(ME);
+    expect(api.redirects).toEqual([]);
+    expect(login.cancels).toBe(0);
+  });
+
+  it('Zeitüberschreitung → OnlineError timeout mit dem Text des Hauptprozesses; kein Tausch; danach neuer Versuch', async () => {
+    const api = new FakeApi();
+    const login = new FakeLogin();
+    const svc = desktopService(api, login);
+    const p = svc.signIn();
+    await ticks();
+    login.callback({ ok: false, error: 'timeout', detail: 'Keine Rückmeldung aus dem Browser (5 min).' });
+    await expect(p).rejects.toMatchObject({ code: 'timeout', message: 'Keine Rückmeldung aus dem Browser (5 min).' });
+    await expect(p).rejects.toBeInstanceOf(OnlineError);
+    expect(api.exchanges).toEqual([]);
+    expect(svc.identity).toBeNull();
+    const again = svc.signIn();
+    await ticks();
+    expect(login.begins).toBe(2);
+    login.callback({ ok: true, code: 'code-5678' });
+    await again;
+    expect(svc.identity?.uid).toBe(ME);
+  });
+
+  it('zweiter Klick während des Wartens: Browser erneut mit DERSELBEN URL, ein Versuch, ein Tausch', async () => {
+    const api = new FakeApi();
+    const login = new FakeLogin();
+    const svc = desktopService(api, login);
+    const p1 = svc.signIn();
+    await ticks();
+    const p2 = svc.signIn();
+    await ticks();
+    expect(login.begins).toBe(1);
+    expect(login.opened).toHaveLength(2);
+    expect(login.opened[1]).toBe(login.opened[0]);
+    login.callback({ ok: true, code: 'code-1234' });
+    await Promise.all([p1, p2]);
+    expect(api.exchanges).toHaveLength(1);
+    expect(api.authUrlCalls).toHaveLength(1);
+  });
+
+  it('Fehler lesbar abbilden: abgebrochen → auth, Ports belegt → unavailable ohne Browser, Bridge weg/unlesbar → unavailable', async () => {
+    const api = new FakeApi();
+    const login = new FakeLogin();
+    const svc = desktopService(api, login);
+    const denied = svc.signIn();
+    await ticks();
+    login.callback({ ok: false, error: 'denied', detail: 'Anmeldung abgebrochen oder abgelehnt.' });
+    await expect(denied).rejects.toMatchObject({ code: 'auth', message: 'Anmeldung abgebrochen oder abgelehnt.' });
+
+    login.beginAnswer = { ok: false, error: 'ports', detail: 'Die Login-Ports 47823–47825 sind belegt — ein anderes Programm nutzt sie.' };
+    const opened = login.opened.length;
+    await expect(svc.signIn()).rejects.toMatchObject({ code: 'unavailable', message: expect.stringContaining('47823–47825') });
+    expect(login.opened).toHaveLength(opened);
+
+    // Kein Login-Modul im Hauptprozess: invoke lehnt ab.
+    login.beginAnswer = new Error("No handler registered for 'vel:auth:begin'");
+    await expect(svc.signIn()).rejects.toMatchObject({ code: 'unavailable' });
+    // Fremder Absender (Hauptprozess antwortet undefined) bzw. unbekannter Grund → unlesbar.
+    login.beginAnswer = { ok: true, redirectUrl: LOOPBACK };
+    login.openAnswer = { unerwartet: true };
+    await expect(svc.signIn()).rejects.toMatchObject({ code: 'unavailable' });
+    login.openAnswer = { ok: false, error: 'erfunden', detail: 'x' };
+    await expect(svc.signIn()).rejects.toMatchObject({ code: 'unavailable' });
+    expect(api.exchanges).toEqual([]);
+    expect(svc.identity).toBeNull();
+  });
+
+  it('Auth-URL nicht erzeugbar → Empfänger sofort zu (cancel); Tausch scheitert → auth, nicht angemeldet', async () => {
+    const api = new FakeApi();
+    const login = new FakeLogin();
+    const svc = desktopService(api, login);
+    api.discordAuthUrl = () => Promise.reject(new OnlineError('offline', 'Discord-Anmeldung: keine Verbindung'));
+    await expect(svc.signIn()).rejects.toMatchObject({ code: 'offline' });
+    expect(login.cancels).toBe(1);
+    expect(login.opened).toEqual([]);
+
+    const api2 = new FakeApi();
+    api2.exchangeAnswer = new OnlineError('auth', 'Anmeldung nicht abgeschlossen — bitte erneut anmelden (invalid flow state)');
+    const login2 = new FakeLogin();
+    const svc2 = desktopService(api2, login2);
+    const p = svc2.signIn();
+    await ticks();
+    login2.callback({ ok: true, code: 'verbraucht-1' });
+    await expect(p).rejects.toMatchObject({ code: 'auth' });
+    expect(svc2.identity).toBeNull();
+  });
+});
+
+describe('Sitzungs-Tresor am Desktop (supabaseApi.vaultStorage)', () => {
+  /** Tresor-Attrappe; `gate` hält das nächste Lesen fest (Rennen Lesen ⇄ Schreiben). */
+  class FakeVault implements DesktopSessionVault {
+    value: string | null = null;
+    reads = 0;
+    writes = 0;
+    gate: Promise<void> | null = null;
+    async read(): Promise<string | null> {
+      this.reads++;
+      const v = this.value;
+      if (this.gate) await this.gate;
+      return v;
+    }
+    async write(v: string): Promise<boolean> {
+      this.writes++;
+      this.value = v;
+      return true;
+    }
+    async remove(): Promise<boolean> {
+      this.value = null;
+      return true;
+    }
+  }
+  const KEY = sessionStorageKey('https://abc.supabase.co');
+
+  it('nur der Sitzungsschlüssel geht in den Tresor — PKCE-Verifier und Flow-Index bleiben in localStorage', async () => {
+    expect(KEY).toBe('sb-abc-auth-token');
+    const st = memStorage();
+    st.setItem(KEY, '{"refresh_token":"alt-klartext"}');
+    const vault = new FakeVault();
+    const s = vaultStorage(vault, KEY, st);
+    // Klartext-Altstand wird beim Einrichten entfernt.
+    expect(st.data.has(KEY)).toBe(false);
+    expect(await s.getItem(KEY)).toBeNull();
+    await s.setItem(KEY, '{"refresh_token":"geheim"}');
+    expect(vault.value).toBe('{"refresh_token":"geheim"}');
+    // Schlüssel aus supabase-js 2.119 (lib/helpers: pkceVerifierSlotKey, Flow-Index, fester Verifier-Schlüssel).
+    for (const k of [`${KEY}-code-verifier`, `${KEY}-flow-f1-code-verifier`, `${KEY}-flows-code-verifier`]) {
+      await s.setItem(k, '"verifier"');
+      expect(st.getItem(k)).toBe('"verifier"');
+      expect(await s.getItem(k)).toBe('"verifier"');
+      await s.removeItem(k);
+      expect(st.data.has(k)).toBe(false);
+    }
+    expect(vault.writes).toBe(1);
+    expect([...st.data.values()].join('|')).not.toContain('geheim');
+    expect(await s.getItem(KEY)).toBe('{"refresh_token":"geheim"}');
+    await s.removeItem(KEY);
+    expect(vault.value).toBeNull();
+    expect(await s.getItem(KEY)).toBeNull();
+  });
+
+  it('Datei einmal lesen; Schreiben während des Lesens gewinnt; Tresor kaputt → nur im Speicher, nie Klartext', async () => {
+    const vault = new FakeVault();
+    vault.value = '{"a":1}';
+    const st = memStorage();
+    const s = vaultStorage(vault, KEY, st);
+    expect(await s.getItem(KEY)).toBe('{"a":1}');
+    expect(await s.getItem(KEY)).toBe('{"a":1}');
+    expect(vault.reads).toBe(1);
+
+    const slow = new FakeVault();
+    slow.value = '{"alt":1}';
+    let open = (): void => {};
+    slow.gate = new Promise((r) => {
+      open = r;
+    });
+    const s2 = vaultStorage(slow, KEY, memStorage());
+    const reading = s2.getItem(KEY);
+    await s2.setItem(KEY, '{"neu":1}');
+    open();
+    expect(await reading).toBe('{"neu":1}');
+
+    const broken: DesktopSessionVault = {
+      read: () => Promise.reject(new Error('kein Login-Modul')),
+      write: () => Promise.reject(new Error('kein Login-Modul')),
+      remove: () => Promise.reject(new Error('kein Login-Modul')),
+    };
+    const st3 = memStorage();
+    const s3 = vaultStorage(broken, KEY, st3);
+    expect(await s3.getItem(KEY)).toBeNull();
+    await s3.setItem(KEY, '{"refresh_token":"geheim"}');
+    expect(await s3.getItem(KEY)).toBe('{"refresh_token":"geheim"}');
+    expect(st3.data.size).toBe(0);
+    await s3.removeItem(KEY);
+    expect(await s3.getItem(KEY)).toBeNull();
   });
 });

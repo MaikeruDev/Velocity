@@ -1,6 +1,6 @@
 import type { Vector3 } from 'three';
-import type { StorageLike } from './Settings';
-import { defaultStorage } from './Settings';
+import type { StorageLike } from './storage';
+import { defaultStorage } from './storage';
 
 /**
  * Ghost der Bestzeit (Plan 003, S7): Aufnahme, Kompression, Speicherung und

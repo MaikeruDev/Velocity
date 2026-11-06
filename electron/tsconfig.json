@@ -1,0 +1,21 @@
+{
+  // Electron-Hauptprozess + Preload. Node-/Electron-Typen NUR hier; das Root-tsconfig (Web) schließt electron/ aus.
+  // rootDir = Repo, damit der Preload die reinen Bridge-Typen aus src/platform/ importieren kann.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmitOnError": true,
+    "rootDir": "..",
+    "outDir": "../out",
+    "types": ["node"]
+  },
+  "include": ["./*.ts", "./*.cts", "../src/platform/bridgeTypes.ts"]
+}
