@@ -1429,15 +1429,18 @@
     #000;
 }
 
-/* ---- Rahmen: gleiche Bühne wie die Front Door. zoom = --k (16 → 24/32 px bleibt im 8-px-Raster). */
+/* ---- Rahmen: gleiche Bühne wie die Front Door, aber in den Maßen der klassischen Screens (kein zoom — sonst
+ * scrollte, was klassisch auf eine Seite passt). Kopf = EINE Zeile (Logo · Symbol + Titel · Konto) in der ersten
+ * Zeile des Screens; der Scrollbereich endet über der flachen Prompt-Leiste. */
 .vel-menu.vel-style--ps2:is([data-screen='training'], [data-screen='leaderboard'], [data-screen='cosmetics'], [data-screen='settings'], [data-screen='controls'], [data-screen='lab'], [data-screen='profile'], [data-screen='admin']) .vel-screen {
-  zoom: var(--k);
   width: min(1360px, calc(100% - 80px));
   max-width: 1360px;
-  /* Scrollbereich zwischen Kopfzeile (bis 60 px × k) und Fußlinie (64 px × k): nichts rutscht darunter */
-  height: calc(100% - 144px);
-  margin-top: 72px;
-  padding: 8px 4px 16px 0;
+  height: calc(100% - 52px);
+  max-height: none;
+  padding: 16px 4px 12px 0;
+  gap: 16px;
+  /* Kopf gehört nach oben (Bestenliste zentriert klassisch vertikal) */
+  justify-content: flex-start;
   animation: ps2-in 240ms steps(4, end);
   scrollbar-color: var(--ps2-line-hi) transparent;
 }
@@ -1447,24 +1450,25 @@
   content: var(--ps2-acc, '');
   position: absolute;
   z-index: 3;
-  top: calc(20px * var(--k));
-  left: max(calc(40px * var(--k)), calc(50% - 680px * var(--k)));
-  right: max(calc(40px * var(--k)), calc(50% - 680px * var(--k)));
-  height: calc(40px * var(--k));
+  top: 14px;
+  left: max(40px, calc(50% - 680px));
+  right: max(40px, calc(50% - 680px));
+  height: 48px;
   font-family: var(--font-head);
-  font-size: calc(16px * var(--k));
-  line-height: calc(40px * var(--k));
+  font-size: 16px;
+  line-height: 48px;
   letter-spacing: 2px;
   text-align: right;
   color: var(--ps2-text);
-  background: var(--ps2-logo, none) left center / var(--ps2-logo-w, 0) var(--ps2-logo-h, 0) no-repeat;
+  /* Logo ~96 px breit im Low-Res-Raster (index.ts exportLook), ganzzahlig hochskaliert */
+  background: var(--ps2-logo, none) left center / var(--ps2-logo-w, 96px) var(--ps2-logo-h, 32px) no-repeat;
   image-rendering: pixelated;
   pointer-events: none;
 }
 
 /* Fußlinie wie die Front Door (ersetzt die globalen Scanlines auf diesen Screens) */
 .vel-menu.vel-style--ps2:is([data-screen='training'], [data-screen='leaderboard'], [data-screen='cosmetics'], [data-screen='settings'], [data-screen='controls'], [data-screen='lab'], [data-screen='profile'], [data-screen='admin'])::after {
-  inset: auto max(calc(40px * var(--k)), calc(50% - 680px * var(--k))) calc(64px * var(--k));
+  inset: auto max(40px, calc(50% - 680px)) 48px;
   height: 1px;
   background: var(--ps2-line);
   mix-blend-mode: normal;
@@ -1472,16 +1476,16 @@
 
 /* Titel: Ansichtstitel der Front Door + 3D-Symbol statt Neon-Balken */
 .vel-menu.vel-style--ps2[data-screen] .vel-screen .vel-h1 {
-  font-size: 32px;
+  font-size: 24px;
   letter-spacing: 4px;
-  gap: 16px;
+  gap: 12px;
 }
 
 .vel-menu.vel-style--ps2:is([data-screen='training'], [data-screen='leaderboard'], [data-screen='cosmetics'], [data-screen='settings'], [data-screen='controls'], [data-screen='lab'], [data-screen='profile'], [data-screen='admin']) .vel-h1::before {
-  width: calc(20 * var(--ps2-px, 3px) / var(--k));
-  height: calc(20 * var(--ps2-px, 3px) / var(--k));
-  margin: -12px 0;
-  background: var(--ps2-icon, var(--cyan)) center / contain no-repeat;
+  width: 40px;
+  height: 40px;
+  margin: -4px 0;
+  background: var(--ps2-icon, var(--cyan)) center / 40px 40px no-repeat;
   box-shadow: none;
   image-rendering: pixelated;
 }
@@ -1495,8 +1499,14 @@
 
 .vel-menu.vel-style--ps2:is([data-screen='training'], [data-screen='leaderboard'], [data-screen='cosmetics'], [data-screen='settings'], [data-screen='controls'], [data-screen='lab'], [data-screen='profile'], [data-screen='admin']) .vel-head-row,
 .vel-menu.vel-style--ps2[data-screen='controls'] .vel-screen > .vel-h1 {
-  padding-bottom: 12px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 232px 4px 120px;
   border-bottom: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2[data-screen='controls'] .vel-screen > .vel-h1 {
+  padding-right: 0;
 }
 
 /* Zurück-Knopf (der mit der Esc-Kappe) wird zur Prompt-Leiste unten mittig: [ESC] ZURÜCK */
@@ -1504,7 +1514,7 @@
   position: fixed;
   z-index: 4;
   left: 50%;
-  bottom: 16px;
+  bottom: 8px;
   transform: translateX(-50%);
   flex-direction: row-reverse;
   gap: 8px;
@@ -1576,17 +1586,17 @@
 }
 
 .vel-menu.vel-style--ps2 .vel-lesson {
-  grid-template-columns: 60px 40px 1fr auto;
-  min-height: 64px;
-  padding: 2px 16px 2px 4px;
+  grid-template-columns: 44px 36px 1fr auto;
+  min-height: 52px;
+  padding: 0 14px 0 2px;
 }
 
 /* Pylon als Speicherstand-Symbol vor jeder Lektion */
 .vel-menu.vel-style--ps2 .vel-lesson::before {
   content: '';
-  width: 60px;
-  height: 60px;
-  background: var(--ps2-i-cone) center / calc(20 * var(--ps2-px, 3px) / var(--k)) no-repeat;
+  width: 44px;
+  height: 44px;
+  background: var(--ps2-i-cone) center / 40px 40px no-repeat;
   image-rendering: pixelated;
   opacity: 0.5;
 }
@@ -1597,8 +1607,8 @@
 }
 
 .vel-menu.vel-style--ps2 .vel-lesson-head {
-  padding-bottom: 8px;
-  margin-bottom: 8px;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
   border-bottom: 1px solid var(--ps2-line);
 }
 
@@ -1640,7 +1650,7 @@
   flex-direction: row;
   justify-content: center;
   gap: 16px;
-  min-height: 56px;
+  min-height: 48px;
   font-size: 16px;
   letter-spacing: 2px;
   animation: none;
@@ -1670,9 +1680,9 @@
 }
 
 .vel-menu.vel-style--ps2 .vel-board-tabs .vel-btn {
-  gap: 8px;
-  min-height: 48px;
-  padding: 2px 16px 2px 4px;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px 0 2px;
   color: var(--ps2-dim);
   background: var(--ps2-glass);
   border: 1px solid var(--ps2-line);
@@ -1680,9 +1690,9 @@
 
 .vel-menu.vel-style--ps2 .vel-board-tabs .vel-btn::before {
   content: '';
-  width: 44px;
-  height: 44px;
-  background: var(--ps2-disc-icon) center / calc(20 * var(--ps2-px, 3px) / var(--k) * 0.7) no-repeat;
+  width: 36px;
+  height: 36px;
+  background: var(--ps2-disc-icon) center / 40px 40px no-repeat;
   image-rendering: pixelated;
 }
 
@@ -1822,14 +1832,6 @@
   box-shadow: none;
 }
 
-/* Vorschau 150×176 Low-Res: bei zoom 1.5 wären 450 px = 4.5 Gerätepixel je Pixel (ungleich) und zu hoch.
- * 300 × 1.5 = 450 = genau 3×, bei zoom 2 = 4×. */
-@media (min-height: 900px) and (min-width: 1500px) {
-  .vel-menu.vel-style--ps2 .vel-hand-preview {
-    width: 300px;
-    height: 352px;
-  }
-}
 
 .vel-menu.vel-style--ps2 .vel-preview-tier {
   color: var(--cyan);
@@ -1840,7 +1842,9 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding-bottom: 10px;
+  /* Linie statt Luft: padding + margin zusammen nicht höher als der klassische Abstand (12 px) */
+  margin-bottom: 6px;
+  padding-bottom: 4px;
   border-bottom: 1px solid var(--ps2-line);
   color: #fff;
   letter-spacing: 3px;
@@ -1976,7 +1980,6 @@
 /* Steuerung: Tasten als Kappen in einer Liste mit Linien */
 .vel-menu.vel-style--ps2 .vel-keys dt,
 .vel-menu.vel-style--ps2 .vel-keys dd {
-  padding: 6px 0;
   border-bottom: 1px solid rgba(140, 170, 255, 0.12);
 }
 

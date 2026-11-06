@@ -194,9 +194,9 @@ class Ps2Door implements FrontDoor {
     }
     this.resizeObs?.disconnect();
     this.resizeObs = null;
+    this.exportLook();
     if (this.logoImg) this.logoImg.src = '';
     this.logoImg = null;
-    this.exportLook();
     this.scene?.dispose();
     this.scene = null;
     memory.view = this.view;
@@ -242,11 +242,26 @@ class Ps2Door implements FrontDoor {
         iconCache = out;
       }
       for (const [k, v] of iconCache) st.setProperty(k, v);
-      const logo = this.root?.querySelector<HTMLCanvasElement>('canvas.ps2-logo--small');
-      if (logo && logo.width > 0) {
-        st.setProperty('--ps2-logo', `url("${logo.toDataURL('image/png')}")`);
-        st.setProperty('--ps2-logo-w', logo.style.width);
-        st.setProperty('--ps2-logo-h', logo.style.height);
+      // Kopf-Logo der Bestands-Screens: ~96 CSS-px breit, aber im Low-Res-Raster (ganzzahlig hochskaliert)
+      const img = this.logoImg;
+      if (img && img.complete && img.naturalWidth > 0) {
+        const dpr = window.devicePixelRatio || 1;
+        // Fester Faktor 2 statt Szenen-Raster: bei 1080p (×4) blieben sonst nur 24 Pixel Breite — unlesbar
+        const LOGO_PX = 2;
+        const lw = Math.max(8, Math.round((96 * dpr) / LOGO_PX));
+        const lh = Math.round((lw * img.naturalHeight) / img.naturalWidth);
+        const cv = document.createElement('canvas');
+        cv.width = lw;
+        cv.height = lh;
+        const g = cv.getContext('2d');
+        if (g) {
+          g.imageSmoothingEnabled = true;
+          g.imageSmoothingQuality = 'high';
+          g.drawImage(img, 0, 0, lw, lh);
+          st.setProperty('--ps2-logo', `url("${cv.toDataURL('image/png')}")`);
+          st.setProperty('--ps2-logo-w', `${(lw * LOGO_PX) / dpr}px`);
+          st.setProperty('--ps2-logo-h', `${(lh * LOGO_PX) / dpr}px`);
+        }
       }
       const a = c.account;
       st.setProperty('--ps2-acc', JSON.stringify((a.name ?? (a.online ? 'Lokales Profil' : 'Offline')).toUpperCase()));

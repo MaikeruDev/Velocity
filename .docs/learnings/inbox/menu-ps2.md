@@ -50,3 +50,12 @@ Vorschau 150×176) neu bemaßen, damit Low-Res-Pixel × zoom ganzzahlig bleibt (
 
 Den vorhandenen Zurück-Knopf (`.vel-btn:has(> .vel-kbd)`) per `position: fixed` als Prompt-Leiste unten mittig zeigen —
 echter, klickbarer DOM-Knopf statt Pseudo-Element. `row-reverse` stellt die Esc-Kappe vor den Text.
+
+## Runde 3: `zoom` war der Scroll-Grund
+
+`zoom: 1.5` ab 900 px Höhe machte aus einer Seite, die klassisch passt, 140–400 px Scroll (1600x900 am schlimmsten — 900 px
+mal 1/1.5 = 600 px nutzbar). Ohne zoom, mit einzeiligem Kopf (Logo · Symbol + Titel · Konto in der ersten Zeile, 44 px) und
+flacher Prompt-Leiste ist der Rahmen nicht höher als der klassische (40 + 40 px Polster). Messen statt schätzen:
+`scrollHeight − clientHeight` des `.vel-screen` je Screen × Größe gegen `?menu=classic`. Fallen: die Front Door merkt sich
+die Ansicht (nach System → Einstellungen steht sie beim Zurückkommen im System-Menü), und `.vel-leaderboard-screen` hat
+`justify-content: safe center` — ohne `flex-start` rutscht der Kopf von der Kopfzeile weg.
