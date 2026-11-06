@@ -19,6 +19,7 @@
     "levels:build": "tsx tools/levels/build.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "2.119.0",
     "three": "^0.186.1"
   },
   "devDependencies": {

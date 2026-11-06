@@ -137,10 +137,11 @@ export interface FinishResult {
 /**
  * Stand der Online-Einreichung eines Laufs (Plan 009) für den Ergebnis-Screen. pending = läuft noch,
  * accepted = verifiziert und gerankt, rejected = Verifier lehnt ab (text = Grund), skipped = nicht
- * eingereicht (Tuning, Debug-Teleport …), offline/error = kein Backend erreichbar.
+ * eingereicht (Tuning, Debug-Teleport …), offline/error = kein Backend erreichbar, login = Backend braucht eine
+ * Anmeldung (Supabase: Discord) — das Ergebnis zeigt "Mit Discord anmelden", der Lauf wird danach eingereicht.
  */
 export interface OnlineStatus {
-  readonly state: 'pending' | 'accepted' | 'rejected' | 'skipped' | 'offline' | 'error';
+  readonly state: 'pending' | 'accepted' | 'rejected' | 'skipped' | 'offline' | 'error' | 'login';
   /** Kurzer Text für die Statuszeile. */
   readonly text: string;
   readonly rank?: number | null;

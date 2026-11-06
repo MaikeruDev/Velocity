@@ -2122,3 +2122,55 @@ Level-Hash geht über die kompilierten Ebenen-Bits, damit eine Abweichung als 'l
 Lauf. Allokation: die Ports boxen nur im JIT-Anlauf (Probe mit Bot, 10 s: +25 KiB/s), im Dauerbetrieb 0 (`--no-bot
 --warmup 40`). Zweite Falle: die Physik muss AUCH LIVE mit den quantisierten Eingaben laufen (Yaw-Raster), und der Yaw
 darf nicht gewickelt werden — `sin(x + 2πk)` ist nicht bitgleich zu `sin(x)`, und Coach/Showkeys brauchen den stetigen Blick.
+
+## 204. Supabase: neue public-Tabellen gehören anon/authenticated komplett — und Funktionen gehören PUBLIC
+
+`pg_default_acl` im frischen Projekt: postgres/supabase_admin geben auf jede neue Tabelle in `public` `arwdDxtm` an anon,
+authenticated, service_role und EXECUTE auf jede Funktion. RLS ohne Policy blockt zwar Zeilen, aber Spalten-/Funktions-
+rechte sind dann trotzdem offen (eine SECURITY-DEFINER-Funktion in public ist sofort eine öffentliche API). **Richtig:**
+je Tabelle `revoke all … from public, anon, authenticated`, dann spaltengenau `grant select (id, display_name, …)` bzw.
+`grant update (display_name)`; je Funktion `revoke all on function … from public, anon, authenticated` + gezieltes
+`grant execute`. Spalten-Grants machen `select=*` für anon zum Fehler (gewollt: is_banned/discord_name bleiben intern) —
+Client fragt Spalten explizit ab. Geprüft wird mit `set_config('role', 'anon', true)` in einer Transaktion mit Rollback.
+
+## 205. Supabase-MCP: `apply_migration` mit DELETE/DROP wartet auf Bestätigung — und verfällt nach 2 min
+
+Migrationen mit "destruktiven" Anweisungen (auch `delete` im Funktionsrumpf) brauchen eine Bestätigung im Client; ohne
+Antwort binnen 2 min: `status: expired`, nichts eingespielt. Und `apply_migration` vergibt seine eigene Version
+(Zeitstempel des Aufrufs) — lokale Dateinamen danach an `list_migrations` angleichen, sonst laufen Repo und Projekt
+auseinander. Kleine, nicht-destruktive Schritte zuerst; ein Ersatzdesign ohne DELETE (Zähler-Zeile statt Protokoll,
+`hidden` statt löschen) war ohnehin besser.
+
+## 206. Edge Function über MCP: Dateien gehen als Text — ein 680-KB-Bundle passt nicht durch
+
+`deploy_edge_function` nimmt den Inhalt jeder Datei als String im Aufruf; das Verifier-Bundle (610 KB Level-JSON) ist so
+nicht übertragbar, und ohne Access-Token gibt es keine CLI. **Lösung:** kleines `index.ts` per MCP, das Bundle
+inhaltsadressiert in einen privaten Bucket (`function-assets/submit-run/verifier-<sha256>.js`), beim Kaltstart laden,
+SHA-256 gegen den in index.ts gepinnten Wert prüfen, dann `import('data:text/javascript;base64,…')` (geht in der Edge
+Runtime; Fallback `new Function` über das abschließende `export{…}`). Kosten: +200 ms Kaltstart. Ein Test vergleicht
+frisches Bundle ↔ eingechecktes Bundle ↔ gepinnten SHA, damit der Server nie mit altem Physik-/Level-Stand prüft. Das
+Bundle per `.gitattributes -text` vor CRLF-Umwandlung schützen (sonst ändert der Checkout den Hash).
+
+## 207. esbuild + three: `import { Vector3 } from 'three'` zieht 250 KB in ein Server-Bundle
+
+Das three-Hauptmodul hat Seiteneffekte (Renderer-Registrierung, `__THREE__`), Tree-Shaking lässt deshalb ~250 KB stehen.
+Für den Verifier ein esbuild-Plugin, das `three` auf `three/src/math/{Vector3,Box3}.js` umbiegt (912 → 681 KB). Braucht
+die Prüfkette später eine weitere Klasse, scheitert der Build laut am fehlenden Export — nicht still.
+
+## 208. Discord-OAuth verlässt die Seite — den Lauf vorher sichern, und Ergebnis-Klicks sind 450 ms gesperrt
+
+`signInWithOAuth` macht `location.assign` → Replay im Speicher ist weg. Vor dem Redirect in sessionStorage (überlebt den
+Redirect im selben Tab), nach der Rückkehr genau einmal entnehmen (`takePendingRun` liest UND löscht). Die Sitzung kann vor
+der Levelliste und sogar vor dem Abo auf `onIdentityChange` da sein — deshalb zusätzlich nach `auth()` im Boot nachsehen.
+PKCE: supabase-js tauscht `?code=` selbst und räumt die URL; `redirect_to` muss in den Redirect-URLs des Projekts stehen.
+Playwright: den Redirect mit `route.fulfill({status: 204})` abfangen (Navigation bricht ab, Spiel bleibt), und im Ergebnis
+`FINISH_INPUT_GUARD_MS` (450 ms) abwarten — davor schluckt das Menü Klicks still. Für die Angemeldet-Ansicht eine Sitzung
+in `localStorage['sb-<ref>-auth-token']` unterschieben (Server lehnt das Token ab, die UI zeigt trotzdem Avatar/Name).
+
+## 209. `raw_user_meta_data` ist Nutzer-Eingabe — auch in einem Trigger, der "nur" Profile füllt
+
+Jeder angemeldete Nutzer kann `auth.updateUser({ data })` aufrufen; ein Trigger, der bei jedem Update Name/Avatar aus den
+Metadaten kopiert, übernimmt dann beliebige Namen und fremde Bild-URLs in die öffentliche Bestenliste. Name nur beim
+Anlegen (bereinigt), danach nur über die eigene, geprüfte Spalte; Avatar nur von `cdn.discordapp.com`; "ist ein
+Discord-Konto?" aus `raw_app_meta_data` (setzt nur der Auth-Server). E-Mail-Signups (falls der Anbieter an ist) bekommen
+kein Profil → können nicht einreichen.

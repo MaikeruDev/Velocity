@@ -341,12 +341,33 @@ export function canDeflate(): boolean {
   return typeof CompressionStream === 'function' && typeof DecompressionStream === 'function';
 }
 
-async function pipe(bytes: Uint8Array, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> {
+async function pipe(bytes: Uint8Array, stream: CompressionStream | DecompressionStream, maxOut = Infinity): Promise<Uint8Array> {
   // Eigene Kopie mit reinem ArrayBuffer (BlobPart verlangt keinen SharedArrayBuffer).
   const copy = new Uint8Array(bytes.length);
   copy.set(bytes);
-  const out = await new Response(new Blob([copy.buffer]).stream().pipeThrough(stream)).arrayBuffer();
-  return new Uint8Array(out);
+  const piped = new Blob([copy.buffer]).stream().pipeThrough(stream);
+  if (maxOut === Infinity) return new Uint8Array(await new Response(piped).arrayBuffer());
+  // Mit Obergrenze stückweise lesen: eine Deflate-Bombe (256 KB → 256 MB) bricht ab, bevor sie den Speicher füllt.
+  const reader = piped.getReader();
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > maxOut) {
+      await reader.cancel();
+      throw new ReplayFormatError(`Replay entpackt größer als ${maxOut} Bytes`);
+    }
+    parts.push(value);
+  }
+  const out = new Uint8Array(size);
+  let o = 0;
+  for (const p of parts) {
+    out.set(p, o);
+    o += p.length;
+  }
+  return out;
 }
 
 /** Replay → Bytes (Container). compress: deflate-raw, wenn verfügbar und kleiner. */
@@ -371,8 +392,11 @@ export async function packReplay(rep: Replay, opts: { readonly compress?: boolea
   return out;
 }
 
-/** Bytes → Replay. Wirft ReplayFormatError bei kaputten/fremden Daten. */
-export async function unpackReplay(bytes: Uint8Array): Promise<Replay> {
+/**
+ * Bytes → Replay. Wirft ReplayFormatError bei kaputten/fremden Daten. maxBodyBytes: Obergrenze für den
+ * entpackten Rumpf (Server: fremde Uploads; Default unbegrenzt).
+ */
+export async function unpackReplay(bytes: Uint8Array, opts: { readonly maxBodyBytes?: number } = {}): Promise<Replay> {
   if (bytes.length < 5 || bytes[0] !== MAGIC0 || bytes[1] !== MAGIC1 || bytes[2] !== MAGIC2) throw new ReplayFormatError('Kein VELOCITY-Replay');
   if (bytes[3] !== REPLAY_FORMAT_VERSION) throw new ReplayFormatError(`Replay-Format ${bytes[3]} unbekannt`);
   const flags = bytes[4];
@@ -380,8 +404,9 @@ export async function unpackReplay(bytes: Uint8Array): Promise<Replay> {
   if (flags & FLAG_DEFLATE) {
     if (!canDeflate()) throw new ReplayFormatError('Dekompression nicht verfügbar');
     try {
-      body = await pipe(body, new DecompressionStream('deflate-raw'));
-    } catch {
+      body = await pipe(body, new DecompressionStream('deflate-raw'), opts.maxBodyBytes);
+    } catch (err) {
+      if (err instanceof ReplayFormatError) throw err;
       throw new ReplayFormatError('Dekompression fehlgeschlagen');
     }
   }

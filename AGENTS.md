@@ -19,9 +19,10 @@ Grafik, Content, Story sind zweitrangig. Wenn eine Entscheidung zwischen
 
 Bewusst **nicht** in dieser Version: Walljump, Wallrun, Double-Jump, Waffen,
 Stamina-/Landestrafe (würde Bhop töten), Multiplayer; seit Plan 007 außerdem Trail, Musik-Packs,
-Jump-Pads/Boosts/Ringe. **Online (Plan 009, vorbereitet):** jeder Lauf wird als Replay aufgenommen, lokal (Mock) bzw.
-später serverseitig nachgespielt und gerankt; Bestenliste und "gegen Ghost fahren" im Menü — Backend (Firebase/Supabase)
-noch nicht eingebunden.
+Jump-Pads/Boosts/Ringe. **Online (Plan 009, Supabase umgesetzt 06.11.):** jeder Lauf wird als Replay aufgenommen, in der
+Supabase Edge Function `submit-run` mit DEMSELBEN Verifier nachgespielt und nur mit der nachgerechneten Zeit gerankt;
+Bestenliste und "gegen Ghost fahren" im Menü. **Login nur per Discord**; ohne Login voll spielbar (lokale Bestzeiten,
+Ghosts, Bestenliste lesen) — nur Einreichen braucht den Login. Mock (`?online=mock`) bleibt für Tests/Offline.
 
 **v2 (Plan 007, umgesetzt 29.09.):** Das Movement soll **Spaß machen, arcadig, smooth und befriedigend** sein,
 nicht 1:1 CS. Arcade-Pass: Lande-Gnade (8 Ticks), deterministische Hang-Landung (mit gestundetem Bergauf-
@@ -103,7 +104,12 @@ node tools/trailer/cut.mjs [clip …]     #   (Port 5600, TRAILER_PORT=…); cut
 npx tsx tools/levels/medalProbe.ts      # Spiel-Uhr-Median mehrerer Bot-Modelle je Level (Grundlage der Medaillen)
 npx tsx tools/replay/verify.ts <replay> | --bot <level> [--noise 1]   # Replay-Verifier (Plan 009) wie in der Cloud Function
 npx tsx tools/replay/online-check.ts    # Playwright (Port 5701, ONLINE_PORT=…): Lauf → Einreichen → Bestenliste → Ghost,
-                       #   Chromium ⇄ Node bitgleich, Offline-Fallback → shots/online/
+                       #   Chromium ⇄ Node bitgleich, Offline-Fallback → shots/online/ (immer ?online=mock)
+npx tsx tools/online/login-check.ts     # Playwright gegen das ECHTE Supabase (Port 5711, LOGIN_PORT=…): Login-Knopf, Bestenliste
+                       #   öffentlich, Ergebnis ohne Login, Redirect zu Discord + Replay-Sicherung → shots/login/
+node tools/online/build-function.mjs [--check]   # Verifier-Bundle der Edge Function (esbuild, 1 ESM-Datei mit Leveln)
+SUPABASE_SECRET_KEY=… node tools/online/upload-bundle.mjs   # Bundle → privater Bucket function-assets, SHA in index.ts
+                       #   pinnen; danach index.ts deployen (npx supabase functions deploy submit-run | MCP). Ablauf: Plan 009 §14
 npm run build
 ```
 
@@ -129,7 +135,10 @@ src/
   ui/                HUD (Bitmap-Font im Low-Res-Raster), View-Hand-Logik (ui/hand: Bewegung,
                      Posen, Tricks — DOM-/three-frei), Menüs (HTML), Tuning-Panel
   engine/replay/     Replays (Plan 009): Quantisierung, Binärformat, Recorder, RunSimulator, Verifier, Ghost aus Replay
-  online/            OnlineService (anbieter-unabhängig), LocalMockService, FirebaseService-Platzhalter
+  online/            OnlineService (anbieter-unabhängig), LocalMockService, SupabaseService (+ supabaseApi: supabase-js-
+                     Adapter, dynamisch geladen), submitVerifier (Server-Prüfung), pendingSubmit (Lauf über den Login retten)
+supabase/            migrations/*.sql (Schema, RLS, Funktionen, Buckets — so auch eingespielt), functions/submit-run/
+                     (index.ts Handler + verifier.bundle.js, generiert)
 public/levels/       Level-JSON (generiert aus tools/levels/)
 tools/               Sim, Level-Build/-Check, Playwright-Harnesses
 tests/               Vitest
@@ -175,6 +184,7 @@ Die Module sprechen nur über diese Typen miteinander:
 | Trainingsmodus (Session, Urteile, Fortschritt) | `src/engine/trainingTypes.ts` |
 | Einstellungen | `src/engine/settingsTypes.ts` |
 | Replay-Format, Online-Dienst | `src/engine/replay/format.ts`, `src/online/types.ts` |
+| Online-Datenbank (Tabellen, RPCs), Edge-Function-Antwort | `supabase/migrations/*.sql`, `src/online/supabaseTypes.ts`, `src/online/supabaseApi.ts` (`SubmitResponse`) |
 | Audio-API | `src/audio/types.ts` |
 | Renderer-API | `src/render/types.ts` |
 
@@ -509,6 +519,26 @@ Online/Replays (Plan 009, 01.10.) — alle Nutzer nachgezogen, tsc 0, Vitest gr�
   F1-Tuning, Debug-Teleport/-Geschwindigkeit; Bot/Override → `assisted`.
 - **Debug-Handle**: `online()`, `leaderboard(levelId)`, `showLeaderboard(levelId)`, `raceGhost(levelId, runId, label?)`,
   `verifyReplay(b64)`.
+
+Online mit Supabase + Discord-Login (Plan 009 §13, 06.11.) — tsc 0, Vitest grün, Edge Function deployt:
+- **`online/types`**: `OnlineBackend` = `'mock' | 'supabase' | 'off'` ('firebase' verworfen, FirebaseService gelöscht).
+  `PlayerIdentity.provider` `'discord' | 'local'`, neu `avatarUrl`. `OnlineService` neu: `loginRequired`, `auth()` →
+  `PlayerIdentity | null` (stellt nur wieder her, NIE ein Redirect), `signIn()` (Supabase: OAuth-Redirect, verlässt die
+  Seite), `signOut()`, `onIdentityChange(cb)`; `submitRun` wirft `OnlineError('auth')` ohne Login. `SubmitResult.improved`,
+  `LeaderboardEntry.avatarUrl`, `OnlineErrorCode` + `'rate' | 'banned'`.
+- **`online/index`**: `onlineBackend(query, env?)` — `?online=` schlägt `VITE_ONLINE`, sonst supabase wenn
+  `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`, sonst mock. `createOnlineService` ist **async** (SDK-Chunk dynamisch).
+- **Tafel** = (level_id, level_hash, physics_version): Level-Retuning/Physik-Patch ergibt eine neue, leere Bestenliste.
+  Server-Zeit = round(time·1000) ms.
+- **UI** (`ui/types`): `OnlineStatus.state` + `'login'`. `MenuOnline` + `loginRequired`, `myAvatar()`, `signIn()`,
+  `signOut()`; `Menu.refreshOnline()`. Konto-Zeile (Titel/System, Einstellungen/Online), Login-Knopf in Ergebnis und
+  Bestenliste, Avatare (16 px, pixelig) in der Bestenliste.
+- **Engine**: `Game.login()` sichert einen nicht eingereichten Lauf in sessionStorage (`online/pendingSubmit`) und
+  meldet an; nach der Rückkehr reicht `resumeLoginRun` ihn genau einmal ein (Meldung als Toast).
+- **Codec**: `unpackReplay(bytes, { maxBodyBytes })` — Deckel gegen Deflate-Bomben (Server).
+- **Server**: `src/online/submitVerifier.ts` (`SubmissionVerifier`: Größe, Entpacken, `assisted` → abgelehnt, Level aus dem
+  Bundle, `verifyReplay`). Nach JEDER Änderung an Physik/Leveln/Replay/Verifier: Bundle bauen, hochladen, index.ts
+  deployen — `tests/submitFunction.test.ts` schlägt sonst fehl (Bundle veraltet / SHA nicht gepinnt).
 
 ### 3.5 Musik folgt dem Movement
 Der Techno-Track (132 BPM) ist aus Oszillatoren und Rauschen gebaut. Er bekommt

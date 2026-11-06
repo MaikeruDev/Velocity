@@ -16,7 +16,7 @@ import { TuningPanel } from './ui/TuningPanel';
  *   ?level=<id>   startet das Level direkt (Dev; ohne Geste erst Pause → "Weiter")
  *   &lockless     dabei ohne Pointer Lock spielen (Playwright)
  *   ?debug        FPS-Anzeige + Event-Log ab Start
- *   ?online=off|mock|firebase   Online-Schicht (Plan 009) statt VITE_ONLINE (Default mock)
+ *   ?online=off|mock|supabase   Online-Schicht (Plan 009) statt VITE_ONLINE (Default: supabase, wenn VITE_SUPABASE_URL gesetzt, sonst mock)
  */
 
 const TOAST_MS = 6000;
@@ -95,9 +95,9 @@ async function main(): Promise<void> {
   const q = new URLSearchParams(location.search);
   // Online-Schicht (Plan 009). Die Prüfung braucht kompilierte Level — aus dem Cache des Spiels (spät gebunden).
   let gameRef: Game | null = null;
-  const online = createOnlineService(onlineBackend(q.get('online')), {
+  const online = await createOnlineService(onlineBackend(q.get('online')), {
     loadLevel: (id) => (gameRef ? gameRef.levelById(id) : Promise.reject(new Error('Spiel startet noch'))),
-  });
+  }).catch(() => null); // SDK-Chunk nicht ladbar (offline) → Spiel startet offline
 
   const game = new Game({
     canvas,

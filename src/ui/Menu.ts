@@ -97,11 +97,19 @@ export interface MenuTraining extends TrainingProgressView {
  * offline: Bestenliste und Statuszeilen sagen das, statt zu laden.
  */
 export interface MenuOnline {
-  /** 'mock' (lokal) oder 'firebase' — nur Anzeige. */
+  /** 'mock' (lokal) oder 'supabase' — nur Anzeige. */
   readonly backend: string;
-  /** Eigene Spieler-ID/Anzeigename (null = noch nicht angemeldet). */
+  /** true: Einreichen braucht den Discord-Login — Menü zeigt "Mit Discord anmelden" bzw. Avatar + Abmelden. */
+  readonly loginRequired: boolean;
+  /** Eigene Spieler-ID/Anzeigename/Avatar (null = nicht angemeldet). */
   myUid(): string | null;
   myName(): string | null;
+  myAvatar(): string | null;
+  /** Ich bin Entwickler (profiles.role = 'dev') → Namens-Effekt + DEV-Abzeichen. */
+  myDev(): boolean;
+  /** Discord-Login (verlässt die Seite; Game sichert vorher einen nicht eingereichten Lauf). */
+  signIn(): void;
+  signOut(): void;
   /** Top 10 und der Ausschnitt um mich herum. Wirft bei Netzfehlern. */
   board(levelId: string): Promise<{ readonly top: LeaderboardPage; readonly around: LeaderboardPage }>;
 }
@@ -279,7 +287,69 @@ export class Menu {
   setOnlineStatus(st: OnlineStatus): void {
     if (this.finishResult) this.finishResult = { ...this.finishResult, online: st };
     const el = this.el.querySelector<HTMLElement>('.vel-online-status');
-    if (el && this.current === 'finish') el.replaceWith(onlineLine(st));
+    if (el && this.current === 'finish') el.replaceWith(this.onlineLine(st));
+  }
+
+  /** Anmeldestand geändert (Login/Logout/Name): offene Screens mit Konto-Anzeige neu bauen. */
+  refreshOnline(): void {
+    switch (this.current) {
+      case 'title':
+        this.showTitle();
+        break;
+      case 'settings':
+        // Nicht neu bauen, solange ein Textfeld Fokus hat (Tippen nicht unterbrechen) — nur die Konto-Zeile.
+        this.el.querySelector('.vel-online-panel .vel-account')?.replaceWith(this.accountBlock() ?? h('div', 'vel-account'));
+        this.el.querySelector('.vel-online-panel .vel-online-name-hint')?.replaceWith(this.nameHint());
+        break;
+      case 'leaderboard':
+        this.showLeaderboard();
+        break;
+      case 'finish': {
+        const st = this.finishResult?.online;
+        const el = this.el.querySelector<HTMLElement>('.vel-online-status');
+        if (st && el) el.replaceWith(this.onlineLine(st));
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  // ------------------------------------------------------------------ Discord-Konto (Plan 009, Supabase)
+
+  /** Konto-Zeile (nur Backends mit Login): angemeldet Avatar + Name + Abmelden, sonst "Mit Discord anmelden". */
+  private accountBlock(): HTMLElement | null {
+    const on = this.online;
+    if (!on || !on.loginRequired) return null;
+    const name = on.myName();
+    if (on.myUid() === null || name === null) return h('div', 'vel-account', this.discordButton());
+    const out = this.btn('Abmelden', 'vel-btn--small vel-account-out', () => on.signOut());
+    return h('div', 'vel-account vel-account--in', pixelAvatar(on.myAvatar(), name, 32), playerName(name, on.myDev(), 'vel-account-name'), out);
+  }
+
+  /** Discord-Blurple-Knopf (ohne Logo, Text reicht). Kein data-lock: der Login verlässt die Seite, kein Pointer Lock. */
+  private discordButton(label = 'Mit Discord anmelden'): HTMLButtonElement {
+    const b = this.btn(label, 'vel-discord-btn', () => this.online?.signIn());
+    b.title = 'Anmeldung über Discord — du kommst danach hierher zurück';
+    return b;
+  }
+
+  private nameHint(): HTMLElement {
+    const on = this.online;
+    if (!on || !on.loginRequired) return h('div', 'vel-setting-hint vel-online-name-hint', 'Steht in der Bestenliste. 2–16 Zeichen; leer = automatischer Name.');
+    const me = on.myName();
+    return me !== null && on.myUid() !== null
+      ? h('div', 'vel-setting-hint vel-online-name-hint', 'Steht in der Bestenliste — jetzt: ', h('b', 'vel-mono', me), '. 2–16 Zeichen; leer = Namen behalten.')
+      : h('div', 'vel-setting-hint vel-online-name-hint', 'Spielen und lokale Bestzeiten gehen ohne Konto. Zum Einreichen mit Discord anmelden.');
+  }
+
+  /** Statuszeile der Online-Einreichung im Ergebnis (Plan 009); ohne Login mit Anmelde-Knopf. */
+  private onlineLine(st: OnlineStatus): HTMLElement {
+    const el = h('div', `vel-online-status vel-online-status--${st.state}`, h('span', 'vel-online-label', 'Online'), h('span', 'vel-online-text', st.text));
+    if (st.state === 'login' && this.online?.loginRequired) el.append(this.discordButton());
+    el.dataset.state = st.state;
+    el.setAttribute('role', 'status');
+    return el;
   }
 
   /** Beschriftung der Vorführungs-Taste (KeyBinds.demo) für Pause und Liste. */
@@ -811,6 +881,7 @@ export class Menu {
       'div',
       'vel-panel vel-side',
       h('h2', 'vel-h2', 'System'),
+      this.accountBlock(),
       trainingBtn,
       this.btn('Bestenliste', 'vel-board-btn', () => this.showLeaderboard(this.selectedLevelId ?? undefined)),
       this.btn('Einstellungen', '', () => this.showSettings()),
@@ -1166,7 +1237,7 @@ export class Menu {
       h('p', 'vel-finish-time', formatTime(r.time)),
       r.isBest ? h('div', 'vel-record', 'NEUE BESTZEIT!') : null,
       // Online-Status im Kopf (neben dem Freischalt-Banner ist dort Platz) — eine eigene Zeile schob die Knöpfe bei 720p aus dem Bild.
-      r.online ? onlineLine(r.online) : null,
+      r.online ? this.onlineLine(r.online) : null,
     ];
     // Ziel-Foto (Handy, Plan 007 I3): Polaroid rechts neben der Zeit, sonst wie bisher.
     const headBlock = r.photo ? h('div', 'vel-finish-head', h('div', 'vel-finish-head-main', ...head), polaroid(r, r.photo)) : h('div', 'vel-finish-headcol', ...head);
@@ -1848,14 +1919,17 @@ export class Menu {
       'div',
       'vel-panel vel-online-panel',
       h('h2', 'vel-h2', 'Online'),
+      this.online?.loginRequired ? (this.accountBlock() ?? h('div', 'vel-account')) : null,
       this.textField('Spielername', (v) => v.playerName, (v) => ({ playerName: v })),
-      h('div', 'vel-setting-hint', 'Steht in der Bestenliste. 2–16 Zeichen; leer = automatischer Name.'),
+      this.nameHint(),
       h(
         'div',
         'vel-setting-hint vel-online-backend',
-        this.online
-          ? `Bestenliste: ${this.online.backend === 'mock' ? 'lokal (Mock, nur dieser Browser)' : this.online.backend}. Jeder Lauf ins Ziel wird geprüft und eingereicht.`
-          : 'Offline — Läufe werden nicht eingereicht.',
+        !this.online
+          ? 'Offline — Läufe werden nicht eingereicht.'
+          : this.online.backend === 'mock'
+            ? 'Bestenliste: lokal (Mock, nur dieser Browser). Jeder Lauf ins Ziel wird geprüft und eingereicht.'
+            : 'Bestenliste: online. Jeder Lauf ins Ziel wird auf dem Server nachgespielt — gewertet wird nur die nachgerechnete Zeit.',
       ),
     );
 
@@ -2022,10 +2096,21 @@ export class Menu {
       b.addEventListener('click', () => this.showLeaderboard(lv.id));
       tabs.append(b);
     }
-    const me = this.online?.myName() ?? null;
-    const who = this.online
-      ? h('p', 'vel-hint vel-board-who', 'Du: ', h('b', 'vel-mono', me ?? '—'), ` · ${this.online.backend === 'mock' ? 'lokale Bestenliste (Mock)' : this.online.backend}`)
-      : h('p', 'vel-hint vel-board-who', 'Offline — keine Bestenliste.');
+    const on = this.online;
+    const me = on?.myName() ?? null;
+    const signedIn = on !== null && on.myUid() !== null && me !== null;
+    let who: HTMLElement;
+    if (!on) who = h('p', 'vel-hint vel-board-who', 'Offline — keine Bestenliste.');
+    else if (on.loginRequired && !signedIn) who = h('div', 'vel-hint vel-board-who vel-board-who--out', h('span', '', 'Nicht angemeldet — lesen und Ghosts gehen ohne Konto.'), this.discordButton());
+    else
+      who = h(
+        'p',
+        'vel-hint vel-board-who',
+        on.loginRequired ? pixelAvatar(on.myAvatar(), me ?? '?', 16) : null,
+        'Du: ',
+        playerName(me ?? '—', on.myDev(), 'vel-mono', 'b'),
+        ` · ${on.backend === 'mock' ? 'lokale Bestenliste (Mock)' : 'Online-Bestenliste'}`,
+      );
     const top = h('div', 'vel-panel vel-board-panel', h('h2', 'vel-h2', 'Top 10'), h('div', 'vel-board-top', h('p', 'vel-hint', this.online ? 'Lade …' : 'Offline.')));
     const around = h('div', 'vel-panel vel-board-panel', h('h2', 'vel-h2', 'Um dich herum'), h('div', 'vel-board-around', h('p', 'vel-hint', this.online ? 'Lade …' : '—')));
     const wr = this.btn('Gegen Weltrekord', 'vel-btn--primary vel-board-wr', () => undefined);
@@ -2088,7 +2173,9 @@ export class Menu {
     aroundEl?.replaceChildren(
       around.me
         ? table(around.entries)
-        : h('p', 'vel-hint', 'Noch kein Lauf von dir. Fahr das Level bis ins Ziel — der Lauf wird geprüft und automatisch eingereicht.'),
+        : this.online?.loginRequired && this.online.myUid() === null
+          ? h('p', 'vel-hint', 'Melde dich mit Discord an, um mitzufahren — jeder Lauf ins Ziel wird dann geprüft und eingereicht.')
+          : h('p', 'vel-hint', 'Noch kein Lauf von dir. Fahr das Level bis ins Ziel — der Lauf wird geprüft und automatisch eingereicht.'),
     );
     const wrEntry = top.entries[0];
     const wr = this.el.querySelector<HTMLButtonElement>('.vel-board-wr');
@@ -2118,7 +2205,8 @@ export class Menu {
       h(
         'td',
         'vel-board-name',
-        h('span', 'vel-board-nm', e.name),
+        e.avatarUrl !== null || this.online?.loginRequired ? pixelAvatar(e.avatarUrl, e.name, 16) : null,
+        playerName(e.name, e.dev, 'vel-board-nm'),
         e.bot ? h('small', 'vel-board-tag', 'BOT') : null,
         mine ? h('small', 'vel-board-tag vel-board-tag--me', 'DU') : null,
       ),
@@ -2286,12 +2374,43 @@ function polaroid(r: FinishResult, photo: HTMLCanvasElement): HTMLElement {
   );
 }
 
-/** Statuszeile der Online-Einreichung im Ergebnis (Plan 009). */
-function onlineLine(st: OnlineStatus): HTMLElement {
-  const el = h('div', `vel-online-status vel-online-status--${st.state}`, h('span', 'vel-online-label', 'Online'), h('span', 'vel-online-text', st.text));
-  el.dataset.state = st.state;
-  el.setAttribute('role', 'status');
-  return el;
+/**
+ * Spielername; Entwickler (profiles.role = 'dev', nur per SQL vergeben) bekommen den Neon-Effekt in harten
+ * Stufen wie die VELOCITY-Medaille plus ein DEV-Abzeichen. Name als data-text für die Glitch-Ebenen.
+ */
+function playerName(name: string, dev: boolean, cls: string, tag: 'span' | 'b' = 'span'): HTMLElement {
+  if (!dev) return h(tag, cls, name);
+  const n = h('span', 'vel-name-dev-text', name);
+  n.dataset.text = name;
+  const badge = h('small', 'vel-dev-badge', 'DEV');
+  badge.title = 'Entwickler von VELOCITY';
+  return h(tag, `${cls} vel-name-dev`, n, badge);
+}
+
+/**
+ * Avatar im Pixel-Look: Discord liefert ihn in 16 px (size=16), angezeigt 1× oder ganzzahlig 2× vergrößert mit
+ * Nearest-Neighbor — Blockpixel wie die Welt. Ohne/kaputte URL: Initiale im Kästchen.
+ */
+function pixelAvatar(url: string | null, name: string, px: 16 | 32): HTMLElement {
+  const initial = (): HTMLElement => h('span', `vel-avatar vel-avatar--${px} vel-avatar--none`, px === 32 ? name.slice(0, 1).toUpperCase() : '');
+  if (!url) return initial();
+  let src: string;
+  try {
+    const u = new URL(url);
+    u.searchParams.set('size', '16'); // immer 16 px holen — 1× in Tabellen, 2× in der Konto-Zeile
+    src = u.toString();
+  } catch {
+    return initial();
+  }
+  const img = h('img', `vel-avatar vel-avatar--${px}`);
+  img.alt = '';
+  img.decoding = 'async';
+  img.loading = 'lazy';
+  img.referrerPolicy = 'no-referrer';
+  img.draggable = false;
+  img.addEventListener('error', () => img.replaceWith(initial()), { once: true });
+  img.src = src;
+  return img;
 }
 
 /** Index der empfohlenen Lektion: die erste ohne Stern (−1 = alle bestanden oder keine). */

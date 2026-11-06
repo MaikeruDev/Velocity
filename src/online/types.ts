@@ -1,18 +1,23 @@
 /**
  * Online-Schicht (Plan 009), anbieter-unabhängig: das Spiel spricht nur mit `OnlineService`.
  * Implementierungen: LocalMockService (localStorage, verifiziert lokal mit dem echten Verifier) und
- * später FirebaseService (Auth, Firestore, Storage, Cloud Function) bzw. eine Supabase-Variante.
+ * SupabaseService (Discord-Login über Supabase Auth, Postgres-Bestenliste, Storage-Ghosts, Edge Function
+ * `submit-run` mit demselben Verifier). Firebase (Plan 009 §7) wurde verworfen.
  * Kein SDK hier — Typen und Fehler sind reine Daten, damit Menü und Game ohne Backend testbar bleiben.
  */
 
-export type OnlineBackend = 'mock' | 'firebase' | 'off';
+export type OnlineBackend = 'mock' | 'supabase' | 'off';
 
 export interface PlayerIdentity {
-  /** Stabile Spieler-ID (Firebase: auth.uid). */
+  /** Stabile Spieler-ID (Supabase: auth.users.id). */
   readonly uid: string;
-  /** Anzeigename (Einstellung "Spielername"); leer = "SPIELER-xxxx". */
+  /** Anzeigename (Supabase: profiles.display_name, vorbelegt mit dem Discord-Namen; Mock: Einstellung "Spielername"). */
   readonly name: string;
-  readonly provider: 'anonymous' | 'google' | 'local';
+  readonly provider: 'discord' | 'local';
+  /** Avatar-URL (Discord-CDN) oder null. */
+  readonly avatarUrl: string | null;
+  /** Entwickler des Spiels (profiles.role = 'dev'): eigener Namens-Effekt + DEV-Abzeichen im Menü. */
+  readonly dev: boolean;
 }
 
 export type SubmitStatus = 'accepted' | 'rejected';
@@ -27,8 +32,10 @@ export interface SubmitResult {
   readonly rank: number | null;
   /** Spieler in der Bestenliste des Levels. */
   readonly total: number;
-  /** Neue persönliche Online-Bestzeit. */
+  /** Neue persönliche Online-Bestzeit (auch der erste Lauf). */
   readonly personalBest: boolean;
+  /** Bestehende Online-Bestzeit verbessert (personalBest und es gab schon eine). */
+  readonly improved: boolean;
   /** Ablehnungsgrund (VerifyReason des Verifiers, z. B. 'config', 'desync') + Klartext. */
   readonly reason: string | null;
   readonly detail: string | null;
@@ -45,6 +52,10 @@ export interface LeaderboardEntry {
   readonly date: string;
   /** Bot/Eingabe-Override bei der Aufnahme (Mock: Rivalen und Debug-Bots). */
   readonly bot: boolean;
+  /** Avatar (Discord-CDN) oder null. */
+  readonly avatarUrl: string | null;
+  /** Entwickler (profiles.role = 'dev'). */
+  readonly dev: boolean;
 }
 
 /** Ausschnitt: die besten `limit` oder `radius` Plätze um einen Spieler (Default: mich). */
@@ -67,7 +78,7 @@ export interface PlayerProfile {
   readonly bests: readonly { readonly levelId: string; readonly time: number; readonly rank: number; readonly runId: string }[];
 }
 
-export type OnlineErrorCode = 'offline' | 'timeout' | 'auth' | 'notFound' | 'server' | 'invalid' | 'unavailable';
+export type OnlineErrorCode = 'offline' | 'timeout' | 'auth' | 'notFound' | 'server' | 'invalid' | 'unavailable' | 'rate' | 'banned';
 
 export class OnlineError extends Error {
   readonly code: OnlineErrorCode;
@@ -79,13 +90,28 @@ export class OnlineError extends Error {
 
 export interface OnlineService {
   readonly backend: OnlineBackend;
-  /** Angemeldeter Spieler (null vor auth()). */
+  /** Angemeldeter Spieler (null = nicht angemeldet bzw. vor auth()). */
   readonly identity: PlayerIdentity | null;
-  /** Anmelden (Firebase: anonym, später mit Google verknüpfbar). Idempotent. */
-  auth(name?: string): Promise<PlayerIdentity>;
-  /** Anzeigenamen ändern (Einstellung "Spielername"). */
+  /**
+   * true: Einreichen braucht eine interaktive Anmeldung (signIn — Supabase: Discord). Lesen (Bestenliste,
+   * Ghosts) geht immer ohne. false: auth() meldet still an (Mock).
+   */
+  readonly loginRequired: boolean;
+  /**
+   * Sitzung herstellen, OHNE die Seite zu verlassen. Mock: legt still einen lokalen Spieler an (name = Wunschname).
+   * Supabase: stellt eine vorhandene Discord-Sitzung wieder her (auch direkt nach dem OAuth-Redirect), name wird
+   * ignoriert. null = nicht angemeldet. Idempotent.
+   */
+  auth(name?: string): Promise<PlayerIdentity | null>;
+  /** Interaktiv anmelden. Supabase: OAuth-Redirect zu Discord — VERLÄSST DIE SEITE. Mock: wie auth(). */
+  signIn(): Promise<void>;
+  /** Abmelden (Supabase: Sitzung beenden; lokale Bestzeiten/Ghosts bleiben). Mock: nichts. */
+  signOut(): Promise<void>;
+  /** Anmeldestand geändert (Login, Logout, Namenswechsel). Rückgabe: Abo beenden. */
+  onIdentityChange(cb: (id: PlayerIdentity | null) => void): () => void;
+  /** Anzeigenamen ändern (Einstellung "Spielername"). Wirft 'auth' ohne Anmeldung. */
   setName(name: string): Promise<PlayerIdentity>;
-  /** Replay (packReplay-Bytes) einreichen; der Server verifiziert und rankt. */
+  /** Replay (packReplay-Bytes) einreichen; der Server verifiziert und rankt. Wirft OnlineError('auth') ohne Anmeldung. */
   submitRun(replay: Uint8Array): Promise<SubmitResult>;
   getLeaderboard(levelId: string, range: LeaderboardRange): Promise<LeaderboardPage>;
   /** Replay eines Eintrags (für den Ghost: replayToGhost). */

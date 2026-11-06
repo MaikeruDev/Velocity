@@ -112,12 +112,18 @@ describe('LocalMockService', () => {
 });
 
 describe('Online-Auswahl und Namen', () => {
-  it('Backend: Query schlägt Env, Default mock; off = null; firebase = Platzhalter ohne SDK', async () => {
-    expect(onlineBackend('off')).toBe('off');
-    expect(onlineBackend(null)).toBe('mock');
-    expect(createOnlineService('off', { loadLevel })).toBeNull();
-    const fb = createOnlineService('firebase', { loadLevel });
-    await expect(fb?.auth()).rejects.toMatchObject({ code: 'unavailable' });
+  it('Backend: Query schlägt Env; ohne beides supabase, wenn URL+Key gesetzt, sonst mock; off = null', async () => {
+    const sb = { VITE_SUPABASE_URL: 'https://x.supabase.co', VITE_SUPABASE_ANON_KEY: 'k' };
+    expect(onlineBackend('off', sb)).toBe('off');
+    expect(onlineBackend(null, {})).toBe('mock');
+    expect(onlineBackend(null, sb)).toBe('supabase');
+    expect(onlineBackend('mock', sb)).toBe('mock');
+    expect(onlineBackend(null, { ...sb, VITE_ONLINE: 'mock' })).toBe('mock');
+    expect(onlineBackend('firebase', {})).toBe('mock'); // verworfen → Default
+    expect(await createOnlineService('off', { loadLevel })).toBeNull();
+    expect(await createOnlineService('supabase', { loadLevel, env: {} })).toBeNull(); // ohne Konfig offline statt Absturz
+    const mock = await createOnlineService('mock', { loadLevel, latencyMs: 0 });
+    expect(mock?.loginRequired).toBe(false);
   });
 
   it('sanitizeName', () => {

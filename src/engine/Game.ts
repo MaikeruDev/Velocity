@@ -53,6 +53,7 @@ import { nextMedal } from '../ui/medals';
 import type { OnlineStatus } from '../ui/types';
 import type { OnlineService, SubmitResult } from '../online/types';
 import { OnlineError } from '../online/types';
+import { defaultSessionStorage, savePendingRun, takePendingRun } from '../online/pendingSubmit';
 import type { MenuOnline } from '../ui/Menu';
 import { packReplay, unpackReplay } from './replay/codec';
 import type { Replay } from './replay/format';
@@ -403,6 +404,8 @@ export class Game {
   private lastReplay: Replay | null = null;
   private lastReplayBytes: Uint8Array | null = null;
   private lastOnline: OnlineStatus | null = null;
+  /** Ziel ohne Discord-Login (Supabase): dieser Lauf wartet aufs Einreichen — vor dem Login-Redirect gesichert. */
+  private loginRun: { readonly bytes: Uint8Array; readonly levelId: string; readonly time: number; readonly token: number } | null = null;
   private raceGhost: RaceGhost | null = null;
   private raceToken = 0;
   private readonly ghostStore = new GhostStore();
@@ -792,8 +795,15 @@ export class Game {
     // Freischaltungen aus den Bestzeiten nachtragen (verlorener Unlock-Stand kostet nichts).
     this.unlocks.sync(this.levels, (id) => this.best.get(id), this.progress);
     this.menu.setLevels(this.levels);
-    // Online anmelden (anonym, im Hintergrund) — ohne Verbindung läuft alles offline weiter.
-    void this.online?.auth(this.settings.get().playerName).catch(() => undefined);
+    // Online-Sitzung herstellen (Mock: still lokal; Supabase: Discord-Sitzung wiederherstellen, nie ein Redirect) —
+    // ohne Verbindung läuft alles offline weiter. Zurück vom Discord-Login: gesicherten Lauf jetzt einreichen.
+    const on = this.online;
+    if (on) {
+      void on
+        .auth(this.settings.get().playerName)
+        .then((id) => (id ? this.resumeLoginRun(on) : undefined))
+        .catch(() => undefined);
+    }
     const first = this.levels[0];
     if (first && this.gameState === 'title') void this.prepareBackdrop(first.id);
     await this.loadLessons();
@@ -1857,17 +1867,21 @@ export class Game {
     if (!on) st = { state: 'offline', text: 'Offline — Lauf nicht eingereicht.' };
     else if (!rep) st = { state: 'skipped', text: 'Keine Aufnahme dieses Laufs.' };
     else if (invalid !== null) st = { state: 'skipped', text: `Nicht eingereicht: ${invalid}.` };
+    else if (on.loginRequired && !on.identity) st = { state: 'login', text: 'Melde dich mit Discord an, um deine Zeit einzureichen.' };
     else st = { state: 'pending', text: 'Wird geprüft und eingereicht …' };
     this.lastOnline = st;
-    if (rep) void this.sendRun(rep, token, st.state === 'pending' ? on : null);
+    this.loginRun = null;
+    if (rep) void this.sendRun(rep, token, st.state === 'pending' ? on : null, st.state === 'login' ? time : null);
     return st;
   }
 
-  private async sendRun(rep: Replay, token: number, on: OnlineService | null): Promise<void> {
+  private async sendRun(rep: Replay, token: number, on: OnlineService | null, loginTime: number | null = null): Promise<void> {
     let st: OnlineStatus | null = null;
     try {
       const bytes = await packReplay(rep);
       if (token === this.submitToken) this.lastReplayBytes = bytes;
+      // Ohne Login: Bytes für "Mit Discord anmelden" bereithalten (Game.login sichert sie vor dem Redirect).
+      if (loginTime !== null && token === this.submitToken) this.loginRun = { bytes, levelId: rep.header.levelId, time: loginTime, token };
       if (!on) return;
       const res = await on.submitRun(bytes);
       st = res.status === 'accepted'
@@ -1892,8 +1906,15 @@ export class Game {
     }
     const provider: MenuOnline = {
       backend: on.backend,
+      loginRequired: on.loginRequired,
       myUid: () => on.identity?.uid ?? null,
       myName: () => on.identity?.name ?? null,
+      myAvatar: () => on.identity?.avatarUrl ?? null,
+      myDev: () => on.identity?.dev === true,
+      signIn: () => void this.login(),
+      signOut: () => {
+        void on.signOut().catch((err: unknown) => this.notify(`Abmelden fehlgeschlagen: ${errorText(err)}`));
+      },
       board: async (levelId) => {
         if (!on.identity) await on.auth(this.settings.get().playerName);
         const [top, around] = await Promise.all([on.getLeaderboard(levelId, { kind: 'top', limit: 10 }), on.getLeaderboard(levelId, { kind: 'around', radius: 3 })]);
@@ -1901,9 +1922,68 @@ export class Game {
       },
     };
     this.menu.setOnline(provider);
-    this.settings.subscribe((s, prev) => {
-      if (s.playerName !== prev.playerName) void on.setName(s.playerName).catch(() => undefined);
+    on.onIdentityChange((id) => {
+      this.menu.refreshOnline();
+      if (id) void this.resumeLoginRun(on);
     });
+    this.settings.subscribe((s, prev) => {
+      if (s.playerName === prev.playerName) return;
+      // Supabase: nur angemeldet (Profilname); ungültig → Hinweis statt still verwerfen.
+      if (on.loginRequired && !on.identity) return;
+      void on.setName(s.playerName).catch((err: unknown) => {
+        if (err instanceof OnlineError && err.code === 'invalid') this.notify(err.message);
+      });
+    });
+  }
+
+  /**
+   * "Mit Discord anmelden" (Titel, Einstellungen, Ergebnis, Bestenliste): einen noch nicht eingereichten Lauf
+   * vor dem Redirect in sessionStorage sichern (OAuth verlässt die Seite), dann anmelden.
+   */
+  async login(): Promise<void> {
+    const on = this.online;
+    if (!on) return;
+    const run = this.loginRun;
+    if (run) savePendingRun(defaultSessionStorage(), { bytes: run.bytes, levelId: run.levelId, time: run.time });
+    if (document.pointerLockElement) document.exitPointerLock();
+    try {
+      await on.signIn();
+    } catch (err) {
+      this.notify(`Anmeldung fehlgeschlagen: ${errorText(err)}`);
+    }
+  }
+
+  /** Nach dem Login (Redirect zurück oder Sitzung wiederhergestellt): wartenden Lauf genau einmal einreichen. */
+  private async resumeLoginRun(on: OnlineService): Promise<void> {
+    const mem = this.loginRun;
+    this.loginRun = null;
+    const saved = takePendingRun(defaultSessionStorage());
+    const run = mem ?? saved;
+    if (!run) return;
+    const token = mem ? mem.token : -1;
+    const show = (st: OnlineStatus): void => {
+      // Name erst hier: nach dem Redirect kann die Sitzung vor der Levelliste da sein.
+      const levelName = this.levels.find((l) => l.id === run.levelId)?.name ?? run.levelId;
+      this.lastOnline = st;
+      if (token === this.submitToken && this.finishResult) {
+        this.finishResult = { ...this.finishResult, online: st };
+        this.menu.setOnlineStatus(st);
+      } else if (st.state !== 'pending') {
+        this.notify(`${levelName}: ${st.text}`);
+      }
+    };
+    show({ state: 'pending', text: 'Wird geprüft und eingereicht …' });
+    try {
+      const res = await on.submitRun(run.bytes);
+      show(
+        res.status === 'accepted'
+          ? { state: 'accepted', text: acceptedText(res), rank: res.rank, total: res.total, personalBest: res.personalBest }
+          : { state: 'rejected', text: `Abgelehnt: ${rejectText(res)}` },
+      );
+    } catch (err) {
+      const offline = err instanceof OnlineError && (err.code === 'offline' || err.code === 'timeout' || err.code === 'unavailable');
+      show({ state: offline ? 'offline' : 'error', text: `Nicht eingereicht — ${errorText(err)}` });
+    }
   }
 
   /**

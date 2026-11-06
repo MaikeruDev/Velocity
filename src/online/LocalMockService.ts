@@ -108,6 +108,9 @@ function parseDb(raw: unknown): MockDb {
 
 export class LocalMockService implements OnlineService {
   readonly backend = 'mock' as const;
+  /** Der Mock meldet still an — kein Login-Knopf, Einreichen geht immer. */
+  readonly loginRequired = false;
+  private readonly identityListeners = new Set<(id: PlayerIdentity | null) => void>();
   private readonly storage: StorageLike | null;
   private readonly opts: MockOptions;
   private readonly random: () => number;
@@ -125,22 +128,39 @@ export class LocalMockService implements OnlineService {
   get identity(): PlayerIdentity | null {
     const me = this.db.me;
     const u = me ? this.db.users[me] : undefined;
-    return u ? { uid: u.uid, name: displayName(u.name, u.uid), provider: 'local' } : null;
+    return u ? { uid: u.uid, name: displayName(u.name, u.uid), provider: 'local', avatarUrl: null, dev: false } : null;
+  }
+
+  onIdentityChange(cb: (id: PlayerIdentity | null) => void): () => void {
+    this.identityListeners.add(cb);
+    return () => this.identityListeners.delete(cb);
+  }
+
+  async signIn(): Promise<void> {
+    await this.auth();
+  }
+
+  async signOut(): Promise<void> {
+    // Lokaler Spieler bleibt — der Mock kennt kein Abmelden.
   }
 
   async auth(name?: string): Promise<PlayerIdentity> {
     await this.net();
+    let changed = false;
     if (this.db.me === null || !this.db.users[this.db.me]) {
       const uid = `local-${this.hex(8)}`;
       this.db.users[uid] = { uid, name: sanitizeName(name ?? ''), runs: 0 };
       this.db.me = uid;
       this.write();
-    } else if (name !== undefined) {
+      changed = true;
+    } else if (name !== undefined && sanitizeName(name) !== this.db.users[this.db.me].name) {
       this.db.users[this.db.me].name = sanitizeName(name);
       this.write();
+      changed = true;
     }
     const id = this.identity;
     if (!id) throw new OnlineError('auth', 'Anmeldung fehlgeschlagen');
+    if (changed) for (const cb of this.identityListeners) cb(id);
     return id;
   }
 
@@ -172,13 +192,14 @@ export class LocalMockService implements OnlineService {
     const prev = this.db.runs[key];
     const runId = `run-${this.hex(10)}`;
     const personalBest = !prev || res.time < prev.time;
+    const improved = personalBest && prev !== undefined;
     if (personalBest) {
       this.db.runs[key] = { runId, uid: me.uid, levelId, time: res.time, date: new Date().toISOString(), bot: rep.header.assisted, replay: bytesToBase64(bytes) };
     }
     this.write();
     const board = this.board(levelId);
     const mine = board.find((e) => e.uid === me.uid) ?? null;
-    return { status: 'accepted', runId, time: res.time, rank: mine ? mine.rank : null, total: board.length, personalBest, reason: null, detail: null };
+    return { status: 'accepted', runId, time: res.time, rank: mine ? mine.rank : null, total: board.length, personalBest, improved, reason: null, detail: null };
   }
 
   async getLeaderboard(levelId: string, range: LeaderboardRange): Promise<LeaderboardPage> {
@@ -278,7 +299,7 @@ export class LocalMockService implements OnlineService {
     runs.sort((a, b) => a.time - b.time || a.date.localeCompare(b.date) || a.uid.localeCompare(b.uid));
     return runs.map((r, i) => {
       const u = this.db.users[r.uid];
-      return { rank: i + 1, runId: r.runId, uid: r.uid, name: displayName(u ? u.name : '', r.uid), time: r.time, date: r.date, bot: r.bot };
+      return { rank: i + 1, runId: r.runId, uid: r.uid, name: displayName(u ? u.name : '', r.uid), time: r.time, date: r.date, bot: r.bot, avatarUrl: null, dev: false };
     });
   }
 
@@ -315,7 +336,7 @@ export class LocalMockService implements OnlineService {
 }
 
 function reject(reason: string, detail: string | null): SubmitResult {
-  return { status: 'rejected', runId: null, time: null, rank: null, total: 0, personalBest: false, reason, detail };
+  return { status: 'rejected', runId: null, time: null, rank: null, total: 0, personalBest: false, improved: false, reason, detail };
 }
 
 function pause(): Promise<void> {
