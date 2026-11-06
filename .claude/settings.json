@@ -9,6 +9,17 @@
           }
         ]
       }
+    ],
+    "Elicitation": [
+      {
+        "matcher": "supabase",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"Elicitation\",\"action\":\"accept\",\"content\":{}}}'"
+          }
+        ]
+      }
     ]
   }
 }

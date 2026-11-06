@@ -1,5 +1,5 @@
-import type { BindAction, GameSettings, GloveId, HeldItemId, KeyBinds } from './settingsTypes';
-import { DEFAULT_SETTINGS, GLOVE_IDS, HELD_ITEM_IDS, MAX_BINDS_PER_ACTION } from './settingsTypes';
+import type { BindAction, GameSettings, GloveId, HeldItemId, KeyBinds, MenuStyleId } from './settingsTypes';
+import { DEFAULT_SETTINGS, GLOVE_IDS, HELD_ITEM_IDS, MAX_BINDS_PER_ACTION, MENU_STYLE_IDS } from './settingsTypes';
 import { isBindableCode } from './InputState';
 import type { RenderSettings } from '../render/types';
 import { MOVEMENT_PRESETS, withMovement } from '../player/MovementConfig';
@@ -304,6 +304,8 @@ export function sanitizeSettings(raw: unknown, base: GameSettings): GameSettings
     fullscreenOnStart: bool(o.fullscreenOnStart, base.fullscreenOnStart),
     // Fehlt in Ständen vor Plan 009 → '' (automatischer Name).
     playerName: typeof o.playerName === 'string' ? sanitizeName(o.playerName) : base.playerName,
+    // Fehlt in Ständen vor Plan 010 → Default ('ps2'); unbekannter Stil (z. B. entfernt) ebenso → base.
+    menuStyle: oneOf<MenuStyleId>(o.menuStyle, MENU_STYLE_IDS, base.menuStyle),
     keybinds: sanitizeKeybinds(o.keybinds, base.keybinds),
     render: {
       pixelHeight,

@@ -4,6 +4,9 @@ import { SupabaseService } from './SupabaseService';
 import type { OnlineBackend, OnlineService } from './types';
 
 export * from './types';
+// Profil-/Admin-Typen liegen in eigenen Dateien (nicht in types.ts: Bundle-Graph der Edge Function, fallen.md).
+export type * from './adminTypes';
+export type * from './profileTypes';
 export { LocalMockService } from './LocalMockService';
 export { SupabaseService } from './SupabaseService';
 
@@ -31,6 +34,10 @@ export function onlineBackend(query?: string | null, env: OnlineEnv = viteEnv())
 
 export interface OnlineDeps {
   readonly loadLevel: (levelId: string) => Promise<CompiledLevel>;
+  /** Spielbare Level (für die aktuellen Tafeln im Profil). */
+  readonly levelIds?: () => readonly string[];
+  /** Mock: lokaler Spieler ist Entwickler (Moderations-Werkzeuge ohne Server, `?mockdev`). */
+  readonly mockDev?: boolean;
   /** Mock: simulierte Latenz (ms) und Ausfallrate. */
   readonly latencyMs?: number;
   readonly failRate?: number;
@@ -51,9 +58,9 @@ export async function createOnlineService(backend: OnlineBackend, deps: OnlineDe
       const key = env.VITE_SUPABASE_ANON_KEY;
       if (!url || !key) return null;
       const { createSupabaseApi } = await import('./supabaseApi');
-      return new SupabaseService({ api: createSupabaseApi(url, key), loadLevel: deps.loadLevel });
+      return new SupabaseService({ api: createSupabaseApi(url, key), loadLevel: deps.loadLevel, levelIds: deps.levelIds });
     }
     case 'mock':
-      return new LocalMockService({ loadLevel: deps.loadLevel, latencyMs: deps.latencyMs, failRate: deps.failRate });
+      return new LocalMockService({ loadLevel: deps.loadLevel, latencyMs: deps.latencyMs, failRate: deps.failRate, dev: deps.mockDev });
   }
 }

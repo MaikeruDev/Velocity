@@ -2151,3 +2151,100 @@
     animation: none;
   }
 }
+
+/* ------------------------------------------------------------------ Menü-Labor (Plan 010) */
+
+/* Front Door: vollflächiger Container, Stile zeichnen darin frei (eigenes CSS unter .vel-style--<id>). */
+.vel-frontdoor {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.vel-frontdoor-loading {
+  position: absolute;
+  left: 48px;
+  bottom: 40px;
+  color: var(--dim);
+}
+
+.vel-side-tools {
+  margin-top: 4px;
+}
+
+.vel-side .vel-side-tools .vel-btn {
+  flex: 1 1 0;
+  width: auto;
+}
+
+.vel-side .vel-lab-btn {
+  color: var(--dim);
+  background: transparent;
+  border-color: rgba(155, 147, 196, 0.25);
+  box-shadow: none;
+}
+
+.vel-side .vel-side-tools .vel-admin-btn {
+  margin-top: 0;
+}
+
+.vel-lab-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.vel-lab-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vel-lab-card.is-active {
+  border-left-color: var(--magenta);
+  background: var(--panel-2);
+}
+
+.vel-lab-desc {
+  flex: 1;
+  margin: 0;
+  color: var(--dim);
+}
+
+.vel-lab-go {
+  align-self: flex-start;
+}
+
+/* Platzhalter-Front-Door (stubDoor.ts) — verschwindet mit den echten Stilen. */
+.vel-stub {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 40px;
+}
+
+.vel-stub-pulse {
+  width: 64px;
+  height: 8px;
+  background: var(--cyan);
+}
+
+.vel-stub-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 480px;
+}
+
+.vel-stub-level.is-selected {
+  border-color: var(--cyan);
+}
+
+.vel-stub-actions {
+  justify-content: center;
+  max-width: 960px;
+}

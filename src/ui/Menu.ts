@@ -5,7 +5,7 @@ import '@fontsource/silkscreen/700.css';
 import './menu.css';
 
 import type { BestTimes, SettingsPatch, SettingsStore } from '../engine/Settings';
-import type { BindAction, GameSettings, GloveId, HeldItemId } from '../engine/settingsTypes';
+import type { BindAction, GameSettings, GloveId, HeldItemId, MenuStyleId } from '../engine/settingsTypes';
 import type { UnlockId, UnlockStore } from '../engine/Unlocks';
 import { UNLOCKS, deriveUnlocks, gloveUnlock, itemUnlock, requirementMet, unlockDef } from '../engine/Unlocks';
 import type { GameEvent } from '../engine/events';
@@ -28,6 +28,12 @@ import type { FinishResult, LessonResult, MenuEvents, MenuScreen, OnlineStatus, 
 import type { LeaderboardEntry, LeaderboardPage } from '../online/types';
 import { NAME_MAX, sanitizeName } from '../online/types';
 import type { LevelMedals } from '../world/level/LevelFormat';
+import { GAME_VERSION, PHYSICS_VERSION } from '../engine/replay/format';
+import type { FrontDoor, FrontDoorContext, FrontDoorLesson, FrontDoorStyleId } from './menuLab/types';
+import { loadFrontDoor, MENU_STYLES } from './menuLab/registry';
+import { BeatClock } from './menuLab/beatClock';
+import type { MenuAudio } from './menuLab/beatClock';
+import { FRONT_DOOR_ASSETS } from './menuLab/assets';
 
 /**
  * HTML-Overlays: Titel, Pause, Einstellungen, Steuerung, Ergebnis — und das Training (Plan 007):
@@ -62,6 +68,35 @@ export interface LockStatus {
 }
 
 const LOCK_IDLE: LockStatus = { pending: false, error: null };
+
+/** Gemountete Front Door (Menü-Labor, Plan 010) — ersetzt den klassischen Titel-Screen. */
+interface MountedDoor {
+  readonly id: FrontDoorStyleId;
+  readonly inst: FrontDoor;
+  readonly root: HTMLElement;
+}
+
+/** Die stabilen Funktionen eines FrontDoorContext (einmal gebaut, in jeden Schnappschuss kopiert). */
+type FrontDoorCalls = Pick<
+  FrontDoorContext,
+  | 'beat'
+  | 'select'
+  | 'play'
+  | 'playSelected'
+  | 'openTraining'
+  | 'openCosmetics'
+  | 'openLeaderboard'
+  | 'openSettings'
+  | 'openControls'
+  | 'openProfile'
+  | 'openAdmin'
+  | 'openLab'
+  | 'signIn'
+  | 'signOut'
+  | 'fullscreen'
+  | 'startMusic'
+  | 'markLockButton'
+>;
 
 /** Nach einer Maustasten-Belegung Kontextmenü und Zurück/Vor-Navigation noch kurz schlucken. */
 const CAPTURE_SUPPRESS_MS = 800;
@@ -196,6 +231,16 @@ export class Menu {
   private boardLevel: string | null = null;
   private boardReturn: 'title' | 'finish' = 'title';
   private boardSeq = 0;
+  /** Menü-Labor (Plan 010): ?menu=<id> gilt nur für die Sitzung und schlägt die Einstellung. */
+  private styleOverride: MenuStyleId | null = null;
+  private door: MountedDoor | null = null;
+  /** Zählt Ladeversuche — ein veralteter Import darf nicht mehr mounten. */
+  private doorSeq = 0;
+  /** Stile, die in dieser Sitzung schon einmal gemountet waren (FrontDoorContext.entry). */
+  private readonly doorsSeen = new Set<FrontDoorStyleId>();
+  private doorCalls: FrontDoorCalls | null = null;
+  private readonly beatClock = new BeatClock();
+  private labReturn: 'title' | 'admin' = 'title';
 
   constructor(root: HTMLElement, settings: SettingsStore, best: BestTimes, unlocks: UnlockStore) {
     this.settings = settings;
@@ -204,6 +249,7 @@ export class Menu {
     unlocks.subscribe(() => {
       if (this.current === 'cosmetics') this.showCosmetics();
       else if (this.current === 'admin') this.adminRefresh?.();
+      else if (this.current === 'title') this.updateDoor();
     });
     this.el = h('div', 'vel-menu');
     this.el.hidden = true;
@@ -217,9 +263,11 @@ export class Menu {
     window.addEventListener('contextmenu', this.onSuppressMouse, true);
     root.appendChild(this.el);
     // Änderungen von außen (Tuning-Panel, Reset) sofort in offenen Reglern zeigen.
-    this.unsubscribe = settings.subscribe((s) => {
+    this.unsubscribe = settings.subscribe((s, prev) => {
       for (const r of this.refreshers) r(s);
+      if (s.menuStyle !== prev.menuStyle) this.styleChanged();
     });
+    this.applyStyleClass();
   }
 
   get visible(): boolean {
@@ -315,6 +363,269 @@ export class Menu {
     }
   }
 
+  // ------------------------------------------------------------------ Menü-Labor (Plan 010)
+
+  /** Wirksamer Hauptmenü-Stil: ?menu=<id> (Sitzung) vor der Einstellung. */
+  get menuStyle(): MenuStyleId {
+    return this.styleOverride ?? this.settings.get().menuStyle;
+  }
+
+  /** main.ts: ?menu=<id> — gilt nur für diese Sitzung, wird nicht gespeichert. null = Einstellung. */
+  setStyleOverride(id: MenuStyleId | null): void {
+    if (id === this.styleOverride) return;
+    this.styleOverride = id;
+    this.styleChanged();
+  }
+
+  /** Audio-Engine für FrontDoorContext.beat()/startMusic() (main.ts). Ohne: Ersatz-Uhr, startMusic tut nichts. */
+  setAudio(a: MenuAudio | null): void {
+    this.beatClock.audio = a;
+  }
+
+  /** Menü-Labor: die fünf Stile als Karten, "Ansehen" speichert den Stil und zeigt den Titel. */
+  showLab(): void {
+    if (this.current === 'title' || this.current === 'admin') this.labReturn = this.current;
+    this.render('lab', this.buildLab());
+  }
+
+  /** Profil — Platzhalter, bis der Profil-Strang den Screen baut. */
+  showProfile(): void {
+    this.render('profile', this.buildProfile());
+  }
+
+  private leaveLab(): void {
+    if (this.labReturn === 'admin') this.showAdmin();
+    else this.showTitle();
+  }
+
+  /** Stil gewechselt (Einstellung/Override): Klasse am Root, offener Titel baut neu, offenes Labor markiert neu. */
+  private styleChanged(): void {
+    this.applyStyleClass();
+    if (this.current === 'title') this.showTitle();
+    else if (this.current === 'lab') this.render('lab', this.buildLab());
+  }
+
+  /** `vel-style--<id>` am Menü-Root, auf ALLEN Screens — Stile färben darüber auch die Bestands-Screens um. */
+  private applyStyleClass(): void {
+    const id = this.menuStyle;
+    for (const s of MENU_STYLES) this.el.classList.toggle(`vel-style--${s.id}`, s.id === id);
+    this.el.dataset.menuStyle = id;
+  }
+
+  /** Front Door laden (lazy) und in einen vollflächigen Container mounten; Fehler → klassischer Titel. */
+  private renderDoor(id: FrontDoorStyleId): void {
+    const root = h('div', `vel-frontdoor vel-frontdoor--${id}`, h('div', 'vel-frontdoor-loading', 'Lädt …'));
+    root.dataset.style = id;
+    this.render('title', root);
+    const seq = ++this.doorSeq;
+    loadFrontDoor(id).then(
+      (factory) => {
+        if (seq !== this.doorSeq || this.current !== 'title' || !root.isConnected) return;
+        root.replaceChildren();
+        const inst = factory();
+        this.door = { id, inst, root };
+        try {
+          inst.mount(root, this.doorCtx(id));
+        } catch (err) {
+          console.error(`Menü-Stil "${id}" konnte nicht starten`, err);
+          this.unmountDoor();
+          this.render('title', this.buildTitle());
+          return;
+        }
+        this.doorsSeen.add(id);
+        // Für Werkzeuge (tools/menu/shot.ts): Front Door steht.
+        this.el.dataset.door = 'ready';
+        this.applyLockStatus();
+      },
+      (err: unknown) => {
+        console.error(`Menü-Stil "${id}" konnte nicht geladen werden`, err);
+        if (seq === this.doorSeq && this.current === 'title' && root.isConnected) this.render('title', this.buildTitle());
+      },
+    );
+  }
+
+  /** Neue Daten an die gemountete Front Door (nur auf dem Titel). */
+  private updateDoor(): void {
+    const d = this.door;
+    if (d === null || this.current !== 'title') return;
+    d.inst.update(this.doorCtx(d.id));
+    this.applyLockStatus();
+  }
+
+  private unmountDoor(): void {
+    const d = this.door;
+    if (d === null) return;
+    this.door = null;
+    this.doorSeq++;
+    delete this.el.dataset.door;
+    try {
+      d.inst.unmount();
+    } catch (err) {
+      console.error(`Menü-Stil "${d.id}" hat beim Abbau geworfen`, err);
+    }
+    d.root.replaceChildren();
+  }
+
+  /** Schnappschuss aller Titel-Daten für eine Front Door. Menü-Code, kein Frame-Pfad. */
+  private doorCtx(style: FrontDoorStyleId): FrontDoorContext {
+    const t = this.training;
+    const lessons = t ? t.lessons() : [];
+    const passed = t ? lessons.filter((l) => t.stars(l.id) > 0).length : 0;
+    const rec = t ? recommendedIndex(t) : -1;
+    const recEntry = t && rec >= 0 ? lessons[rec] : undefined;
+    const lesson = (lv: TrainingIndexEntry): FrontDoorLesson => ({
+      id: lv.id,
+      short: lv.short,
+      name: lessonName(lv),
+      subtitle: lv.subtitle ?? null,
+      stars: t ? t.stars(lv.id) : 0,
+    });
+    const eff = this.effectiveCosmetics(this.settings.get());
+    const g = gloveUnlock(eff.glove);
+    const it = itemUnlock(eff.item);
+    let latest: string | null = null;
+    let latestDate = '';
+    for (const id of this.unlocks.list()) {
+      const d = this.unlocks.date(id) ?? '';
+      if (latest === null || d > latestDate) {
+        latest = unlockDef(id).name;
+        latestDate = d;
+      }
+    }
+    const on = this.online;
+    const st = this.lockStatus;
+    return {
+      style,
+      entry: this.doorsSeen.has(style) ? 'return' : 'boot',
+      levels: this.levels.map((lv, i) => {
+        const best = this.best.get(lv.id);
+        return {
+          id: lv.id,
+          index: i,
+          num: String(i + 1).padStart(2, '0'),
+          name: listName(lv.name),
+          subtitle: lv.subtitle ?? null,
+          medals: lv.medals ?? null,
+          bestTime: best,
+          bestText: best !== null ? formatTime(best) : '--:--.--',
+          medal: medalFor(best, lv.medals),
+          nextMedal: lv.medals ? nextMedal(best, lv.medals) : null,
+          locked: false,
+          recommended: this.prepText(lv),
+        };
+      }),
+      selected: Math.min(this.selected, Math.max(0, this.levels.length - 1)),
+      loading: this.levels.length === 0,
+      training: {
+        available: lessons.length > 0,
+        playable: t?.playable ?? false,
+        passed,
+        total: lessons.length,
+        countText: t ? trainingCount(t) : '',
+        recommended: recEntry ? lesson(recEntry) : null,
+        newbie: this.isNewbie(),
+      },
+      cosmetics: {
+        unlocked: this.unlocks.list().length,
+        total: UNLOCKS.length,
+        gloveName: g === null ? 'Standard' : unlockDef(g).name,
+        itemName: it === null ? 'Nichts' : unlockDef(it).name,
+        latest,
+      },
+      account: {
+        online: on !== null,
+        backend: on ? on.backend : 'off',
+        loginRequired: on?.loginRequired ?? false,
+        signedIn: on !== null && on.myUid() !== null,
+        name: on ? on.myName() : null,
+        avatarUrl: on ? on.myAvatar() : null,
+        dev: on ? on.myDev() : false,
+      },
+      lock: { pending: st.pending, error: st.error !== null ? lockErrorText(st.error) : null },
+      version: `v${GAME_VERSION} · Physik ${PHYSICS_VERSION} · ${import.meta.env.DEV ? 'dev' : 'build'}`,
+      reducedMotion: typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches,
+      assets: FRONT_DOOR_ASSETS,
+      ...this.frontDoorCalls(),
+    };
+  }
+
+  /** Stabile Rückrufe — einmal gebaut, damit Stile sie sich merken dürfen. */
+  private frontDoorCalls(): FrontDoorCalls {
+    if (this.doorCalls) return this.doorCalls;
+    const play = (levelId: string): void => {
+      // Wie die klassischen data-lock-Knöpfe: während eines Lock-Versuchs keine neuen (Chrome drosselt).
+      if (this.lockStatus.pending || performance.now() < this.guardUntil) return;
+      const i = this.levels.findIndex((l) => l.id === levelId);
+      if (i >= 0) this.selected = i;
+      this.emit('play', { levelId });
+    };
+    this.doorCalls = {
+      beat: () => this.beatClock.read(performance.now()),
+      select: (i) => {
+        if (this.levels.length > 0) this.selected = Math.max(0, Math.min(this.levels.length - 1, Math.floor(i)));
+      },
+      play,
+      playSelected: () => {
+        const lv = this.levels[this.selected];
+        if (lv) play(lv.id);
+      },
+      openTraining: () => this.showTraining(),
+      openCosmetics: () => this.showCosmetics(),
+      openLeaderboard: (levelId) => this.showLeaderboard(levelId ?? this.selectedLevelId ?? undefined),
+      openSettings: () => this.showSettings(),
+      openControls: () => this.showControls(),
+      openProfile: () => this.showProfile(),
+      openAdmin: () => this.showAdmin(),
+      openLab: () => this.showLab(),
+      signIn: () => this.online?.signIn(),
+      signOut: () => this.online?.signOut(),
+      fullscreen: () => this.emit('fullscreen', undefined),
+      startMusic: () => {
+        this.beatClock.audio?.unlock().catch(() => undefined);
+      },
+      markLockButton: (el) => {
+        el.dataset.lock = '1';
+        el.disabled = this.lockStatus.pending;
+      },
+    };
+    return this.doorCalls;
+  }
+
+  private buildLab(): HTMLElement {
+    const active = this.menuStyle;
+    const cards = MENU_STYLES.map((st) => {
+      const on = st.id === active;
+      const look = this.btn(on ? 'Aktiv' : 'Ansehen', `vel-btn--small vel-lab-go${on ? '' : ' vel-btn--primary'}`, () => {
+        // Speichern UND Sitzungs-Override lösen — sonst bliebe ?menu=… stärker als die Wahl.
+        this.styleOverride = null;
+        this.settings.update({ menuStyle: st.id });
+        this.applyStyleClass();
+        this.showTitle();
+      });
+      look.dataset.style = st.id;
+      if (on) look.setAttribute('aria-pressed', 'true');
+      return h('div', `vel-panel vel-lab-card${on ? ' is-active' : ''}`, h('h2', 'vel-h2', st.name), h('p', 'vel-text vel-lab-desc', st.description), look);
+    });
+    const forced = this.styleOverride !== null ? h('p', 'vel-hint', `Gerade per Adresse erzwungen: ?menu=${this.styleOverride} (gilt bis zum Neuladen).`) : null;
+    return h(
+      'section',
+      'vel-screen vel-lab-screen',
+      h('div', 'vel-head-row', h('h1', 'vel-h1', 'Menü-Labor'), h('div', 'vel-row', this.btn('Zurück', 'vel-btn--small', () => this.leaveLab(), 'Esc'))),
+      h('p', 'vel-hint', 'Fünf Hauptmenüs zum Ausprobieren. Die Wahl wird gespeichert; zurück geht es jederzeit hierüber.'),
+      forced,
+      h('div', 'vel-lab-grid', ...cards),
+    );
+  }
+
+  private buildProfile(): HTMLElement {
+    return h(
+      'section',
+      'vel-screen vel-profile-screen',
+      h('div', 'vel-head-row', h('h1', 'vel-h1', 'Profil'), h('div', 'vel-row', this.btn('Zurück', 'vel-btn--small', () => this.showTitle(), 'Esc'))),
+      h('div', 'vel-panel', h('h2', 'vel-h2', 'Profil — kommt'), h('p', 'vel-text', 'Hier stehen bald dein Name, Avatar, Bestzeiten und Abzeichen.')),
+    );
+  }
+
   // ------------------------------------------------------------------ Discord-Konto (Plan 009, Supabase)
 
   /** Konto-Zeile (nur Backends mit Login): angemeldet Avatar + Name + Abmelden, sonst "Mit Discord anmelden". */
@@ -388,7 +699,10 @@ export class Menu {
 
   showTitle(): void {
     this.lockStatus = LOCK_IDLE;
-    this.render('title', this.buildTitle());
+    const style = this.menuStyle;
+    if (style === 'classic') this.render('title', this.buildTitle());
+    else if (this.door?.id === style && this.current === 'title') this.updateDoor();
+    else this.renderDoor(style);
   }
 
   /**
@@ -409,6 +723,7 @@ export class Menu {
   setLockStatus(status: LockStatus): void {
     this.lockStatus = status;
     this.applyLockStatus();
+    this.updateDoor();
   }
 
   /**
@@ -461,6 +776,7 @@ export class Menu {
   }
 
   hide(): void {
+    this.unmountDoor();
     this.stopPreview();
     this.endCapture();
     this.el.hidden = true;
@@ -482,7 +798,17 @@ export class Menu {
     if (this.lockStatus.pending && (a === 'confirm' || a === 'restart')) return true;
     switch (this.current) {
       case 'title':
-        if (a === 'confirm') this.playSelected();
+        if (this.menuStyle !== 'classic') {
+          // Front Door: Enter/Esc/R gehen an den Stil (er lauscht nicht selbst darauf, sonst doppelt).
+          const fa = a === 'confirm' ? 'confirm' : a === 'pause' ? 'back' : a === 'restart' ? 'restart' : null;
+          if (fa !== null) this.door?.inst.onAction?.(fa);
+        } else if (a === 'confirm') this.playSelected();
+        return true;
+      case 'lab':
+        if (a === 'pause' || a === 'confirm') this.leaveLab();
+        return true;
+      case 'profile':
+        if (a === 'pause' || a === 'confirm') this.showTitle();
         return true;
       case 'pause':
         if (a === 'confirm') this.emit('resume', undefined);
@@ -535,6 +861,7 @@ export class Menu {
   }
 
   dispose(): void {
+    this.unmountDoor();
     this.stopPreview();
     this.unsubscribe();
     this.endCapture();
@@ -564,6 +891,8 @@ export class Menu {
     this.stopPreview();
     this.endCapture();
     if (id !== 'admin') this.adminRefresh = null;
+    // Jeder andere Screen (auch ein neuer Titel) baut die Front Door ab.
+    if (this.door && this.door.root !== screen) this.unmountDoor();
     this.current = id;
     this.el.dataset.screen = id;
     this.el.replaceChildren(screen);
@@ -608,6 +937,8 @@ export class Menu {
       return;
     }
     if (!this.visible || (this.current !== 'title' && this.current !== 'training')) return;
+    // Front Door: Pfeiltasten gehören dem Stil.
+    if (this.current === 'title' && this.menuStyle !== 'classic') return;
     if (e.code !== 'ArrowUp' && e.code !== 'ArrowDown') return;
     const t = e.target;
     if (t instanceof HTMLInputElement || t instanceof HTMLSelectElement || t instanceof HTMLTextAreaElement) return;
@@ -895,7 +1226,12 @@ export class Menu {
         'In der Luft W loslassen, A oder D halten und die Maus flüssig in dieselbe Richtung ziehen.',
       ),
       // Bewusst unauffällig: klein, gedämpft, ganz unten — ein Werkzeug, kein Spielinhalt.
-      this.btn('Admin', 'vel-btn--small vel-admin-btn', () => this.showAdmin(), 'F8'),
+      h(
+        'div',
+        'vel-row vel-side-tools',
+        this.btn('Admin', 'vel-btn--small vel-admin-btn', () => this.showAdmin(), 'F8'),
+        this.btn('Menü-Labor', 'vel-btn--small vel-lab-btn', () => this.showLab()),
+      ),
     );
 
     return h(
@@ -1577,7 +1913,12 @@ export class Menu {
     return h(
       'section',
       'vel-screen vel-admin-screen',
-      h('div', 'vel-head-row', h('h1', 'vel-h1', 'Admin'), h('div', 'vel-row', this.btn('Zurück', 'vel-btn--small', () => this.leaveAdmin(), 'Esc'))),
+      h(
+        'div',
+        'vel-head-row',
+        h('h1', 'vel-h1', 'Admin'),
+        h('div', 'vel-row', this.btn('Menü-Labor', 'vel-btn--small vel-lab-btn', () => this.showLab()), this.btn('Zurück', 'vel-btn--small', () => this.leaveAdmin(), 'Esc')),
+      ),
       h('p', 'vel-hint vel-admin-note', 'Admin-Freischaltungen gelten wie echte.'),
       h('div', 'vel-admin-grid', unlockPanel, h('div', 'vel-col', levelPanel, trainingPanel)),
     );

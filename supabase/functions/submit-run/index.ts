@@ -25,7 +25,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.119.0';
  * geladen; ausgeführt wird es NUR, wenn der SHA-256 diesem Wert entspricht (upload-bundle.mjs trägt ihn ein).
  * Grund: die MCP-Deploy-Schnittstelle überträgt Dateien als Text — das Bundle ist dafür zu groß.
  */
-const BUNDLE_SHA256 = '7294fb0a517f739d58df8d879c16be646ea30e490291c8eddca71d5e94c06e0a';
+const BUNDLE_SHA256 = 'e02d9814f19ac2a22dce8f0aa38252252c277958da370c316358988391dd0e51';
 const ASSET_BUCKET = 'function-assets';
 
 // ---- Typen des Bundles (src/online/submitVerifier.ts) — bei Änderungen dort mitziehen.

@@ -51,6 +51,8 @@ async function botToFinish(page: Page): Promise<number | null> {
   return (await page.evaluate(() => window.__vel?.state().finish?.time ?? null)) ?? null;
 }
 
+// Klassischer Titel (Default ist 'ps2', Plan 010) — die Prüfungen suchen dessen Elemente.
+process.env.VITE_TEST_MENU_STYLE ??= 'classic';
 const vite = await createServer({ configFile: 'vite.config.ts', server: { port: PORT, strictPort: true, hmr: false }, logLevel: 'error' });
 await vite.listen();
 const url = `http://localhost:${PORT}/`;

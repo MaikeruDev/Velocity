@@ -190,4 +190,17 @@ export interface MenuEvents {
 
 export type MenuEventName = keyof MenuEvents;
 
-export type MenuScreen = 'title' | 'pause' | 'settings' | 'controls' | 'finish' | 'cosmetics' | 'admin' | 'training' | 'lessonDone' | 'leaderboard';
+/** 'lab' = Menü-Labor (Stil wählen), 'profile' = Profil (Platzhalter bis zum Profil-Strang) — beide Plan 010. */
+export type MenuScreen =
+  | 'title'
+  | 'pause'
+  | 'settings'
+  | 'controls'
+  | 'finish'
+  | 'cosmetics'
+  | 'admin'
+  | 'training'
+  | 'lessonDone'
+  | 'leaderboard'
+  | 'lab'
+  | 'profile';

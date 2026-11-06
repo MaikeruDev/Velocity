@@ -1,0 +1,1313 @@
+/*
+ * Stil 'arcade' (Plan 010) — Arcade-Automat. Alles unter .vel-menu.vel-style--arcade.
+ * Maße in em: die Bühne hat font-size 16·s px (s in 0.5er-Schritten, index.ts) → 1em ist immer ein Vielfaches
+ * von 8 px (Silkscreen scharf), 1 Kunst-Pixel des Gehäuses = 0.125em = 2·s px (ganzzahlig).
+ * Silkscreen nur in 1em/2em/3em; Pixelify Sans für Sätze. Leuchten = harte Versätze, nie Blur.
+ */
+
+/* Titel: Root-Verlauf und Root-Scanlines aus — das Gehäuse ist deckend, die Röhre hat eigene Zeilen. */
+.vel-menu.vel-style--arcade[data-screen='title'] {
+  background: none;
+}
+
+.vel-menu.vel-style--arcade[data-screen='title']::after {
+  display: none;
+}
+
+.vel-menu.vel-style--arcade .ac-root {
+  --ac-u: 1px;
+  --ac-p: 2px;
+  --ac-bg: #0a0618;
+  --ac-amber: #ff9a3a;
+  font-family: var(--font-head);
+  color: var(--text);
+}
+
+.vel-menu.vel-style--arcade .ac-cab {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+.vel-menu.vel-style--arcade .ac-stage {
+  position: absolute;
+  width: 48.5em;
+  height: 45em;
+  line-height: 1;
+}
+
+.vel-menu.vel-style--arcade .ac-stage--under {
+  z-index: 1;
+}
+
+.vel-menu.vel-style--arcade .ac-stage--over {
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ Röhre */
+
+.vel-menu.vel-style--arcade .ac-screen {
+  position: absolute;
+  left: 1.25em;
+  top: 6.75em;
+  width: 46em;
+  height: 34.5em;
+  overflow: hidden;
+}
+
+/* Tönung über der Level-Kulisse (die hinter dem Menü rendert): im Menü dicht (lesbar), im Demo fast offen. */
+.vel-menu.vel-style--arcade .ac-tint {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 3, 16, 0.86);
+}
+
+.vel-menu.vel-style--arcade .ac-root[data-mode='attract'] .ac-tint,
+.vel-menu.vel-style--arcade .ac-root[data-mode='power'] .ac-tint {
+  background: rgba(6, 3, 16, 0.6);
+}
+
+.vel-menu.vel-style--arcade .ac-root[data-page='demo'][data-mode='attract'] .ac-tint {
+  background: rgba(6, 3, 16, 0.12);
+}
+
+.vel-menu.vel-style--arcade .ac-root[data-page='scores'][data-mode='attract'] .ac-tint,
+.vel-menu.vel-style--arcade .ac-root[data-page='howto'][data-mode='attract'] .ac-tint,
+.vel-menu.vel-style--arcade .ac-root[data-page='credits'][data-mode='attract'] .ac-tint {
+  background: rgba(6, 3, 16, 0.9);
+}
+
+.vel-menu.vel-style--arcade .ac-content {
+  position: absolute;
+  inset: 0;
+  padding: 1.5em 1.5em 1em;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Zeilen: 1 dunkle Zeile je Kunst-Pixel (2·s px) — wie ein 276-Zeilen-Bild auf der Röhre. */
+.vel-menu.vel-style--arcade .ac-scan {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.3) 0 1px, transparent 1px var(--ac-p));
+}
+
+/* Durchlaufender heller Balken (Netzbrumm der Röhre), in Kunst-Pixel-Schritten. */
+.vel-menu.vel-style--arcade .ac-roll {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -1em;
+  height: 0.25em;
+  pointer-events: none;
+  background: rgba(190, 220, 255, 0.05);
+  box-shadow: 0 0.25em 0 rgba(190, 220, 255, 0.025), 0 -0.25em 0 rgba(190, 220, 255, 0.025);
+  animation: ac-roll 7s steps(144) infinite;
+}
+
+@keyframes ac-roll {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(36em);
+  }
+}
+
+.vel-menu.vel-style--arcade .ac-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: #e8f4ff;
+  opacity: 0;
+}
+
+.vel-menu.vel-style--arcade .ac-root.is-cut .ac-flash {
+  opacity: 0.07;
+}
+
+.vel-menu.vel-style--arcade .ac-root.is-cut .ac-content {
+  transform: translateX(0.25em);
+}
+
+.vel-menu.vel-style--arcade .ac-power {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: none;
+  background: #000;
+}
+
+/* Einschalten: Punkt → Strich → Bild (getreppt), danach normal. */
+.vel-menu.vel-style--arcade .ac-root[data-mode='power'] .ac-power {
+  display: block;
+  animation: ac-power 950ms steps(1, end) forwards;
+}
+
+@keyframes ac-power {
+  0% {
+    clip-path: inset(0);
+    background: #000;
+  }
+  12% {
+    clip-path: inset(0);
+    background: linear-gradient(#000 0 49.5%, #dff 49.5% 50.5%, #000 50.5%);
+  }
+  22% {
+    clip-path: inset(0);
+    background: linear-gradient(#000 0 48%, #bff 48% 52%, #000 52%);
+  }
+  32% {
+    clip-path: inset(0 0 0 0);
+    background: linear-gradient(#000 0 40%, rgba(150, 255, 255, 0.35) 40% 60%, #000 60%);
+  }
+  44% {
+    background: linear-gradient(#000 0 22%, rgba(150, 255, 255, 0.16) 22% 78%, #000 78%);
+  }
+  56% {
+    background: linear-gradient(#000 0 6%, rgba(150, 255, 255, 0.08) 6% 94%, #000 94%);
+  }
+  70% {
+    background: rgba(255, 255, 255, 0.06);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+/* ------------------------------------------------------------------ Gehäuse-Overlay: Marquee, Pult */
+
+.vel-menu.vel-style--arcade .ac-marquee {
+  position: absolute;
+  left: -2em;
+  top: 0;
+  width: 52.5em;
+  height: 5.25em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.vel-menu.vel-style--arcade .ac-marquee-logo {
+  height: 6.5em;
+  width: auto;
+  margin-top: 0.125em;
+  filter: drop-shadow(0.25em 0.25em 0 rgba(10, 0, 30, 0.75));
+}
+
+.vel-menu.vel-style--arcade .ac-root.ac-kick .ac-marquee-logo {
+  filter: drop-shadow(0.25em 0.25em 0 rgba(10, 0, 30, 0.75)) brightness(1.12);
+}
+
+.vel-menu.vel-style--arcade .ac-marquee-dim {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+}
+
+/* Neonröhren der Marquee zünden beim Einschalten mit Flackern. */
+.vel-menu.vel-style--arcade .ac-root[data-mode='power'] .ac-marquee-dim {
+  animation: ac-tube 950ms steps(1, end) forwards;
+}
+
+@keyframes ac-tube {
+  0% { opacity: 0.92; }
+  18% { opacity: 0.25; }
+  24% { opacity: 0.92; }
+  38% { opacity: 0.1; }
+  44% { opacity: 0.7; }
+  52% { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+.vel-menu.vel-style--arcade .ac-deck {
+  position: absolute;
+  left: 0;
+  top: 42.5em;
+  width: 48.5em;
+  height: 2.5em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25em 6.5em 0 1.25em;
+}
+
+.vel-menu.vel-style--arcade .ac-deck-legend {
+  display: flex;
+  gap: 1.5em;
+  align-items: center;
+}
+
+.vel-menu.vel-style--arcade .ac-leg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  font-size: 1em;
+  color: #8a80b8;
+}
+
+.vel-menu.vel-style--arcade .ac-deck-coin {
+  font-size: 1em;
+  color: var(--ac-amber);
+  text-shadow: 0 var(--ac-u) 0 #000;
+}
+
+.vel-menu.vel-style--arcade .ac-root.is-coin .ac-deck-coin {
+  color: var(--gold);
+}
+
+/* Tasten-Kappe */
+.vel-menu.vel-style--arcade .ac-cap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.125em;
+  min-width: 1.5em;
+  height: 1.5em;
+  padding: 0 0.25em;
+  font-size: 1em;
+  line-height: 1;
+  color: #d8d0ff;
+  background: #1c1534;
+  border: 0.125em solid #5a5080;
+  box-shadow: 0 0.125em 0 #000;
+}
+
+.vel-menu.vel-style--arcade .ac-cap-arws {
+  display: inline-flex;
+  gap: 0.25em;
+  align-items: center;
+}
+
+.vel-menu.vel-style--arcade .ac-cap-arws .ac-arw {
+  width: 0.375em;
+  height: 0.625em;
+}
+
+.vel-menu.vel-style--arcade .ac-cap-arws .ac-arw--u,
+.vel-menu.vel-style--arcade .ac-cap-arws .ac-arw--d {
+  width: 0.625em;
+  height: 0.375em;
+}
+
+/* Pixel-Pfeil: 4×7 Stufen, kein Glyph (Silkscreen hat keine Dreiecke). */
+.vel-menu.vel-style--arcade .ac-arw {
+  display: inline-block;
+  flex: none;
+  width: 0.5em;
+  height: 0.875em;
+  background: currentColor;
+  clip-path: polygon(0 0, 25% 0, 25% 14.29%, 50% 14.29%, 50% 28.57%, 75% 28.57%, 75% 42.86%, 100% 42.86%, 100% 57.14%, 75% 57.14%, 75% 71.43%, 50% 71.43%, 50% 85.71%, 25% 85.71%, 25% 100%, 0 100%);
+}
+
+.vel-menu.vel-style--arcade .ac-arw--l {
+  transform: scaleX(-1);
+}
+
+.vel-menu.vel-style--arcade .ac-arw--u,
+.vel-menu.vel-style--arcade .ac-arw--d {
+  width: 0.875em;
+  height: 0.5em;
+  clip-path: polygon(42.86% 0, 57.14% 0, 57.14% 25%, 71.43% 25%, 71.43% 50%, 85.71% 50%, 85.71% 75%, 100% 75%, 100% 100%, 0 100%, 0 75%, 14.29% 75%, 14.29% 50%, 28.57% 50%, 28.57% 25%, 42.86% 25%);
+}
+
+.vel-menu.vel-style--arcade .ac-arw--d {
+  transform: scaleY(-1);
+}
+
+/* ------------------------------------------------------------------ Blinken im Takt */
+
+.vel-menu.vel-style--arcade .ac-root:not(.ac-reduced):not(.ac-b1) .ac-bl1 {
+  visibility: hidden;
+}
+
+.vel-menu.vel-style--arcade .ac-root:not(.ac-reduced):not(.ac-b2) .ac-bl2 {
+  visibility: hidden;
+}
+
+/* ------------------------------------------------------------------ HUD-Zeile (oben) und Fuß */
+
+.vel-menu.vel-style--arcade .ac-hud {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 1.5em;
+  font-size: 1em;
+  flex: none;
+}
+
+.vel-menu.vel-style--arcade .ac-hud > span {
+  display: inline-flex;
+  gap: 0.5em;
+  align-items: center;
+}
+
+.vel-menu.vel-style--arcade .ac-1p {
+  color: var(--gold);
+}
+
+.vel-menu.vel-style--arcade .ac-root:not(.ac-reduced):not(.ac-b2) .ac-1p {
+  color: #8a6a1a;
+}
+
+.vel-menu.vel-style--arcade .ac-ini {
+  color: var(--text);
+  letter-spacing: 0.125em;
+}
+
+.vel-menu.vel-style--arcade .ac-hud-k {
+  color: var(--magenta);
+}
+
+.vel-menu.vel-style--arcade .ac-hud-v {
+  color: var(--text);
+}
+
+.vel-menu.vel-style--arcade .ac-foot {
+  margin-top: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1em;
+  flex: none;
+  height: 2em;
+}
+
+.vel-menu.vel-style--arcade .ac-foot-l {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  min-width: 0;
+}
+
+.vel-menu.vel-style--arcade .ac-root:not([data-mode='menu']) .ac-foot-l {
+  visibility: hidden;
+}
+
+.vel-menu.vel-style--arcade .ac-credit {
+  white-space: nowrap;
+  font-size: 1em;
+  color: var(--text);
+  letter-spacing: 0.125em;
+}
+
+.vel-menu.vel-style--arcade .ac-root.is-coin .ac-credit {
+  color: var(--gold);
+  text-shadow: var(--ac-u) 0 0 var(--magenta);
+}
+
+/* DEV: gestufte Neon-Extrusion, Farben springen im Takt (steps, kein Fade). */
+.vel-menu.vel-style--arcade .ac-dev {
+  display: inline-block;
+  padding: 0.125em 0.25em 0;
+  font-size: 1em;
+  line-height: 1.25em;
+  color: var(--ink);
+  background: var(--cyan);
+  box-shadow: 0.125em 0.125em 0 var(--magenta), 0.25em 0.25em 0 var(--gold), 0.375em 0.375em 0 #000;
+  animation: ac-dev 1.8s steps(1, end) infinite;
+}
+
+@keyframes ac-dev {
+  0% {
+    background: var(--cyan);
+    box-shadow: 0.125em 0.125em 0 var(--magenta), 0.25em 0.25em 0 var(--gold), 0.375em 0.375em 0 #000;
+  }
+  33% {
+    background: var(--magenta);
+    box-shadow: 0.125em 0.125em 0 var(--gold), 0.25em 0.25em 0 var(--cyan), 0.375em 0.375em 0 #000;
+  }
+  66% {
+    background: var(--gold);
+    box-shadow: 0.125em 0.125em 0 var(--cyan), 0.25em 0.25em 0 var(--magenta), 0.375em 0.375em 0 #000;
+  }
+}
+
+/* ------------------------------------------------------------------ Attract-Seiten */
+
+.vel-menu.vel-style--arcade .ac-attract {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.vel-menu.vel-style--arcade .ac-root[data-mode='menu'] .ac-attract,
+.vel-menu.vel-style--arcade .ac-root:not([data-mode='menu']) .ac-menu {
+  display: none;
+}
+
+.vel-menu.vel-style--arcade .ac-page {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+}
+
+.vel-menu.vel-style--arcade .ac-page.is-on {
+  display: flex;
+}
+
+.vel-menu.vel-style--arcade .ac-ptitle {
+  margin: 0.5em 0 1em;
+  font-size: 2em;
+  font-weight: 700;
+  letter-spacing: 0.125em;
+  color: var(--gold);
+  text-shadow: var(--ac-u) 0 0 rgba(255, 63, 208, 0.7), calc(var(--ac-u) * -1) 0 0 rgba(51, 240, 255, 0.6), 0 0.125em 0 #000;
+}
+
+/* Titel */
+.vel-menu.vel-style--arcade .ac-page--title {
+  justify-content: center;
+  gap: 1em;
+}
+
+.vel-menu.vel-style--arcade .ac-logo {
+  width: 34em;
+  height: auto;
+  margin: -1em 0 -1.5em;
+}
+
+.vel-menu.vel-style--arcade .ac-tag {
+  margin: 0;
+  font-size: 1em;
+  letter-spacing: 0.25em;
+  color: var(--cyan);
+  text-shadow: 0 var(--ac-u) 0 #000;
+}
+
+.vel-menu.vel-style--arcade .ac-insert {
+  margin: 1em 0 0;
+  font-size: 2em;
+  font-weight: 700;
+  letter-spacing: 0.125em;
+  color: var(--gold);
+  /* Phosphor: harter Saum + Konvergenzfehler (R/B um 1 px versetzt), kein Blur. */
+  text-shadow:
+    var(--ac-u) 0 0 rgba(255, 63, 208, 0.75),
+    calc(var(--ac-u) * -1) 0 0 rgba(51, 240, 255, 0.6),
+    0 calc(var(--ac-u) * 2) 0 rgba(255, 150, 40, 0.25),
+    0 calc(var(--ac-u) * -2) 0 rgba(255, 150, 40, 0.25);
+}
+
+.vel-menu.vel-style--arcade .ac-any {
+  margin: 0;
+  font-size: 1em;
+  color: var(--dim);
+}
+
+.vel-menu.vel-style--arcade .ac-copy {
+  position: absolute;
+  bottom: 0;
+  margin: 0;
+  font-size: 1em;
+  color: #6a62a0;
+}
+
+/* Demo */
+.vel-menu.vel-style--arcade .ac-page--demo {
+  justify-content: space-between;
+  align-items: stretch;
+}
+
+.vel-menu.vel-style--arcade .ac-demo-tag {
+  margin: 0;
+  display: flex;
+  gap: 0.5em;
+  align-items: center;
+  font-size: 1em;
+  color: var(--text);
+  text-shadow: 0 var(--ac-u) 0 #000;
+}
+
+.vel-menu.vel-style--arcade .ac-rec {
+  width: 0.75em;
+  height: 0.75em;
+  background: var(--loss);
+}
+
+.vel-menu.vel-style--arcade .ac-root:not(.ac-reduced):not(.ac-b1) .ac-rec {
+  background: transparent;
+}
+
+.vel-menu.vel-style--arcade .ac-demo-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  align-self: flex-start;
+  padding: 0.75em 1em;
+  background: rgba(6, 3, 16, 0.8);
+  border-left: 0.25em solid var(--cyan);
+}
+
+.vel-menu.vel-style--arcade .ac-demo-stage {
+  font-size: 1em;
+  color: var(--cyan);
+}
+
+.vel-menu.vel-style--arcade .ac-demo-name {
+  font-size: 2em;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.vel-menu.vel-style--arcade .ac-demo-sub {
+  font-family: var(--font-body);
+  font-size: 1em;
+  color: var(--dim);
+}
+
+.vel-menu.vel-style--arcade .ac-page--demo .ac-insert {
+  align-self: center;
+  margin: 0;
+}
+
+/* Bestzeiten-Tabelle */
+.vel-menu.vel-style--arcade .ac-srow {
+  display: grid;
+  grid-template-columns: 2.5em 1fr 10.5em 7.5em 3.5em;
+  gap: 1em;
+  align-items: center;
+  width: 100%;
+  padding: 0.5em 0.5em;
+  font-size: 1em;
+  color: var(--lv, var(--text));
+  text-shadow: 0 var(--ac-u) 0 #000;
+}
+
+.vel-menu.vel-style--arcade .ac-srow--head {
+  color: var(--dim);
+  border-bottom: 0.125em solid #2a2246;
+}
+
+.vel-menu.vel-style--arcade .ac-sbody .ac-srow > span:not(.ac-s-medal) {
+  font-size: 2em;
+  white-space: nowrap;
+}
+
+.vel-menu.vel-style--arcade .ac-srow.is-empty .ac-s-time,
+.vel-menu.vel-style--arcade .ac-srow.is-empty .ac-s-ini {
+  color: #4a4270;
+}
+
+.vel-menu.vel-style--arcade .ac-sbody {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+  margin-top: 0.5em;
+}
+
+.vel-menu.vel-style--arcade .ac-s-time,
+.vel-menu.vel-style--arcade .ac-s-ini {
+  text-align: right;
+}
+
+.vel-menu.vel-style--arcade .ac-s-ini {
+  color: var(--text);
+}
+
+.vel-menu.vel-style--arcade .ac-slegend {
+  display: flex;
+  gap: 2em;
+  justify-content: center;
+  margin: auto 0 0;
+  padding-top: 0.75em;
+  border-top: 0.125em solid #2a2246;
+  width: 100%;
+}
+
+.vel-menu.vel-style--arcade .ac-snote {
+  margin: 1em 0 0;
+  font-size: 1em;
+  color: var(--cyan);
+}
+
+/* Level-Farben (Reihe/Karte) */
+.vel-menu.vel-style--arcade [data-lv='0'] {
+  --lv: #33f0ff;
+}
+
+.vel-menu.vel-style--arcade [data-lv='1'] {
+  --lv: #ff3fd0;
+}
+
+.vel-menu.vel-style--arcade [data-lv='2'] {
+  --lv: #ff8a5a;
+}
+
+.vel-menu.vel-style--arcade [data-lv='3'] {
+  --lv: #ffd84a;
+}
+
+/* How to play */
+.vel-menu.vel-style--arcade .ac-howto {
+  display: flex;
+  gap: 2em;
+  width: 100%;
+  align-items: flex-start;
+}
+
+.vel-menu.vel-style--arcade .ac-howto-demo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1em;
+  flex: none;
+}
+
+.vel-menu.vel-style--arcade .ac-demo-cv {
+  width: 16em;
+  height: 12em;
+  image-rendering: pixelated;
+  border: 0.125em solid #2a2246;
+}
+
+.vel-menu.vel-style--arcade .ac-demo-keys {
+  display: flex;
+  gap: 1em;
+  align-items: center;
+}
+
+.vel-menu.vel-style--arcade .ac-cap--big {
+  min-width: 2.5em;
+  height: 2.5em;
+}
+
+.vel-menu.vel-style--arcade .ac-cap.is-down {
+  color: var(--ink);
+  background: var(--cyan);
+  border-color: #fff;
+  box-shadow: none;
+  transform: translateY(0.125em);
+}
+
+.vel-menu.vel-style--arcade .ac-demo-mouse {
+  font-size: 1em;
+  color: var(--gold);
+}
+
+.vel-menu.vel-style--arcade .ac-tips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1em;
+  flex: 1;
+}
+
+.vel-menu.vel-style--arcade .ac-tip-h {
+  display: flex;
+  gap: 0.75em;
+  align-items: center;
+}
+
+.vel-menu.vel-style--arcade .ac-tip-t {
+  font-size: 1em;
+  color: var(--gold);
+}
+
+.vel-menu.vel-style--arcade .ac-tip-b {
+  margin: 0.5em 0 0;
+  font-family: var(--font-body);
+  font-size: 1em;
+  line-height: 1.25;
+  color: var(--text);
+}
+
+/* Credits */
+.vel-menu.vel-style--arcade .ac-cbody {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1em;
+  padding: 0 2em;
+}
+
+.vel-menu.vel-style--arcade .ac-crow {
+  display: flex;
+  gap: 1em;
+  align-items: baseline;
+  font-size: 1em;
+}
+
+.vel-menu.vel-style--arcade .ac-c-k {
+  color: var(--magenta);
+}
+
+.vel-menu.vel-style--arcade .ac-c-dots {
+  flex: 1;
+  border-bottom: 0.125em dotted #3a3260;
+}
+
+.vel-menu.vel-style--arcade .ac-c-v {
+  color: var(--text);
+}
+
+.vel-menu.vel-style--arcade .ac-c-ver {
+  margin: 1em 0 0;
+  font-family: var(--font-body);
+  font-size: 1em;
+  color: var(--dim);
+  text-align: center;
+}
+
+.vel-menu.vel-style--arcade .ac-page--credits {
+  justify-content: center;
+}
+
+.vel-menu.vel-style--arcade .ac-page--credits .ac-ptitle {
+  margin-top: 0;
+}
+
+.vel-menu.vel-style--arcade .ac-thanks {
+  margin: 2em 0 0;
+  font-size: 2em;
+  color: var(--cyan);
+}
+
+/* ------------------------------------------------------------------ Medaille (getreppte Scheibe 6×6) */
+
+.vel-menu.vel-style--arcade .ac-medal {
+  --mc: #2a2342;
+  display: inline-flex;
+  gap: 0.375em;
+  align-items: center;
+  font-size: 1em;
+  color: var(--mc);
+}
+
+.vel-menu.vel-style--arcade .ac-medal-disc {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  background: var(--mc);
+  box-shadow: inset 0.125em 0.125em 0 rgba(255, 255, 255, 0.55), inset -0.125em -0.125em 0 rgba(0, 0, 0, 0.4);
+  clip-path: polygon(16.67% 0, 83.33% 0, 83.33% 16.67%, 100% 16.67%, 100% 83.33%, 83.33% 83.33%, 83.33% 100%, 16.67% 100%, 16.67% 83.33%, 0 83.33%, 0 16.67%, 16.67% 16.67%);
+}
+
+.vel-menu.vel-style--arcade .ac-medal--none {
+  --mc: #3a3260;
+}
+
+.vel-menu.vel-style--arcade .ac-medal--bronze {
+  --mc: #e0915a;
+}
+
+.vel-menu.vel-style--arcade .ac-medal--silver {
+  --mc: #cfd6e6;
+}
+
+.vel-menu.vel-style--arcade .ac-medal--gold {
+  --mc: #ffd84a;
+}
+
+.vel-menu.vel-style--arcade .ac-medal--velocity {
+  --mc: #33f0ff;
+}
+
+.vel-menu.vel-style--arcade .ac-medal--velocity .ac-medal-disc {
+  box-shadow: inset 0.125em 0.125em 0 rgba(255, 255, 255, 0.6), inset -0.125em -0.125em 0 var(--magenta);
+}
+
+/* ------------------------------------------------------------------ Hauptmenü */
+
+.vel-menu.vel-style--arcade .ac-menu {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  margin-top: 0.25em;
+  position: relative;
+}
+
+.vel-menu.vel-style--arcade .ac-btn {
+  /* Buttons erben die Schrift nicht (UA: 13.33 px) — sonst fiele Silkscreen aus dem 8-px-Raster. */
+  font: inherit;
+  font-family: var(--font-head);
+  color: var(--text);
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  text-align: left;
+  line-height: 1;
+}
+
+.vel-menu.vel-style--arcade .ac-btn:focus-visible {
+  outline: 0.125em solid var(--gold);
+  outline-offset: 0.125em;
+}
+
+.vel-menu.vel-style--arcade .ac-btn:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
+.vel-menu.vel-style--arcade .ac-sel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 1em;
+  color: var(--magenta);
+}
+
+.vel-menu.vel-style--arcade .ac-sel-keys {
+  display: inline-flex;
+  gap: 0.5em;
+  color: #6a62a0;
+}
+
+.vel-menu.vel-style--arcade .ac-cards {
+  margin-top: 0.375em;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1em;
+}
+
+.vel-menu.vel-style--arcade .ac-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375em;
+  padding: 0.625em 0.625em 0.75em;
+  background: rgba(14, 9, 32, 0.92);
+  border: 0.125em solid #2a2246;
+  box-shadow: 0.25em 0.25em 0 #000;
+  color: var(--dim);
+}
+
+.vel-menu.vel-style--arcade .ac-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 0.25em;
+  background: var(--lv);
+  opacity: 0.45;
+}
+
+.vel-menu.vel-style--arcade .ac-card-tag {
+  position: absolute;
+  top: 3.5em;
+  right: 0.75em;
+  padding: 0.125em 0.25em 0;
+  font-size: 1em;
+  line-height: 1.25em;
+  color: var(--ink);
+  background: var(--gold);
+  visibility: hidden;
+}
+
+.vel-menu.vel-style--arcade .ac-card-thumb {
+  display: block;
+  width: 8.5em;
+  height: 2.25em;
+  margin: 0 auto;
+  image-rendering: pixelated;
+  opacity: 0.55;
+}
+
+.vel-menu.vel-style--arcade .ac-card.is-sel .ac-card-thumb {
+  opacity: 1;
+}
+
+.vel-menu.vel-style--arcade .ac-card-num {
+  font-size: 3em;
+  font-weight: 700;
+  color: var(--lv);
+  opacity: 0.55;
+  text-shadow: 0 0.0625em 0 #000;
+}
+
+.vel-menu.vel-style--arcade .ac-card-name {
+  font-size: 1em;
+  color: var(--text);
+}
+
+.vel-menu.vel-style--arcade .ac-card-best {
+  font-size: 1em;
+  color: var(--text);
+}
+
+.vel-menu.vel-style--arcade .ac-card-best.is-none {
+  color: #4a4270;
+}
+
+.vel-menu.vel-style--arcade .ac-card.is-sel {
+  border-color: var(--lv);
+  background: rgba(24, 14, 52, 0.95);
+  transform: translateY(-0.25em);
+  box-shadow: 0.25em 0.5em 0 #000;
+}
+
+.vel-menu.vel-style--arcade .ac-card.is-sel::before {
+  opacity: 1;
+}
+
+.vel-menu.vel-style--arcade .ac-card.is-sel .ac-card-tag {
+  visibility: visible;
+}
+
+.vel-menu.vel-style--arcade .ac-card.is-sel .ac-card-num {
+  opacity: 1;
+  text-shadow: var(--ac-u) 0 0 rgba(255, 63, 208, 0.7), calc(var(--ac-u) * -1) 0 0 rgba(51, 240, 255, 0.6), 0 0.0625em 0 #000;
+}
+
+.vel-menu.vel-style--arcade .ac-card.is-cursor {
+  outline: 0.125em solid #fff;
+  outline-offset: 0.125em;
+}
+
+.vel-menu.vel-style--arcade .ac-root:not(.ac-reduced):not(.ac-b2) .ac-card.is-cursor {
+  outline-color: var(--lv);
+}
+
+.vel-menu.vel-style--arcade .ac-detail {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 1.5em;
+  padding: 0 0.25em;
+}
+
+.vel-menu.vel-style--arcade .ac-det-sub {
+  font-family: var(--font-body);
+  font-size: 1em;
+  color: var(--dim);
+}
+
+.vel-menu.vel-style--arcade .ac-det-r {
+  display: inline-flex;
+  gap: 1.5em;
+  align-items: center;
+  font-size: 1em;
+}
+
+.vel-menu.vel-style--arcade .ac-det-next {
+  display: inline-flex;
+  gap: 0.5em;
+  align-items: center;
+}
+
+.vel-menu.vel-style--arcade .ac-det-k {
+  color: #6a62a0;
+}
+
+.vel-menu.vel-style--arcade .ac-det-rec {
+  font-family: var(--font-body);
+  color: var(--gold);
+}
+
+.vel-menu.vel-style--arcade .ac-det-all {
+  color: var(--cyan);
+}
+
+/* START: der eine große Knopf. */
+.vel-menu.vel-style--arcade .ac-start-row {
+  display: flex;
+  gap: 1em;
+}
+
+.vel-menu.vel-style--arcade .ac-start {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+  padding: 0.5em 1em;
+  font-size: 1em;
+  background: #2a0a3a;
+  border: 0.125em solid var(--magenta);
+  box-shadow: 0.25em 0.25em 0 #000;
+  color: var(--gold);
+}
+
+.vel-menu.vel-style--arcade .ac-start .ac-arw {
+  font-size: 2em;
+  visibility: hidden;
+}
+
+.vel-menu.vel-style--arcade .ac-start-t {
+  font-size: 2em;
+  font-weight: 700;
+  letter-spacing: 0.125em;
+  text-shadow: var(--ac-u) 0 0 rgba(255, 63, 208, 0.8), calc(var(--ac-u) * -1) 0 0 rgba(51, 240, 255, 0.6);
+}
+
+.vel-menu.vel-style--arcade .ac-start-lv {
+  margin-left: auto;
+  font-size: 1em;
+  color: var(--text);
+}
+
+.vel-menu.vel-style--arcade .ac-start.is-cursor {
+  background: var(--magenta);
+  color: var(--ink);
+  border-color: #fff;
+}
+
+.vel-menu.vel-style--arcade .ac-start.is-cursor .ac-start-t {
+  text-shadow: 0 var(--ac-u) 0 rgba(255, 255, 255, 0.5);
+}
+
+.vel-menu.vel-style--arcade .ac-start.is-cursor .ac-start-lv {
+  color: var(--ink);
+}
+
+.vel-menu.vel-style--arcade .ac-start.is-cursor .ac-arw {
+  visibility: visible;
+}
+
+.vel-menu.vel-style--arcade .ac-newbie {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.5em;
+  padding: 0.5em 1em;
+  font-size: 1em;
+  background: #2a2006;
+  border: 0.125em solid var(--gold);
+  box-shadow: 0.25em 0.25em 0 #000;
+  color: var(--gold);
+}
+
+.vel-menu.vel-style--arcade .ac-newbie-t {
+  color: var(--text);
+}
+
+.vel-menu.vel-style--arcade .ac-newbie.is-cursor {
+  background: var(--gold);
+  color: var(--ink);
+}
+
+.vel-menu.vel-style--arcade .ac-newbie.is-cursor .ac-newbie-t {
+  color: var(--ink);
+}
+
+/* Menüpunkte: zwei Spalten, große Schrift, blinkender Pfeil-Cursor. */
+.vel-menu.vel-style--arcade .ac-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25em 1em;
+  margin-top: 0.25em;
+}
+
+.vel-menu.vel-style--arcade .ac-item {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.125em 0.25em;
+  font-size: 2em;
+  color: #b8b0e0;
+}
+
+.vel-menu.vel-style--arcade .ac-item .ac-arw {
+  visibility: hidden;
+  color: var(--gold);
+}
+
+.vel-menu.vel-style--arcade .ac-item-i {
+  margin-left: auto;
+  font-size: 0.5em;
+  color: #6a62a0;
+}
+
+.vel-menu.vel-style--arcade .ac-item.is-cursor {
+  color: var(--gold);
+  background: rgba(255, 216, 74, 0.08);
+  text-shadow: var(--ac-u) 0 0 rgba(255, 63, 208, 0.7), calc(var(--ac-u) * -1) 0 0 rgba(51, 240, 255, 0.5);
+}
+
+.vel-menu.vel-style--arcade .ac-item.is-cursor .ac-arw {
+  visibility: visible;
+}
+
+.vel-menu.vel-style--arcade .ac-root:not(.ac-reduced):not(.ac-b2) .ac-item.is-cursor .ac-arw {
+  visibility: hidden;
+}
+
+.vel-menu.vel-style--arcade .ac-item.is-cursor .ac-item-i {
+  color: var(--text);
+  text-shadow: none;
+}
+
+/* Konto + Werkzeuge */
+
+
+.vel-menu.vel-style--arcade .ac-acc {
+  display: flex;
+  gap: 0.5em;
+  align-items: center;
+  font-size: 1em;
+  min-width: 0;
+}
+
+.vel-menu.vel-style--arcade .ac-avatar {
+  width: 1.5em;
+  height: 1.5em;
+  image-rendering: pixelated;
+  border: 0.125em solid var(--cyan);
+}
+
+.vel-menu.vel-style--arcade .ac-acc-ini {
+  color: var(--gold);
+  letter-spacing: 0.125em;
+}
+
+.vel-menu.vel-style--arcade .ac-acc-name {
+  font-family: var(--font-body);
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 12em;
+}
+
+.vel-menu.vel-style--arcade .ac-acc-off {
+  color: var(--loss);
+}
+
+.vel-menu.vel-style--arcade .ac-tools {
+  display: flex;
+  gap: 0.5em;
+}
+
+.vel-menu.vel-style--arcade .ac-tool {
+  font-size: 1em;
+  padding: 0.25em 0.5em;
+  color: #8a80b8;
+  border: 0.125em solid #2a2246;
+}
+
+.vel-menu.vel-style--arcade .ac-tool--login {
+  color: var(--cyan);
+  border-color: var(--cyan);
+}
+
+.vel-menu.vel-style--arcade .ac-tool--quiet {
+  color: #4a4270;
+  border-color: transparent;
+}
+
+.vel-menu.vel-style--arcade .ac-tool.is-cursor {
+  color: var(--ink);
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+/* Lock-Fehler: rotes Band über dem Fuß, gut sichtbar. */
+.vel-menu.vel-style--arcade .ac-error {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 2.5em;
+  display: none;
+  gap: 0.75em;
+  align-items: center;
+  padding: 0.5em 1em;
+  background: #3a0614;
+  border: 0.125em solid var(--loss);
+  box-shadow: 0.25em 0.25em 0 #000;
+}
+
+.vel-menu.vel-style--arcade .ac-error.is-on {
+  display: flex;
+}
+
+.vel-menu.vel-style--arcade .ac-err-k {
+  font-size: 2em;
+  color: var(--loss);
+}
+
+.vel-menu.vel-style--arcade .ac-err-t {
+  font-family: var(--font-body);
+  font-size: 1em;
+  color: var(--text);
+}
+
+.vel-menu.vel-style--arcade .ac-loading {
+  font-size: 1em;
+  color: var(--dim);
+}
+
+/* ------------------------------------------------------------------ Bewegung aus (prefers-reduced-motion) */
+
+.vel-menu.vel-style--arcade .ac-root.ac-reduced .ac-roll {
+  display: none;
+}
+
+.vel-menu.vel-style--arcade .ac-root.ac-reduced .ac-dev {
+  animation: none;
+}
+
+/* ------------------------------------------------------------------ Bestands-Screens im Arcade-Stil
+ * Wie das Service-Menü eines Automaten: dunkler Grund, Neon-Rahmen am Bildrand (harte inset-Schatten),
+ * Gold für Titel und Auswahl, Phosphor-Saum nur an Überschriften. Layout bleibt unangetastet. */
+
+.vel-menu.vel-style--arcade:not([data-screen='title']) {
+  background: rgba(5, 3, 12, 0.9);
+  box-shadow: inset 0 0 0 6px #07050d, inset 0 0 0 8px #6a1a5c, inset 0 0 0 10px #07050d, inset 0 0 0 12px #1c6f80;
+}
+
+.vel-menu.vel-style--arcade .vel-h1 {
+  color: var(--gold);
+  text-shadow: 1px 0 0 rgba(255, 63, 208, 0.75), -1px 0 0 rgba(51, 240, 255, 0.6), 3px 3px 0 var(--ink);
+}
+
+.vel-menu.vel-style--arcade .vel-h1::before {
+  background: var(--magenta);
+  box-shadow: 6px 0 0 var(--cyan);
+}
+
+.vel-menu.vel-style--arcade .vel-h2 {
+  color: var(--magenta);
+}
+
+.vel-menu.vel-style--arcade .vel-panel {
+  background: rgba(10, 6, 24, 0.94);
+  border-left-color: var(--magenta);
+  box-shadow: inset 0 1px 0 rgba(255, 63, 208, 0.3), 4px 4px 0 #000;
+}
+
+.vel-menu.vel-style--arcade .vel-panel::before {
+  border-color: transparent var(--cyan) transparent transparent;
+}
+
+.vel-menu.vel-style--arcade .vel-btn {
+  background: #120b26;
+  border-color: #3a3260;
+}
+
+.vel-menu.vel-style--arcade .vel-btn:hover,
+.vel-menu.vel-style--arcade .vel-btn.is-selected {
+  color: var(--ink);
+  background: var(--gold);
+  border-color: var(--gold);
+  box-shadow: 3px 3px 0 var(--magenta);
+}
+
+.vel-menu.vel-style--arcade .vel-btn--primary {
+  color: var(--ink);
+  background: var(--magenta);
+  border-color: var(--magenta);
+  box-shadow: 4px 4px 0 var(--gold);
+}
+
+.vel-menu.vel-style--arcade .vel-btn--primary:hover {
+  background: var(--gold);
+  border-color: var(--gold);
+  box-shadow: 4px 4px 0 var(--magenta);
+}

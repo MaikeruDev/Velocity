@@ -110,6 +110,8 @@ npx tsx tools/online/login-check.ts     # Playwright gegen das ECHTE Supabase (P
 node tools/online/build-function.mjs [--check]   # Verifier-Bundle der Edge Function (esbuild, 1 ESM-Datei mit Leveln)
 SUPABASE_SECRET_KEY=… node tools/online/upload-bundle.mjs   # Bundle → privater Bucket function-assets, SHA in index.ts
                        #   pinnen; danach index.ts deployen (npx supabase functions deploy submit-run | MCP). Ablauf: Plan 009 §14
+npx tsx tools/menu/shot.ts              # Menü-Labor (Plan 010): Screenshots je Hauptmenü-Stil + Konsolenfehler → shots/menu/<id>/
+                       #   (Port 5720, MENU_PORT=…; MENU_STYLE=<id>[,<id>], MENU_SIZE=WxH[,WxH], MENU_WAIT=ms; immer ?online=mock)
 npm run build
 ```
 
@@ -183,10 +185,11 @@ Die Module sprechen nur über diese Typen miteinander:
 | Spiel-Events | `src/engine/events.ts` |
 | Trainingsmodus (Session, Urteile, Fortschritt) | `src/engine/trainingTypes.ts` |
 | Einstellungen | `src/engine/settingsTypes.ts` |
-| Replay-Format, Online-Dienst | `src/engine/replay/format.ts`, `src/online/types.ts` |
-| Online-Datenbank (Tabellen, RPCs), Edge-Function-Antwort | `supabase/migrations/*.sql`, `src/online/supabaseTypes.ts`, `src/online/supabaseApi.ts` (`SubmitResponse`) |
+| Replay-Format, Online-Dienst | `src/engine/replay/format.ts`, `src/online/types.ts` (+ `profileTypes.ts`, `adminTypes.ts`) |
+| Online-Datenbank (Tabellen, RPCs), Edge-Function-Antwort | `supabase/migrations/*.sql`, `src/online/supabaseTypes.ts`, `src/online/supabaseApi.ts` (`SubmitResponse`, `AdminDeleteResponse`) |
 | Audio-API | `src/audio/types.ts` |
 | Renderer-API | `src/render/types.ts` |
+| Hauptmenü-Stile (Front Doors) | `src/ui/menuLab/types.ts` |
 
 Änderungen an einem Vertrag: im selben Zug alle Nutzer anpassen und hier notieren.
 
@@ -539,6 +542,34 @@ Online mit Supabase + Discord-Login (Plan 009 §13, 06.11.) — tsc 0, Vitest gr
 - **Server**: `src/online/submitVerifier.ts` (`SubmissionVerifier`: Größe, Entpacken, `assisted` → abgelehnt, Level aus dem
   Bundle, `verifyReplay`). Nach JEDER Änderung an Physik/Leveln/Replay/Verifier: Bundle bauen, hochladen, index.ts
   deployen — `tests/submitFunction.test.ts` schlägt sonst fehl (Bundle veraltet / SHA nicht gepinnt).
+
+Profil + Entwickler-Werkzeuge (Plan 009 §15, 06.11.): Backend und Client-Schicht sind fertig, die UI fehlt noch. tsc 0,
+Vitest grün, Function `admin` deployt.
+- **`online/profileTypes`** (neu): `PlayerProfile` jetzt `{uid, name, avatarUrl, dev, memberSince, runs, worldRecords,
+  bests: ProfileBest[]}`, `ProfileBest {levelId, time, rank, total, runId, date}`. `getProfile(uid?)` liest fremde Profile
+  ohne Login; gebannt oder unbekannt → `'notFound'`. Ränge gelten nur für die aktuellen Tafeln.
+- **`online/adminTypes`** (neu): `AdminService` (`listRuns`, `listPlayers`, `setBan`, `renamePlayer`, `deleteRun`, `auditLog`),
+  `AdminPage<T> {items, total}`, `AdminRun`, `AdminPlayer`, `AdminDeleteResult`, `AdminAuditEntry`. `OnlineService.admin:
+  AdminService | null` ist nur bei `identity.dev` gesetzt; der Server prüft trotzdem jeden Aufruf (`role = 'dev'`).
+  Beide Dateien sind re-exportiert aus `online/index`, **nicht** aus `types.ts` (Bundle-Graph, fallen.md #210).
+- **`online/index`**: `OnlineDeps.levelIds`, `mockDev`. `SupabaseServiceOptions.levelIds`, `adminTimeoutMs`;
+  `MockOptions.dev` (`?mockdev`, lokale Moderation). **Engine**: `Game.levelIds()`.
+- **Adapter** `supabaseApi`: `playerProfile` statt `runCount`, `admin*`. SQLSTATE 22023 → `'invalid'`, P0002 →
+  `'notFound'`, HTTP 404 → `'notFound'`.
+- **Server**: RPCs `get_player_profile` (INVOKER, öffentlich), `admin_list_runs`, `admin_list_players`, `admin_set_ban`,
+  `admin_rename_player`, `admin_audit_log` (DEFINER + Dev-Prüfung, nur authenticated), `admin_delete_run` (nur
+  service_role) mit Edge Function `admin` (`deleteRun`, löscht das Replay über die Storage-API). Protokoll in
+  `private.admin_audit`. Gebannte Profile sind öffentlich unsichtbar (RLS).
+
+Menü-Labor (Plan 010, 06.11.) — alle Nutzer nachgezogen:
+- **Einstellungen**: `GameSettings.menuStyle` (`MenuStyleId` 'classic' | 'ps2' | 'hub' | 'rave' | 'arcade', `MENU_STYLE_IDS`,
+  Default classic; `sanitizeSettings`: fehlt/unbekannt → base). `?menu=<id>` = Sitzungs-Override (`Menu.setStyleOverride`).
+  Achtung: Settings.ts liegt im Verifier-Bundle (movementConfigFor) — Änderungen machen es veraltet (Plan 010 §6).
+- **UI** (`ui/types`): `MenuScreen` + 'lab' (Menü-Labor) | 'profile' (Platzhalter). Menü: `showLab()`, `showProfile()`,
+  `setAudio(MenuAudio)` (main.ts), `menuStyle`; Root-Klasse `vel-style--<id>` auf allen Screens, `data-door="ready"` sobald
+  eine Front Door steht.
+- **Neu** `src/ui/menuLab/types.ts` (Vertrag FrontDoor/FrontDoorContext), `registry.ts` (lazy je Stil), `beatClock.ts`
+  (Takt, Ersatz-Uhr 132 BPM ohne AudioContext), Stile in `src/ui/menuLab/<id>/`. Regeln für Stile: `.docs/plans/010-menu-lab.md`.
 
 ### 3.5 Musik folgt dem Movement
 Der Techno-Track (132 BPM) ist aus Oszillatoren und Rauschen gebaut. Er bekommt

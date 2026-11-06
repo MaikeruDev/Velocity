@@ -371,7 +371,7 @@ alte Läufe bleiben in `runs`.
 ### 14.5 Offen
 
 - Heuristiken gegen TAS (§6.2) weiter nur skizziert; `assisted` lehnt nur ehrlich markierte Bot-Läufe ab.
-- Moderation: Bann per Dashboard (`profiles.is_banned`), keine Moderations-UI. Gelöschte Nutzer: Zeilen per FK-Cascade weg,
+- Moderation: Bann per Dashboard (`profiles.is_banned`) oder `admin_set_ban` (§15); Moderations-UI fehlt noch. Gelöschte Nutzer: Zeilen per FK-Cascade weg,
   Storage-Objekte bleiben (Aufräum-Job bei Bedarf).
 - Altes Bundle-Objekt `submit-run/verifier-2efdc930….js` im privaten Bucket ist unbenutzt (darf gelöscht werden).
 - Kein echter Login-Durchlauf möglich ohne Discord-Konto im Dashboard — §14.3 ist der Abnahmetest.
@@ -386,3 +386,130 @@ Menü zeigt Entwickler mit Neon-Stufen-Effekt + Glitch + DEV-Abzeichen (`playerN
     update public.profiles set role = 'dev' where id = '<auth.users.id>';
 
 Vergeben an: Maikeru (Betreiber).
+
+## 15. Profilseite + Entwickler-Werkzeuge (06.11., Backend + Client-Schicht, ohne UI)
+
+Plan-Punkte 9 (Profil) und 10 (Moderation). Die Menü-UI fehlt noch bewusst, das Menü wird gerade neu gebaut (Plan 010).
+Migrationen `20261106081939_online_player_profile.sql` und `20261106082126_online_admin.sql`, Edge Function
+`supabase/functions/admin/index.ts` (verify_jwt an, Version 1 deployt).
+
+### 15.1 Profil (öffentlich)
+
+| Objekt | Inhalt | Zugriff |
+|---|---|---|
+| `get_player_profile(p_user uuid, p_boards jsonb)` → jsonb oder null | `{id, display_name, avatar_url, role, created_at, runs, world_records, bests:[{level_id, level_hash, physics_version, time_ms, run_id, achieved_at, rank, total}]}`. `p_boards = [{level, level_hash, physics}]` (höchstens 64; kaputte Einträge werden ignoriert) sind die AKTUELLEN Tafeln des Clients. Rang und Total werden wie bei `get_leaderboard` berechnet, ohne `hidden`. `world_records` zählt die Rang-1-Tafeln darunter, `runs` alle angenommenen Läufe | SQL, STABLE, **SECURITY INVOKER**, `search_path=''`, EXECUTE anon+authenticated |
+| Policy `profiles_select_public` (neu) | `using (not is_banned or auth.uid() = id)`: gebannte Profile sind öffentlich unsichtbar, nur der Besitzer sieht seine Zeile | — |
+
+**Bann-Verhalten:** Für Gebannte gibt `get_player_profile` öffentlich null zurück, der Client wirft `notFound` (also
+"unbekannt" statt "gebannt"; der Bann-Status bleibt privat). Der gebannte Spieler sieht sein eigenes Profil, aber ohne
+Bestzeiten (`hidden`). Bestenlisten blenden ihn schon über `best_runs.hidden` aus. Moderatoren sehen ihn über
+`admin_list_players`.
+
+### 15.2 Moderation (nur `profiles.role = 'dev'`, nicht gebannt)
+
+| Objekt | Zweck | Sicherheit |
+|---|---|---|
+| `private.require_dev(uid)` | raise 42501, wenn kein nicht-gebannter Dev | erste Anweisung jeder Admin-Funktion |
+| `admin_list_runs(p_level?, p_user?, p_limit=50, p_offset=0)` | Läufe, neueste zuerst (`runs_created_idx`), mit Name, Rolle, Bann, Board, Zeit, Datum, `replay_path`, `is_best`, `total` | DEFINER, prüft `auth.uid()`, EXECUTE nur authenticated (+service_role) |
+| `admin_list_players(p_search?, p_banned_only=false, p_limit, p_offset)` | Spieler inkl. gebannter. Suche: Teilstring in Anzeige- oder Discord-Name, oder exakte ID. Mit discord_name, ban_reason, banned_at, Laufzahl | wie oben |
+| `admin_set_ban(p_user, p_banned, p_reason?)` | Bann braucht 1–200 Zeichen Begründung. Sich selbst oder einen Dev bannen → 22023. Der vorhandene Trigger `profiles_apply_ban` blendet `best_runs` aus und wieder ein, `claim_submit_slot` lehnt Einreichungen ab. Neue Spalten `profiles.ban_reason`, `banned_at` ohne Client-Grant | wie oben |
+| `admin_rename_player(p_user, p_name, p_reason?)` | Name über `private.clean_display_name` (dieselben Regeln wie `display_name`), gespeichert wird die bereinigte Form, null → 22023 | wie oben |
+| `admin_audit_log(p_limit, p_offset, p_user?)` | Protokoll, neueste zuerst, mit Akteur- und Zielnamen | wie oben |
+| `admin_delete_run(p_actor, p_run, p_reason)` | Läuft unter derselben Advisory-Sperre wie `record_verified_run`: Lauf löschen (best_runs fällt per Cascade mit). War er die Bestzeit, wird der schnellste verbleibende Lauf derselben Tafel neue Bestzeit (bei Gleichstand der frühere), `hidden` = Bann-Status. Sonst gibt es danach keine Bestzeit mehr. Liefert `replay_path` | DEFINER, EXECUTE **nur service_role**, prüft `p_actor` selbst |
+| Edge Function `admin` | `POST {action:'deleteRun', runId, reason}`: `auth.getUser(jwt)`, dann `admin_delete_run(user.id, …)`, dann das Replay über die **Storage-API** löschen (`storage.from('replays').remove`). Antworten: 200, 400 invalid, 401 auth, 403 forbidden, 404 notFound | verify_jwt an. Akteur kommt aus dem geprüften JWT, nie aus dem Body |
+| `private.admin_audit` | id, at, actor, action (`ban`/`unban`/`rename`/`delete_run`), target_user, target_run, detail jsonb. Ohne FK, überlebt also Löschungen | nicht exponiertes Schema, RLS an, keine Grants (auch nicht für service_role), nur die DEFINER-Funktionen schreiben und lesen |
+
+SQLSTATE → Client: 42501 → `OnlineError('auth')`, 22023 → `'invalid'`, P0002 → `'notFound'`.
+
+**Sicherheitsmodell:** Die Rolle steht in `profiles.role`, und das UPDATE-Grant gilt nur für `display_name`; ein
+Client-Update auf `role` oder `is_banned` endet mit 42501 (geprüft). Jede Admin-RPC prüft serverseitig `auth.uid()` bzw.
+`p_actor`. Dass der Client `admin` nur bei `identity.dev` einblendet, ist reine Bequemlichkeit. Läuft eine Aktion über
+mehrere Schritte (Storage), geht sie über die Function mit service_role. Die Datenbank prüft den Akteur dort trotzdem
+selbst, damit ein Fehler in der Function nichts freischaltet.
+
+**Advisors (06.11.):** Security meldet WARN 0029 "authenticated darf SECURITY DEFINER ausführen" für die 5 Admin-RPCs.
+Das ist gewollt: Sie müssen `is_banned`/`discord_name` lesen und profiles schreiben, und das erste Statement ist die
+Dev-Prüfung. Sie nach `private` zu verschieben, hieße USAGE auf `private` für authenticated zu vergeben und wäre nicht
+sicherer. Dazu kommen INFO "RLS ohne Policy" auf `private.admin_audit` (gewollt, wie submit_counters) und WARN "Leaked
+Password Protection" (E-Mail-Auth, für das Spiel ohne Belang; E-Mail-Anbieter ausschalten wie §14.2.3). Performance
+meldet nur "unused index" (Tabellen leer).
+
+**Geprüft (06.11.)**, per SQL in einem DO-Block, der mit `raise exception` zurückrollt (fallen.md #212), mit zwei
+Test-Discord-Nutzern und dem echten Dev-Profil. Danach waren runs/best_runs/audit wieder 0 und profiles/users wieder 1.
+
+- anon: alle 6 Admin-Funktionen → 42501; `select ban_reason` → 42501.
+- Nicht-Dev authenticated: list/players/ban/rename/audit → 42501 "dev role required"; `admin_delete_run` direkt aufgerufen
+  (auch mit gefälschtem `p_actor` = Dev) → 42501 (kein Grant); `update role='dev'` und `update is_banned` → 42501.
+- Dev: Läufe 3/Seite 2/total 4 korrekt, Suche ok, Bann ohne Begründung → 22023, sich selbst bannen → 22023, unbekannt →
+  P0002. Bann → Tafel zeigt nur noch B (total 1), Profil für anon null, die Zeile ist für anon unsichtbar, A selbst sieht
+  sein Profil mit leeren `bests`, A kann sich nicht umbenennen (0 Zeilen). Entbannen → Tafel wieder 2.
+  Umbenennen von "  Bad<>Name!! " → `BadName`, "x" → 22023.
+- service_role (wie die Function): Nicht-Dev-Akteur → 42501, ohne Begründung → 22023, unbekannter Lauf → P0002. Löschen von
+  15.0 s (PB) → neue Bestzeit 18.0 s, Löschen von 18.0 s → 20.0 s (Lauf ohne Replay), Löschen von 20.0 s → keine
+  Bestzeit, best_runs von A = 0. Protokoll ban, unban, delete×3, total 7.
+- Profil: Rang 1/2, world_records 1, B Rang 2, unbekannte ID → null, `p_boards` kein Array → leere `bests`.
+- HTTP (curl, anon-Key, ohne Ausgabe des Keys): Function ohne JWT 401 (Gateway), anon-Key 401 `{error:'auth'}`,
+  kaputtes JWT 401, OPTIONS 200. Alle Admin-RPCs über `/rest/v1/rpc` → 42501 "permission denied", `get_player_profile`
+  → 200 `null`, `profiles?select=ban_reason` → 42501.
+- Nicht prüfbar ohne echten Dev-JWT: der Erfolgspfad der Function selbst (getUser → RPC → Storage-Löschen). Die RPC
+  dahinter ist oben geprüft. Abnahme siehe 15.4.
+
+### 15.3 Client-Schicht (für die Menü-UI)
+
+Typen: `src/online/profileTypes.ts` (`PlayerProfile`, `ProfileBest`) und `src/online/adminTypes.ts` (`AdminService` …),
+re-exportiert aus `src/online/index.ts`. Sie liegen nicht in types.ts, siehe fallen.md #210.
+
+```ts
+online.getProfile(uid?: string): Promise<PlayerProfile>      // ohne uid: ich ('auth' ohne Login); fremde ohne Login; gebannt/unbekannt → 'notFound'
+// PlayerProfile { uid, name, avatarUrl, dev, memberSince: string|null, runs, worldRecords, bests: ProfileBest[] }
+// ProfileBest   { levelId, time (s), rank, total, runId (→ getGhost / raceGhost), date }
+online.admin: AdminService | null                            // nur solange identity.dev; bei onIdentityChange neu lesen
+admin.listRuns({ levelId?, uid?, limit?=50 (1–200), offset? }): Promise<AdminPage<AdminRun>>   // { items, total }
+admin.listPlayers({ search?, bannedOnly?, limit?, offset? }): Promise<AdminPage<AdminPlayer>>
+admin.setBan(uid, banned: boolean, reason?: string): Promise<AdminPlayer>   // reason Pflicht beim Bannen
+admin.renamePlayer(uid, name, reason?): Promise<AdminPlayer>
+admin.deleteRun(runId, reason: string): Promise<AdminDeleteResult>          // { runId, uid, levelId, wasBest, newBest: {runId, time}|null, replayRemoved }
+admin.auditLog({ uid?, limit?, offset? }): Promise<AdminPage<AdminAuditEntry>>
+```
+
+- `SupabaseService`: `getProfile` schickt die Tafeln aller Level aus `levelIds` (main.ts → `Game.levelIds()`, neu). Ohne
+  `levelIds` nimmt sie die Level mit Bestzeiten. Adapter `supabaseApi`: `playerProfile`, `adminListRuns`,
+  `adminListPlayers`, `adminSetBan`, `adminRename`, `adminAudit`, `adminDeleteRun` (`functions.invoke('admin')`);
+  `runCount` entfällt.
+- `LocalMockService`: Profil mit denselben Feldern. `MockOptions.dev` (URL `?mockdev`, nur mit Mock) schaltet eine lokale
+  Moderation frei (Bann blendet aus und sperrt das Einreichen mit `'banned'`, Umbenennen, Löschen, Protokoll), damit sich
+  die UI ohne Server bauen lässt. Der Mock speichert nur Bestzeiten, also gibt es nach dem Löschen keine neue Bestzeit.
+- Tests: `tests/supabaseService.test.ts` (Profil-RPC und Tafeln, Parser, admin nur für Devs, Klemmen, Zuordnung,
+  Fehler durchreichen, Protokoll-Filter), `tests/online.test.ts` (Mock-Profil, Mock-Moderation, gebannter eigener Spieler).
+
+### 15.4 Für den Betreiber
+
+1. **Verifier-Bundle hochladen (offen):** Die Menü-Labor-Änderung an `Settings.ts`/`settingsTypes.ts` hat das Bundle neu
+   minifiziert. Der Code ist gleich: tree-geshakt, `menuStyle` kommt im Bundle nicht vor, `PHYSICS_VERSION` 1 und alle
+   4 Level-Hashes sind gleich wie in der Live-Function. Lokal ist das Bundle neu gebaut und `BUNDLE_SHA256` in
+   `supabase/functions/submit-run/index.ts` auf `e02d9814…` gesetzt; damit sind die Tests grün. **Live läuft weiter
+   `7294fb0a…`, das ist kompatibel.** `index.ts` NICHT deployen, bevor das Bundle hochgeladen ist (sonst findet der
+   Kaltstart sein Bundle nicht):
+
+       node tools/online/build-function.mjs
+       SUPABASE_SECRET_KEY=sb_secret_… node tools/online/upload-bundle.mjs
+       npx supabase functions deploy submit-run --project-ref didmtxnjtalbqppmmpvq
+
+   Ändert das Menü-Labor `Settings.ts` noch einmal, ist der erste Schritt wieder fällig (`npx vitest run` meldet es).
+2. **Dev-Pfad abnehmen**, sobald die Admin-UI steht (das Debug-Handle `online()` liefert nur Infos, nicht den Dienst):
+   als Dev angemeldet `online.admin.listRuns()` → Läufe; einen eigenen Test-Lauf mit `admin.deleteRun(id, 'Test')`
+   löschen → `replayRemoved: true`, Storage `replays/<level>/` hat das Objekt nicht mehr, `admin.auditLog()` zeigt
+   `delete_run`. Edge-Function-Log: "admin: <uid> löscht Lauf …".
+3. Dev-Rolle vergeben wie in §14.x (nur SQL-Editor/MCP, nie in einer Migration mit fester ID).
+
+### 15.5 Offen
+
+- UI: Profilseite (Klick auf einen Namen in der Bestenliste → `getProfile(uid)`), Admin-Ansicht. Kommt mit dem neuen Menü.
+- Ein umbenannter Spieler kann sich selbst wieder umbenennen (UPDATE-Grant auf `display_name`). Dagegen hilft der Bann.
+  Eine Namenssperre (z. B. `name_locked`, in der UPDATE-Policy geprüft) wäre der nächste Schritt.
+- Gelöschte Bestzeit: Die neue Bestzeit kann ohne Ghost sein, weil Replays nur für Läufe gespeichert werden, die beim
+  Einreichen PB waren. `getGhost` → `notFound`.
+- Schlägt das Storage-Löschen fehl, ist der Lauf trotzdem weg und das Objekt bleibt als Waise liegen
+  (`replayRemoved: false`, Log).
+- Kein Seiten-Cursor: Paging per offset. Für eine Moderations-Ansicht genügt das; mit vielen Läufen wäre ein
+  Keyset-Cursor auf (`created_at`, `id`) besser (der Index ist schon da).

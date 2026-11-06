@@ -1,0 +1,1995 @@
+/*
+ * Stil 'ps2' (Plan 010) — Konsolen-Systemmenü. Alles unter .vel-menu.vel-style--ps2.
+ * Silkscreen nur in 16/32 × --k (k = 1 / 1.5 / 2 → 16/24/32, 32/48/64): immer Vielfache von 8 px.
+ * Harte Kanten, 1-px-Linien, gestufte Übergänge (steps) — kein Blur, keine weichen Schatten.
+ */
+
+.vel-menu.vel-style--ps2 {
+  --ps2-ink: #04030c;
+  --ps2-glass: rgba(10, 12, 34, 0.72);
+  --ps2-glass-hi: rgba(18, 26, 64, 0.86);
+  --ps2-line: rgba(140, 170, 255, 0.28);
+  --ps2-line-hi: rgba(160, 220, 255, 0.7);
+  --ps2-blue: #8fb4ff;
+  --ps2-text: #eef1ff;
+  --ps2-dim: #8f95c0;
+  --k: 1;
+}
+
+@media (min-height: 900px) and (min-width: 1500px) {
+  .vel-menu.vel-style--ps2 {
+    --k: 1.5;
+  }
+}
+
+@media (min-height: 1400px) and (min-width: 2200px) {
+  .vel-menu.vel-style--ps2 {
+    --k: 2;
+  }
+}
+
+/* Titel: eigene Welt statt Verlauf + globale Scanlines (die eigenen liegen genau auf dem Low-Res-Raster). */
+.vel-menu.vel-style--ps2[data-screen='title'] {
+  background: #000;
+}
+
+.vel-menu.vel-style--ps2[data-screen='title']::after {
+  display: none;
+}
+
+.vel-menu.vel-style--ps2 .vel-frontdoor--ps2 {
+  --px: 3px;
+  background: #000;
+  font-family: var(--font-head);
+  color: var(--ps2-text);
+}
+
+.vel-menu.vel-style--ps2 .vel-frontdoor--ps2::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  background: repeating-linear-gradient(180deg, transparent 0 calc(var(--px) - 1px), rgba(0, 0, 0, 0.16) calc(var(--px) - 1px) var(--px));
+}
+
+.vel-menu.vel-style--ps2 .ps2-canvas {
+  position: absolute;
+  image-rendering: pixelated;
+  display: block;
+}
+
+.vel-menu.vel-style--ps2 :where(.vel-frontdoor--ps2 button) {
+  appearance: none;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.vel-menu.vel-style--ps2 .vel-frontdoor--ps2 button:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+
+.vel-menu.vel-style--ps2 .vel-frontdoor--ps2 button:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
+/* ------------------------------------------------------------------ Gerüst */
+
+.vel-menu.vel-style--ps2 .ps2-ui {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: 'top' 'stage' 'error' 'bottom';
+  padding: calc(20px * var(--k)) calc(40px * var(--k)) calc(16px * var(--k));
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.vel-menu.vel-style--ps2 .ps2-ui.is-live {
+  visibility: visible;
+  animation: ps2-in 420ms steps(6, end);
+}
+
+.vel-menu.vel-style--ps2 .ps2-ui.is-instant {
+  animation: none;
+}
+
+@keyframes ps2-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.vel-menu.vel-style--ps2 .ps2-ui button,
+.vel-menu.vel-style--ps2 .ps2-ui a {
+  pointer-events: auto;
+}
+
+.vel-menu.vel-style--ps2 .ps2-top {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: calc(1360px * var(--k));
+  justify-self: center;
+  min-height: calc(40px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-brand {
+  display: flex;
+  align-items: center;
+  gap: calc(16px * var(--k));
+  font-size: calc(16px * var(--k));
+  letter-spacing: 2px;
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .ps2-ui[data-view='main'] .ps2-brand {
+  visibility: hidden;
+}
+
+.vel-menu.vel-style--ps2 .ps2-crumb::before {
+  content: '◀ ';
+  color: var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .ps2-crumb:empty {
+  display: none;
+}
+
+.vel-menu.vel-style--ps2 .ps2-logo {
+  display: block;
+  image-rendering: pixelated;
+}
+
+.vel-menu.vel-style--ps2 .ps2-top-right {
+  display: flex;
+  align-items: center;
+  gap: calc(24px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-clock {
+  font-size: calc(16px * var(--k));
+  letter-spacing: 2px;
+  color: var(--ps2-blue);
+}
+
+.vel-menu.vel-style--ps2 .ps2-account {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(8px * var(--k));
+  padding: calc(4px * var(--k)) calc(12px * var(--k)) calc(4px * var(--k)) calc(4px * var(--k));
+  font-size: calc(16px * var(--k));
+  letter-spacing: 1px;
+  background: var(--ps2-glass);
+  border: 1px solid var(--ps2-line);
+  max-width: calc(360px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 button.ps2-account:hover {
+  border-color: var(--ps2-line-hi);
+  background: var(--ps2-glass-hi);
+}
+
+.vel-menu.vel-style--ps2 .ps2-account--login {
+  padding-left: calc(12px * var(--k));
+  color: #fff;
+  background: #3a44c8;
+  border-color: #8f98ff;
+}
+
+.vel-menu.vel-style--ps2 .ps2-account--off {
+  padding: calc(4px * var(--k)) calc(12px * var(--k));
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .ps2-account-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vel-menu.vel-style--ps2 .vel-name-dev {
+  overflow: visible;
+}
+
+.vel-menu.vel-style--ps2 .ps2-discord {
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  box-shadow: 4px 0 0 #3a44c8 inset;
+}
+
+.vel-menu.vel-style--ps2 .ps2-avatar {
+  flex: none;
+  display: inline-block;
+  border: 1px solid var(--ps2-line-hi);
+  background: #0b0820;
+}
+
+.vel-menu.vel-style--ps2 .ps2-avatar-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.vel-menu.vel-style--ps2 .ps2-stage {
+  grid-area: stage;
+  position: relative;
+  min-height: 0;
+  width: 100%;
+  max-width: calc(1360px * var(--k));
+  justify-self: center;
+}
+
+.vel-menu.vel-style--ps2 .ps2-stage.is-enter > * {
+  animation: ps2-in 240ms steps(4, end);
+}
+
+.vel-menu.vel-style--ps2 .ps2-error {
+  grid-area: error;
+  justify-self: center;
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  max-width: calc(880px * var(--k));
+  margin-bottom: calc(8px * var(--k));
+  padding: calc(8px * var(--k)) calc(16px * var(--k));
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  background: rgba(60, 6, 24, 0.9);
+  border: 1px solid var(--loss);
+  pointer-events: auto;
+}
+
+.vel-menu.vel-style--ps2 .ps2-error[hidden] {
+  display: none;
+}
+
+.vel-menu.vel-style--ps2 .ps2-error-head {
+  font-family: var(--font-head);
+  font-weight: 400;
+  color: var(--loss);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.vel-menu.vel-style--ps2 .ps2-bottom {
+  grid-area: bottom;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  width: 100%;
+  max-width: calc(1360px * var(--k));
+  justify-self: center;
+  gap: 24px;
+  padding-top: calc(12px * var(--k));
+  border-top: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .ps2-version {
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  color: var(--ps2-dim);
+  opacity: 0.7;
+}
+
+.vel-menu.vel-style--ps2 .ps2-foot-link {
+  justify-self: end;
+  font-size: calc(16px * var(--k));
+  letter-spacing: 1px;
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .ps2-foot-link:hover {
+  color: var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .ps2-prompts {
+  display: flex;
+  align-items: center;
+  gap: calc(24px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-prompt {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(4px * var(--k));
+  font-size: calc(16px * var(--k));
+  letter-spacing: 1px;
+  color: var(--ps2-text);
+}
+
+.vel-menu.vel-style--ps2 .ps2-prompt-label {
+  margin-left: calc(4px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-prompt--btn:hover .ps2-prompt-label {
+  color: var(--cyan);
+}
+
+/* Tastenkappe: helle Kappe, harte Unterkante (Tiefe), Silkscreen. */
+.vel-menu.vel-style--ps2 .ps2-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(24px * var(--k));
+  height: calc(24px * var(--k));
+  padding: 0 calc(4px * var(--k));
+  font-family: var(--font-head);
+  font-size: calc(16px * var(--k));
+  line-height: 1;
+  letter-spacing: 0;
+  color: var(--ps2-ink);
+  background: #dfe4ff;
+  border: 1px solid #fff;
+  box-shadow: 0 calc(3px * var(--k)) 0 #6a72a8;
+  text-transform: uppercase;
+}
+
+.vel-menu.vel-style--ps2 .ps2-key--wide {
+  padding: 0 calc(8px * var(--k));
+}
+
+/* ------------------------------------------------------------------ Boot */
+
+.vel-menu.vel-style--ps2 .ps2-boot {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.vel-menu.vel-style--ps2 .ps2-boot-read {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: calc(16px * var(--k));
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--ps2-blue);
+  opacity: 0;
+  animation: ps2-boot-read 1.5s steps(1, end) forwards;
+}
+
+.vel-menu.vel-style--ps2 .ps2-boot-read::after {
+  content: '';
+  width: 24px;
+  animation: ps2-dots 0.6s steps(1, end) infinite;
+}
+
+@keyframes ps2-dots {
+  0% {
+    content: '';
+  }
+  25% {
+    content: '.';
+  }
+  50% {
+    content: '..';
+  }
+  75% {
+    content: '...';
+  }
+}
+
+@keyframes ps2-boot-read {
+  0%,
+  8% {
+    opacity: 0;
+  }
+  10%,
+  70% {
+    opacity: 1;
+  }
+  74%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.vel-menu.vel-style--ps2 .ps2-boot-disc {
+  width: 16px;
+  height: 16px;
+  border: 4px solid var(--ps2-blue);
+  border-right-color: transparent;
+  animation: ps2-spin 0.4s steps(4, end) infinite;
+}
+
+@keyframes ps2-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.vel-menu.vel-style--ps2 .ps2-boot-sub {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 64%;
+  text-align: center;
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  letter-spacing: 2px;
+  color: var(--ps2-dim);
+  opacity: 0;
+  animation: ps2-show 0.3s steps(3, end) 2.3s forwards;
+}
+
+.vel-menu.vel-style--ps2 .ps2-boot-skip {
+  position: absolute;
+  right: calc(40px * var(--k));
+  bottom: calc(24px * var(--k));
+  font-size: calc(16px * var(--k));
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--ps2-dim);
+  opacity: 0;
+  animation: ps2-show 0.3s steps(3, end) 0.6s forwards;
+}
+
+@keyframes ps2-show {
+  to {
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------------------ Hauptmenü */
+
+.vel-menu.vel-style--ps2 .ps2-main {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-evenly;
+}
+
+.vel-menu.vel-style--ps2 .ps2-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(4px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-tagline {
+  font-size: calc(16px * var(--k));
+  letter-spacing: calc(4px * var(--k));
+  text-transform: uppercase;
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .ps2-items {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(8px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: calc(160px * var(--k));
+  padding-bottom: calc(8px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-item-icon {
+  display: block;
+  width: calc(112px * var(--k));
+  height: calc(128px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-item-label {
+  margin-top: calc(8px * var(--k));
+  font-size: calc(16px * var(--k));
+  letter-spacing: 1px;
+  color: #a9aed6;
+  white-space: nowrap;
+}
+
+.vel-menu.vel-style--ps2 .ps2-item.is-selected .ps2-item-label {
+  color: #fff;
+}
+
+/* Auswahlbalken unter dem Namen: hart, zwei Stufen */
+.vel-menu.vel-style--ps2 .ps2-item::after {
+  content: '';
+  width: 0;
+  height: calc(4px * var(--k));
+  margin-top: calc(8px * var(--k));
+  background: var(--cyan);
+  box-shadow: 0 calc(4px * var(--k)) 0 rgba(51, 240, 255, 0.3);
+  transition: width 120ms steps(3, end);
+}
+
+.vel-menu.vel-style--ps2 .ps2-item.is-selected::after {
+  width: calc(64px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-item-flag {
+  order: 3;
+  margin-top: calc(8px * var(--k));
+  padding: 0 calc(8px * var(--k));
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  white-space: nowrap;
+  text-transform: none;
+  color: #ff9a52;
+  border: 1px solid #ff8a3a;
+  background: rgba(40, 14, 4, 0.7);
+}
+
+.vel-menu.vel-style--ps2 .ps2-info {
+  --glow: var(--cyan);
+  width: min(calc(820px * var(--k)), 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(8px * var(--k));
+  text-align: center;
+}
+
+.vel-menu.vel-style--ps2 .ps2-info-title {
+  margin: 0;
+  font-family: var(--font-head);
+  font-weight: 400;
+  font-size: calc(32px * var(--k));
+  line-height: 1.25;
+  letter-spacing: calc(4px * var(--k));
+  text-transform: uppercase;
+  color: #fff;
+  text-shadow: 2px 2px 0 var(--ps2-ink);
+}
+
+.vel-menu.vel-style--ps2 .ps2-info-desc {
+  margin: 0;
+  max-width: calc(640px * var(--k));
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  line-height: 1.5;
+  color: #c4c9ec;
+}
+
+.vel-menu.vel-style--ps2 .ps2-info-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: calc(4px * var(--k)) calc(24px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(8px * var(--k));
+  font-size: calc(16px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-fact em {
+  font-style: normal;
+  letter-spacing: 1px;
+  color: var(--ps2-dim);
+  text-transform: uppercase;
+}
+
+.vel-menu.vel-style--ps2 .ps2-fact b {
+  font-weight: 400;
+  color: var(--glow);
+  text-transform: uppercase;
+}
+
+.vel-menu.vel-style--ps2 .ps2-info-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: calc(12px * var(--k));
+  margin-top: calc(4px * var(--k));
+}
+
+/* Knöpfe: Glasplatte, 1-px-Linie; primär hell mit harter Unterkante */
+.vel-menu.vel-style--ps2 .vel-frontdoor--ps2 .ps2-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(12px * var(--k));
+  min-height: calc(40px * var(--k));
+  padding: 0 calc(16px * var(--k));
+  font-size: calc(16px * var(--k));
+  letter-spacing: 2px;
+  color: var(--ps2-text);
+  background: var(--ps2-glass);
+  border: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .vel-frontdoor--ps2 .ps2-btn:hover {
+  background: var(--ps2-glass-hi);
+  border-color: var(--ps2-line-hi);
+}
+
+.vel-menu.vel-style--ps2 .vel-frontdoor--ps2 .ps2-btn--primary {
+  color: var(--ps2-ink);
+  background: #eef1ff;
+  border-color: #fff;
+  box-shadow: 0 calc(4px * var(--k)) 0 var(--glow, var(--cyan));
+}
+
+.vel-menu.vel-style--ps2 .vel-frontdoor--ps2 .ps2-btn--primary:hover {
+  background: #fff;
+  border-color: #fff;
+}
+
+.vel-menu.vel-style--ps2 .vel-frontdoor--ps2 .ps2-btn--primary .ps2-key {
+  background: var(--ps2-ink);
+  color: #fff;
+  border-color: var(--ps2-ink);
+  box-shadow: none;
+}
+
+.vel-menu.vel-style--ps2 .vel-frontdoor--ps2 .ps2-btn--small {
+  min-height: calc(32px * var(--k));
+  padding: 0 calc(12px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .vel-frontdoor--ps2 .ps2-btn--quiet {
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .vel-frontdoor--ps2 .ps2-btn--discord {
+  color: #fff;
+  background: #3a44c8;
+  border-color: #8f98ff;
+}
+
+/* Medaillen-Chip */
+.vel-menu.vel-style--ps2 .ps2-medal {
+  --medal: var(--ps2-dim);
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6px * var(--k));
+  font-family: var(--font-head);
+  font-size: calc(16px * var(--k));
+  letter-spacing: 1px;
+  color: var(--medal);
+  text-transform: uppercase;
+}
+
+.vel-menu.vel-style--ps2 .ps2-medal-dot {
+  width: calc(12px * var(--k));
+  height: calc(12px * var(--k));
+  background: var(--medal);
+  box-shadow: inset -2px -2px 0 rgba(0, 0, 0, 0.35), inset 2px 2px 0 rgba(255, 255, 255, 0.45);
+  transform: rotate(45deg);
+}
+
+.vel-menu.vel-style--ps2 .ps2-medal--velocity {
+  animation: ps2-velo 1.6s steps(1, end) infinite;
+}
+
+@keyframes ps2-velo {
+  0%,
+  100% {
+    --medal: #33f0ff;
+    color: #33f0ff;
+  }
+  50% {
+    --medal: #ff3fd0;
+    color: #ff3fd0;
+  }
+}
+
+.vel-menu.vel-style--ps2 .ps2-medal--none {
+  color: var(--ps2-dim);
+  opacity: 0.7;
+}
+
+.vel-menu.vel-style--ps2 .ps2-medal-sum {
+  display: inline-flex;
+  gap: calc(12px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-medal-count {
+  font-weight: 400;
+  color: var(--ps2-text);
+}
+
+.vel-menu.vel-style--ps2 .ps2-medal.is-zero {
+  opacity: 0.4;
+}
+
+/* ------------------------------------------------------------------ Unteransichten: Kopf */
+
+.vel-menu.vel-style--ps2 .ps2-view-head {
+  display: flex;
+  align-items: baseline;
+  gap: calc(24px * var(--k));
+  padding: calc(8px * var(--k)) 0 calc(12px * var(--k));
+  border-bottom: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .ps2-view-title {
+  margin: 0;
+  font-family: var(--font-head);
+  font-weight: 400;
+  font-size: calc(32px * var(--k));
+  letter-spacing: calc(4px * var(--k));
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.vel-menu.vel-style--ps2 .ps2-view-sub {
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  color: var(--ps2-dim);
+}
+
+/* ------------------------------------------------------------------ Disc-Auswahl */
+
+.vel-menu.vel-style--ps2 .ps2-discs,
+.vel-menu.vel-style--ps2 .ps2-card,
+.vel-menu.vel-style--ps2 .ps2-system {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.vel-menu.vel-style--ps2 .ps2-discs-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(calc(360px * var(--k)), 0.75fr);
+  align-items: center;
+  gap: calc(32px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-ring-wrap {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+}
+
+.vel-menu.vel-style--ps2 .ps2-ring {
+  position: absolute;
+  inset: 8% 10% 12%;
+  pointer-events: none;
+}
+
+.vel-menu.vel-style--ps2 .ps2-ring-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: calc(48px * var(--k));
+  height: calc(48px * var(--k));
+  font-size: calc(16px * var(--k));
+  color: var(--ps2-text);
+  background: var(--ps2-glass);
+  border: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .ps2-ring-arrow:hover {
+  border-color: var(--ps2-line-hi);
+  color: var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .ps2-ring-arrow--l {
+  left: 0;
+}
+
+.vel-menu.vel-style--ps2 .ps2-ring-arrow--r {
+  right: 0;
+}
+
+.vel-menu.vel-style--ps2 .ps2-ring-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(16px * var(--k));
+  letter-spacing: 2px;
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .ps2-slot-panel {
+  --disc: var(--cyan);
+  --glow: var(--disc);
+  display: flex;
+  flex-direction: column;
+  gap: calc(16px * var(--k));
+  padding: calc(24px * var(--k));
+  background: var(--ps2-glass);
+  border: 1px solid var(--ps2-line);
+  border-top: calc(4px * var(--k)) solid var(--disc);
+}
+
+.vel-menu.vel-style--ps2 .ps2-slot-head {
+  display: flex;
+  flex-direction: column;
+  gap: calc(4px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-slot-num {
+  font-size: calc(16px * var(--k));
+  letter-spacing: 2px;
+  color: var(--disc);
+  text-transform: uppercase;
+}
+
+.vel-menu.vel-style--ps2 .ps2-slot-name {
+  margin: 0;
+  font-family: var(--font-head);
+  font-weight: 400;
+  font-size: calc(32px * var(--k));
+  letter-spacing: calc(4px * var(--k));
+  color: #fff;
+}
+
+.vel-menu.vel-style--ps2 .ps2-slot-sub {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  color: #c4c9ec;
+}
+
+.vel-menu.vel-style--ps2 .ps2-slot-best {
+  display: flex;
+  align-items: center;
+  gap: calc(16px * var(--k));
+  padding: calc(12px * var(--k)) 0;
+  border-top: 1px solid var(--ps2-line);
+  border-bottom: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .ps2-slot-best em {
+  font-style: normal;
+  font-size: calc(16px * var(--k));
+  letter-spacing: 1px;
+  color: var(--ps2-dim);
+  text-transform: uppercase;
+}
+
+.vel-menu.vel-style--ps2 .ps2-slot-best-t {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.vel-menu.vel-style--ps2 .ps2-slot-best b {
+  font-weight: 400;
+  font-size: calc(32px * var(--k));
+  letter-spacing: 2px;
+  color: #fff;
+}
+
+.vel-menu.vel-style--ps2 .ps2-slot-best b.is-empty,
+.vel-menu.vel-style--ps2 .ps2-save-sub b.is-empty {
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .ps2-ladder {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: calc(4px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-rung {
+  display: grid;
+  grid-template-columns: calc(16px * var(--k)) 1fr auto calc(56px * var(--k));
+  align-items: center;
+  gap: calc(8px * var(--k));
+  padding: calc(2px * var(--k)) calc(8px * var(--k));
+  font-size: calc(16px * var(--k));
+  letter-spacing: 1px;
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .ps2-rung.is-have {
+  color: var(--ps2-text);
+}
+
+.vel-menu.vel-style--ps2 .ps2-rung.is-next {
+  color: #fff;
+  background: rgba(140, 170, 255, 0.12);
+  box-shadow: inset calc(4px * var(--k)) 0 0 var(--disc);
+}
+
+.vel-menu.vel-style--ps2 .ps2-rung-time {
+  font-family: var(--font-head);
+}
+
+.vel-menu.vel-style--ps2 .ps2-rung-mark {
+  text-align: right;
+  color: var(--gain);
+}
+
+.vel-menu.vel-style--ps2 .ps2-rung.is-next .ps2-rung-mark {
+  color: var(--disc);
+}
+
+.vel-menu.vel-style--ps2 .ps2-slot-rec {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  color: var(--gold);
+}
+
+.vel-menu.vel-style--ps2 .ps2-slot-panel .ps2-info-actions {
+  justify-content: flex-start;
+}
+
+/* ------------------------------------------------------------------ Memory Card */
+
+.vel-menu.vel-style--ps2 .ps2-card-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(calc(300px * var(--k)), 0.36fr) minmax(0, 1fr);
+  gap: calc(24px * var(--k));
+  padding-top: calc(20px * var(--k));
+  align-items: start;
+}
+
+.vel-menu.vel-style--ps2 .ps2-profile {
+  --head: calc(128px * var(--k));
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: calc(16px * var(--k));
+  padding: calc(16px * var(--k)) calc(20px * var(--k)) calc(20px * var(--k));
+  background: linear-gradient(180deg, transparent 0 var(--head), var(--ps2-glass) var(--head));
+  border: 1px solid var(--ps2-line);
+  pointer-events: auto;
+}
+
+.vel-menu.vel-style--ps2 .ps2-profile-tag {
+  font-size: calc(16px * var(--k));
+  letter-spacing: 2px;
+  color: var(--magenta);
+  text-transform: uppercase;
+}
+
+.vel-menu.vel-style--ps2 .ps2-profile-who {
+  display: flex;
+  align-items: center;
+  gap: calc(16px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-profile-icon {
+  flex: none;
+  width: calc(72px * var(--k));
+  height: calc(96px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-profile-id {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(8px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-profile-name {
+  font-size: calc(16px * var(--k));
+  letter-spacing: 1px;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vel-menu.vel-style--ps2 .ps2-profile-stats {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: calc(4px * var(--k)) calc(16px * var(--k));
+  font-size: calc(16px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-profile-stats dt {
+  color: var(--ps2-dim);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.vel-menu.vel-style--ps2 .ps2-profile-stats dd {
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--ps2-text);
+}
+
+.vel-menu.vel-style--ps2 .ps2-profile-actions {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(8px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-saves-col {
+  display: flex;
+  flex-direction: column;
+  gap: calc(16px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-saves {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: calc(12px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-save {
+  --disc: var(--ps2-blue);
+  --well: calc(112px * var(--k));
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: calc(4px * var(--k));
+  padding: 0 0 calc(12px * var(--k));
+  text-align: left;
+  /* Mulde oben ohne Glas: das 3D-Symbol liegt im Canvas unter dem DOM */
+  background: linear-gradient(180deg, transparent 0 var(--well), var(--ps2-glass) var(--well));
+  border: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .ps2-save:hover,
+.vel-menu.vel-style--ps2 .ps2-save.is-selected {
+  background: linear-gradient(180deg, rgba(140, 170, 255, 0.06) 0 var(--well), var(--ps2-glass-hi) var(--well));
+  border-color: var(--ps2-line-hi);
+}
+
+.vel-menu.vel-style--ps2 .ps2-save.is-selected {
+  box-shadow: inset 0 calc(-4px * var(--k)) 0 var(--disc), 0 0 0 1px var(--disc);
+}
+
+.vel-menu.vel-style--ps2 .ps2-save-icon {
+  display: block;
+  height: var(--well);
+  margin-bottom: calc(8px * var(--k));
+  border-bottom: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .ps2-save > :not(.ps2-save-icon) {
+  margin: 0 calc(12px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-save-title {
+  font-size: calc(16px * var(--k));
+  letter-spacing: 1px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vel-menu.vel-style--ps2 .ps2-save-sub {
+  display: flex;
+  align-items: center;
+  gap: calc(12px * var(--k));
+  font-size: calc(16px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-save-sub b {
+  font-weight: 400;
+  color: var(--disc);
+}
+
+.vel-menu.vel-style--ps2 .ps2-save-note {
+  font-family: var(--font-body);
+  text-transform: none;
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .ps2-save-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(8px * var(--k)) calc(24px * var(--k));
+  min-height: calc(56px * var(--k));
+  padding: calc(8px * var(--k)) calc(16px * var(--k));
+  border-top: 1px solid var(--ps2-line);
+  border-bottom: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .ps2-detail-name {
+  font-size: calc(16px * var(--k));
+  letter-spacing: 2px;
+  color: #fff;
+  text-transform: uppercase;
+}
+
+.vel-menu.vel-style--ps2 .ps2-detail-sub {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  color: #c4c9ec;
+}
+
+.vel-menu.vel-style--ps2 .ps2-detail-fact {
+  display: inline-flex;
+  gap: calc(8px * var(--k));
+  font-size: calc(16px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-detail-fact em {
+  font-style: normal;
+  color: var(--ps2-dim);
+  text-transform: uppercase;
+}
+
+.vel-menu.vel-style--ps2 .ps2-detail-fact b {
+  font-weight: 400;
+  color: var(--gold);
+  text-transform: uppercase;
+}
+
+/* ------------------------------------------------------------------ System */
+
+.vel-menu.vel-style--ps2 .ps2-sys-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: calc(32px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-sys-icon {
+  justify-self: center;
+  width: calc(296px * var(--k));
+  height: calc(296px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-sys-list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(8px * var(--k));
+  max-width: calc(560px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-sys-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  column-gap: 16px;
+  align-items: center;
+  padding: calc(12px * var(--k)) calc(16px * var(--k));
+  text-align: left;
+  background: var(--ps2-glass);
+  border: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .ps2-sys-item:hover,
+.vel-menu.vel-style--ps2 .ps2-sys-item.is-selected {
+  background: var(--ps2-glass-hi);
+  border-color: var(--ps2-line-hi);
+  box-shadow: inset calc(4px * var(--k)) 0 0 var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .ps2-sys-label {
+  font-size: calc(16px * var(--k));
+  letter-spacing: 2px;
+  color: #fff;
+}
+
+.vel-menu.vel-style--ps2 .ps2-sys-hint {
+  grid-row: 2;
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  text-transform: none;
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .ps2-sys-item .ps2-key {
+  grid-row: 1 / 3;
+  grid-column: 2;
+}
+
+.vel-menu.vel-style--ps2 .ps2-sys-item--quiet .ps2-sys-label {
+  color: var(--ps2-dim);
+}
+
+/* ------------------------------------------------------------------ Ruhe */
+
+@media (prefers-reduced-motion: reduce) {
+  .vel-menu.vel-style--ps2 .ps2-ui.is-live,
+  .vel-menu.vel-style--ps2 .ps2-stage.is-enter > *,
+  .vel-menu.vel-style--ps2 .ps2-medal--velocity,
+  .vel-menu.vel-style--ps2 .ps2-item::after {
+    animation: none;
+    transition: none;
+  }
+}
+
+.vel-menu.vel-style--ps2 .ps2-profile-line {
+  display: flex;
+  align-items: center;
+  gap: calc(12px * var(--k));
+  min-width: 0;
+}
+
+.vel-menu.vel-style--ps2 .ps2-profile-medals {
+  padding-bottom: calc(12px * var(--k));
+  border-bottom: 1px solid var(--ps2-line);
+}
+
+/* Fortschritt: gestufte Balken in 8 Segmenten (keine weichen Verläufe) */
+.vel-menu.vel-style--ps2 .ps2-progress {
+  display: flex;
+  flex-direction: column;
+  gap: calc(8px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: calc(16px * var(--k));
+}
+
+.vel-menu.vel-style--ps2 .ps2-progress-head em {
+  font-style: normal;
+  letter-spacing: 1px;
+  color: var(--ps2-dim);
+  text-transform: uppercase;
+}
+
+.vel-menu.vel-style--ps2 .ps2-progress-head b {
+  font-weight: 400;
+  font-size: calc(32px * var(--k));
+  color: #fff;
+}
+
+.vel-menu.vel-style--ps2 .ps2-progress-row {
+  display: grid;
+  grid-template-columns: calc(112px * var(--k)) 1fr calc(48px * var(--k));
+  align-items: center;
+  gap: calc(8px * var(--k));
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--k));
+  color: #c4c9ec;
+}
+
+.vel-menu.vel-style--ps2 .ps2-progress-num {
+  text-align: right;
+  color: var(--ps2-text);
+}
+
+.vel-menu.vel-style--ps2 .ps2-bar {
+  --fill: 0;
+  height: calc(8px * var(--k));
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(100% / 8 - 2px), var(--ps2-ink) calc(100% / 8 - 2px) calc(100% / 8)),
+    linear-gradient(90deg, var(--cyan) 0 calc(var(--fill) * 100%), rgba(140, 170, 255, 0.16) calc(var(--fill) * 100%));
+  border: 1px solid var(--ps2-line);
+}
+
+/* ==================================================================
+ * Bestands-Screens (Pause, Einstellungen, Steuerung, Kosmetik, Bestenliste, Ergebnis, Labor, Admin)
+ * im selben Konsolen-Look: Glasplatten mit 1-px-Linie statt Neon-Knick, helle Kappen statt Magenta-Schatten.
+ * Nur Farben/Kanten — Layout und Verhalten bleiben die aus Menu.ts.
+ * ================================================================== */
+
+.vel-menu.vel-style--ps2:not([data-screen='title']) {
+  background: linear-gradient(180deg, rgba(3, 4, 16, 0.86) 0%, rgba(8, 10, 34, 0.74) 50%, rgba(3, 4, 16, 0.9) 100%);
+}
+
+.vel-menu.vel-style--ps2[data-screen='settings'],
+.vel-menu.vel-style--ps2[data-screen='controls'],
+.vel-menu.vel-style--ps2[data-screen='finish'] {
+  background: rgba(4, 6, 22, 0.9);
+}
+
+.vel-menu.vel-style--ps2 .vel-h1 {
+  font-weight: 400;
+  color: #fff;
+  text-shadow: 2px 2px 0 var(--ps2-ink);
+}
+
+.vel-menu.vel-style--ps2 .vel-h1::before {
+  width: 8px;
+  height: 32px;
+  margin-right: 8px;
+  background: var(--cyan);
+  box-shadow: none;
+}
+
+.vel-menu.vel-style--ps2 .vel-h2 {
+  color: var(--ps2-blue);
+}
+
+.vel-menu.vel-style--ps2 .vel-hint {
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .vel-panel {
+  background: var(--ps2-glass);
+  border: 1px solid var(--ps2-line);
+  border-top: 2px solid var(--ps2-line-hi);
+  box-shadow: none;
+}
+
+.vel-menu.vel-style--ps2 .vel-panel::before {
+  display: none;
+}
+
+.vel-menu.vel-style--ps2 .vel-btn {
+  background: var(--ps2-glass);
+  border: 1px solid var(--ps2-line);
+  box-shadow: none;
+  letter-spacing: 2px;
+}
+
+.vel-menu.vel-style--ps2 .vel-btn:hover,
+.vel-menu.vel-style--ps2 .vel-btn.is-selected {
+  color: var(--ps2-ink);
+  background: #eef1ff;
+  border-color: #fff;
+  box-shadow: 0 3px 0 var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .vel-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .vel-btn:focus-visible {
+  outline-color: var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .vel-btn--primary {
+  color: var(--ps2-ink);
+  background: #eef1ff;
+  border-color: #fff;
+  box-shadow: 0 4px 0 var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .vel-btn--primary:hover {
+  background: #fff;
+  box-shadow: 0 4px 0 var(--magenta);
+}
+
+.vel-menu.vel-style--ps2 .vel-kbd {
+  color: var(--ps2-ink);
+  background: #dfe4ff;
+  border: 1px solid #fff;
+  box-shadow: 0 3px 0 #6a72a8;
+}
+
+.vel-menu.vel-style--ps2 .vel-btn .vel-kbd {
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  box-shadow: none;
+}
+
+.vel-menu.vel-style--ps2 .vel-range::-webkit-slider-thumb {
+  background: #eef1ff;
+  box-shadow: 0 2px 0 var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .vel-seg .vel-btn[aria-pressed='true'] {
+  color: var(--ps2-ink);
+  background: var(--cyan);
+  border-color: var(--cyan);
+  box-shadow: none;
+}
+
+.vel-menu.vel-style--ps2 .vel-number {
+  border-color: var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .vel-lab-card.is-active {
+  border-color: var(--cyan);
+  background: var(--ps2-glass-hi);
+}
+
+/* Schalter: "an" bleibt grün (Semantik der Bestands-Screens), auch gegen die Glas-Regel oben */
+.vel-menu.vel-style--ps2 .vel-toggle[aria-pressed='true'] {
+  color: var(--ps2-ink);
+  background: var(--gain);
+  border-color: var(--gain);
+  box-shadow: none;
+}
+
+.vel-menu.vel-style--ps2 .vel-toggle[aria-pressed='true']:hover {
+  background: #a6ffc8;
+  border-color: #a6ffc8;
+}
+
+/* ==================================================================
+ * Bestands-Screens als "native" Konsolen-Screens (Runde 2). Hintergrund = Standbild der Front-Door-Welt
+ * (index.ts exportLook → --ps2-bd), exakt im selben Pixelraster; ohne Standbild der Verlauf.
+ * ================================================================== */
+
+.vel-menu.vel-style--ps2:is([data-screen='training'], [data-screen='leaderboard'], [data-screen='cosmetics'], [data-screen='settings'], [data-screen='controls'], [data-screen='lab'], [data-screen='profile'], [data-screen='admin']) {
+  background:
+    linear-gradient(180deg, rgba(3, 4, 16, 0.35), rgba(3, 4, 16, 0.55)),
+    var(--ps2-bd, linear-gradient(180deg, #05030f, #120830 60%, #05030f)) var(--ps2-bd-x, 0) var(--ps2-bd-y, 0) / var(--ps2-bd-w, 100%) var(--ps2-bd-h, 100%) no-repeat,
+    #000;
+}
+
+/* ---- Rahmen: gleiche Bühne wie die Front Door. zoom = --k (16 → 24/32 px bleibt im 8-px-Raster). */
+.vel-menu.vel-style--ps2:is([data-screen='training'], [data-screen='leaderboard'], [data-screen='cosmetics'], [data-screen='settings'], [data-screen='controls'], [data-screen='lab'], [data-screen='profile'], [data-screen='admin']) .vel-screen {
+  zoom: var(--k);
+  width: min(1360px, calc(100% - 80px));
+  max-width: 1360px;
+  /* Scrollbereich zwischen Kopfzeile (bis 60 px × k) und Fußlinie (64 px × k): nichts rutscht darunter */
+  height: calc(100% - 144px);
+  margin-top: 72px;
+  padding: 8px 4px 16px 0;
+  animation: ps2-in 240ms steps(4, end);
+  scrollbar-color: var(--ps2-line-hi) transparent;
+}
+
+/* Kopfzeile: Pixel-Logo links, Konto rechts (Standbild-Daten aus der Front Door) */
+.vel-menu.vel-style--ps2:is([data-screen='training'], [data-screen='leaderboard'], [data-screen='cosmetics'], [data-screen='settings'], [data-screen='controls'], [data-screen='lab'], [data-screen='profile'], [data-screen='admin'])::before {
+  content: var(--ps2-acc, '');
+  position: absolute;
+  z-index: 3;
+  top: calc(20px * var(--k));
+  left: max(calc(40px * var(--k)), calc(50% - 680px * var(--k)));
+  right: max(calc(40px * var(--k)), calc(50% - 680px * var(--k)));
+  height: calc(40px * var(--k));
+  font-family: var(--font-head);
+  font-size: calc(16px * var(--k));
+  line-height: calc(40px * var(--k));
+  letter-spacing: 2px;
+  text-align: right;
+  color: var(--ps2-text);
+  background: var(--ps2-logo, none) left center / var(--ps2-logo-w, 0) var(--ps2-logo-h, 0) no-repeat;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+/* Fußlinie wie die Front Door (ersetzt die globalen Scanlines auf diesen Screens) */
+.vel-menu.vel-style--ps2:is([data-screen='training'], [data-screen='leaderboard'], [data-screen='cosmetics'], [data-screen='settings'], [data-screen='controls'], [data-screen='lab'], [data-screen='profile'], [data-screen='admin'])::after {
+  inset: auto max(calc(40px * var(--k)), calc(50% - 680px * var(--k))) calc(64px * var(--k));
+  height: 1px;
+  background: var(--ps2-line);
+  mix-blend-mode: normal;
+}
+
+/* Titel: Ansichtstitel der Front Door + 3D-Symbol statt Neon-Balken */
+.vel-menu.vel-style--ps2[data-screen] .vel-screen .vel-h1 {
+  font-size: 32px;
+  letter-spacing: 4px;
+  gap: 16px;
+}
+
+.vel-menu.vel-style--ps2:is([data-screen='training'], [data-screen='leaderboard'], [data-screen='cosmetics'], [data-screen='settings'], [data-screen='controls'], [data-screen='lab'], [data-screen='profile'], [data-screen='admin']) .vel-h1::before {
+  width: calc(20 * var(--ps2-px, 3px) / var(--k));
+  height: calc(20 * var(--ps2-px, 3px) / var(--k));
+  margin: -12px 0;
+  background: var(--ps2-icon, var(--cyan)) center / contain no-repeat;
+  box-shadow: none;
+  image-rendering: pixelated;
+}
+
+.vel-menu.vel-style--ps2[data-screen='training'] .vel-h1 { --ps2-icon: var(--ps2-i-cone); }
+.vel-menu.vel-style--ps2[data-screen='leaderboard'] .vel-h1 { --ps2-icon: var(--ps2-i-trophy); }
+.vel-menu.vel-style--ps2[data-screen='cosmetics'] .vel-h1 { --ps2-icon: var(--ps2-i-gem); }
+.vel-menu.vel-style--ps2:is([data-screen='settings'], [data-screen='controls'], [data-screen='admin']) .vel-h1 { --ps2-icon: var(--ps2-i-gear); }
+.vel-menu.vel-style--ps2[data-screen='profile'] .vel-h1 { --ps2-icon: var(--ps2-i-card); }
+.vel-menu.vel-style--ps2[data-screen='lab'] .vel-h1 { --ps2-icon: var(--ps2-i-disc); }
+
+.vel-menu.vel-style--ps2:is([data-screen='training'], [data-screen='leaderboard'], [data-screen='cosmetics'], [data-screen='settings'], [data-screen='controls'], [data-screen='lab'], [data-screen='profile'], [data-screen='admin']) .vel-head-row,
+.vel-menu.vel-style--ps2[data-screen='controls'] .vel-screen > .vel-h1 {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--ps2-line);
+}
+
+/* Zurück-Knopf (der mit der Esc-Kappe) wird zur Prompt-Leiste unten mittig: [ESC] ZURÜCK */
+.vel-menu.vel-style--ps2:is([data-screen='training'], [data-screen='leaderboard'], [data-screen='cosmetics'], [data-screen='settings'], [data-screen='controls'], [data-screen='lab'], [data-screen='profile'], [data-screen='admin']) .vel-screen .vel-btn:has(> .vel-kbd) {
+  position: fixed;
+  z-index: 4;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  flex-direction: row-reverse;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 4px;
+  letter-spacing: 1px;
+  color: var(--ps2-text);
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+
+.vel-menu.vel-style--ps2:is([data-screen='training'], [data-screen='leaderboard'], [data-screen='cosmetics'], [data-screen='settings'], [data-screen='controls'], [data-screen='lab'], [data-screen='profile'], [data-screen='admin']) .vel-screen .vel-btn:has(> .vel-kbd):hover {
+  color: var(--cyan);
+  background: none;
+  box-shadow: none;
+}
+
+.vel-menu.vel-style--ps2:is([data-screen='training'], [data-screen='leaderboard'], [data-screen='cosmetics'], [data-screen='settings'], [data-screen='controls'], [data-screen='lab'], [data-screen='profile'], [data-screen='admin']) .vel-screen .vel-btn:has(> .vel-kbd) .vel-kbd {
+  min-width: 24px;
+  padding: 0 8px;
+  line-height: 22px;
+  color: var(--ps2-ink);
+  background: #dfe4ff;
+  border: 1px solid #fff;
+  box-shadow: 0 3px 0 #6a72a8;
+}
+
+/* ---- Listenzeilen (Lektionen): Speicherstand-Slots */
+.vel-menu.vel-style--ps2 .vel-level {
+  color: var(--ps2-text);
+  background: var(--ps2-glass);
+  border: 1px solid var(--ps2-line);
+  box-shadow: none;
+}
+
+.vel-menu.vel-style--ps2 .vel-level:hover:not(.is-selected) {
+  color: var(--ps2-text);
+  background: var(--ps2-glass-hi);
+  border-color: var(--ps2-line-hi);
+  box-shadow: none;
+}
+
+.vel-menu.vel-style--ps2 .vel-level.is-selected {
+  color: var(--ps2-text);
+  background: var(--ps2-glass-hi);
+  border-color: var(--cyan);
+  box-shadow: inset 4px 0 0 var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .vel-level-num,
+.vel-menu.vel-style--ps2 .vel-btn:hover .vel-level-num,
+.vel-menu.vel-style--ps2 .vel-btn.is-selected .vel-level-num {
+  color: var(--ps2-blue);
+}
+
+.vel-menu.vel-style--ps2 .vel-level.is-selected .vel-level-num {
+  color: var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .vel-level-sub {
+  color: #c4c9ec;
+  opacity: 1;
+}
+
+/* ---- Training */
+.vel-menu.vel-style--ps2[data-screen='training'] .vel-training-intro {
+  color: #c4c9ec;
+}
+
+.vel-menu.vel-style--ps2 .vel-lesson {
+  grid-template-columns: 60px 40px 1fr auto;
+  min-height: 64px;
+  padding: 2px 16px 2px 4px;
+}
+
+/* Pylon als Speicherstand-Symbol vor jeder Lektion */
+.vel-menu.vel-style--ps2 .vel-lesson::before {
+  content: '';
+  width: 60px;
+  height: 60px;
+  background: var(--ps2-i-cone) center / calc(20 * var(--ps2-px, 3px) / var(--k)) no-repeat;
+  image-rendering: pixelated;
+  opacity: 0.5;
+}
+
+.vel-menu.vel-style--ps2 .vel-lesson.is-selected::before,
+.vel-menu.vel-style--ps2 .vel-lesson:hover::before {
+  opacity: 1;
+}
+
+.vel-menu.vel-style--ps2 .vel-lesson-head {
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .vel-lesson-head .vel-h2 {
+  padding: 0;
+  border: 0;
+}
+
+.vel-menu.vel-style--ps2 .vel-lesson-reward {
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .vel-lesson-rec,
+.vel-menu.vel-style--ps2 .vel-lesson.is-selected .vel-lesson-rec {
+  font-size: 8px;
+  color: var(--gold);
+  background: none;
+  border: 1px solid var(--gold);
+  animation: none;
+}
+
+.vel-menu.vel-style--ps2 .vel-stars,
+.vel-menu.vel-style--ps2 .vel-lesson.is-selected .vel-stars {
+  color: var(--gold);
+  text-shadow: 0 2px 0 #6b4a00;
+}
+
+.vel-menu.vel-style--ps2 .vel-stars--0,
+.vel-menu.vel-style--ps2 .vel-lesson.is-selected .vel-stars--0 {
+  color: rgba(143, 149, 192, 0.6);
+  text-shadow: none;
+}
+
+/* Start-Leiste: [ENTER] + Lektion, ruhig (kein Blinken), als Primärknopf der Front Door statt Vollbreite */
+.vel-menu.vel-style--ps2 .vel-start {
+  align-self: center;
+  width: auto;
+  padding: 0 24px;
+  flex-direction: row;
+  justify-content: center;
+  gap: 16px;
+  min-height: 56px;
+  font-size: 16px;
+  letter-spacing: 2px;
+  animation: none;
+}
+
+.vel-menu.vel-style--ps2 .vel-start::before {
+  content: 'Enter';
+  padding: 0 8px;
+  line-height: 24px;
+  font-size: 16px;
+  letter-spacing: 0;
+  color: #fff;
+  background: var(--ps2-ink);
+}
+
+.vel-menu.vel-style--ps2 .vel-start-level {
+  opacity: 1;
+}
+
+.vel-menu.vel-style--ps2 .vel-start-level::before {
+  content: '· ';
+}
+
+/* ---- Bestenliste: Strecken als Discs, Tabelle wie eine Speicherliste */
+.vel-menu.vel-style--ps2 .vel-board-tabs {
+  gap: 8px;
+}
+
+.vel-menu.vel-style--ps2 .vel-board-tabs .vel-btn {
+  gap: 8px;
+  min-height: 48px;
+  padding: 2px 16px 2px 4px;
+  color: var(--ps2-dim);
+  background: var(--ps2-glass);
+  border: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .vel-board-tabs .vel-btn::before {
+  content: '';
+  width: 44px;
+  height: 44px;
+  background: var(--ps2-disc-icon) center / calc(20 * var(--ps2-px, 3px) / var(--k) * 0.7) no-repeat;
+  image-rendering: pixelated;
+}
+
+.vel-menu.vel-style--ps2 .vel-board-tabs .vel-btn:nth-child(4n + 1) { --ps2-disc-icon: var(--ps2-i-disc0); --ps2-disc: #24c8ff; }
+.vel-menu.vel-style--ps2 .vel-board-tabs .vel-btn:nth-child(4n + 2) { --ps2-disc-icon: var(--ps2-i-disc1); --ps2-disc: #ff3fd0; }
+.vel-menu.vel-style--ps2 .vel-board-tabs .vel-btn:nth-child(4n + 3) { --ps2-disc-icon: var(--ps2-i-disc2); --ps2-disc: #ff7a5a; }
+.vel-menu.vel-style--ps2 .vel-board-tabs .vel-btn:nth-child(4n + 4) { --ps2-disc-icon: var(--ps2-i-disc3); --ps2-disc: #ffcc3a; }
+
+.vel-menu.vel-style--ps2 .vel-board-tabs .vel-btn:hover {
+  color: #fff;
+  background: var(--ps2-glass-hi);
+  border-color: var(--ps2-line-hi);
+  box-shadow: none;
+}
+
+.vel-menu.vel-style--ps2 .vel-board-tabs .vel-btn[aria-pressed='true'] {
+  color: #fff;
+  background: var(--ps2-glass-hi);
+  border-color: var(--ps2-disc, var(--cyan));
+  box-shadow: inset 0 -4px 0 var(--ps2-disc, var(--cyan));
+}
+
+.vel-menu.vel-style--ps2 .vel-board-who {
+  color: #c4c9ec;
+}
+
+.vel-menu.vel-style--ps2 .vel-board-who b {
+  color: #fff;
+}
+
+.vel-menu.vel-style--ps2 .vel-board th {
+  font-size: 16px;
+  color: var(--ps2-dim);
+  border-bottom: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .vel-board td {
+  border-bottom: 1px solid rgba(140, 170, 255, 0.1);
+}
+
+.vel-menu.vel-style--ps2 .vel-board tbody tr:nth-child(odd) td {
+  background: rgba(140, 170, 255, 0.05);
+}
+
+.vel-menu.vel-style--ps2 .vel-board tbody tr:hover td {
+  background: rgba(140, 170, 255, 0.12);
+}
+
+.vel-menu.vel-style--ps2 .vel-board tbody tr td:first-child {
+  color: var(--ps2-blue);
+}
+
+.vel-menu.vel-style--ps2 .vel-board tbody tr:nth-child(1) td:first-child { color: var(--gold); }
+.vel-menu.vel-style--ps2 .vel-board tbody tr:nth-child(2) td:first-child { color: #cfd6e6; }
+.vel-menu.vel-style--ps2 .vel-board tbody tr:nth-child(3) td:first-child { color: #e0915a; }
+
+.vel-menu.vel-style--ps2 .vel-board tr.is-me td {
+  color: #fff;
+  background: rgba(51, 240, 255, 0.12);
+}
+
+.vel-menu.vel-style--ps2 .vel-board tr.is-me td:first-child {
+  box-shadow: inset 4px 0 0 var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .vel-board-tag {
+  color: var(--ps2-dim);
+  border-color: var(--ps2-line);
+  background: none;
+}
+
+.vel-menu.vel-style--ps2 .vel-board-tag--me {
+  color: var(--ps2-ink);
+  background: var(--cyan);
+  border-color: var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .vel-board-ghost {
+  min-height: 28px;
+  padding: 0 10px;
+}
+
+/* ---- Kosmetik: Inventar */
+.vel-menu.vel-style--ps2 .vel-cosm {
+  min-height: 56px;
+  color: var(--ps2-text);
+  background: var(--ps2-glass);
+  border: 1px solid var(--ps2-line);
+  box-shadow: none;
+}
+
+.vel-menu.vel-style--ps2 .vel-cosm:hover {
+  color: #fff;
+  background: var(--ps2-glass-hi);
+  border-color: var(--ps2-line-hi);
+  box-shadow: none;
+}
+
+/* Ausgerüstet: Rahmen + Kappe "AN" statt Vollfläche (Text bleibt lesbar) */
+.vel-menu.vel-style--ps2 .vel-cosm[aria-pressed='true'] {
+  position: relative;
+  color: #fff;
+  background: rgba(51, 240, 255, 0.14);
+  border-color: var(--cyan);
+  box-shadow: inset 0 -4px 0 var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .vel-cosm[aria-pressed='true']::after {
+  content: 'An';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 0 6px;
+  font-size: 8px;
+  line-height: 16px;
+  letter-spacing: 1px;
+  color: var(--ps2-ink);
+  background: var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .vel-cosm.is-locked,
+.vel-menu.vel-style--ps2 .vel-cosm.is-locked:hover {
+  color: var(--ps2-dim);
+  background: rgba(6, 8, 22, 0.6);
+  border: 1px dashed rgba(140, 170, 255, 0.25);
+  box-shadow: none;
+}
+
+.vel-menu.vel-style--ps2 .vel-cosm-progress {
+  color: var(--ps2-text);
+  background: rgba(140, 170, 255, 0.12);
+  border-color: var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .vel-hand-preview {
+  border: 1px solid var(--ps2-line-hi);
+  box-shadow: none;
+}
+
+/* Vorschau 150×176 Low-Res: bei zoom 1.5 wären 450 px = 4.5 Gerätepixel je Pixel (ungleich) und zu hoch.
+ * 300 × 1.5 = 450 = genau 3×, bei zoom 2 = 4×. */
+@media (min-height: 900px) and (min-width: 1500px) {
+  .vel-menu.vel-style--ps2 .vel-hand-preview {
+    width: 300px;
+    height: 352px;
+  }
+}
+
+.vel-menu.vel-style--ps2 .vel-preview-tier {
+  color: var(--cyan);
+}
+
+/* ---- Einstellungen: Abschnitte, Regler, Schalter, Tastenbelegung */
+.vel-menu.vel-style--ps2 .vel-h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--ps2-line);
+  color: #fff;
+  letter-spacing: 3px;
+}
+
+.vel-menu.vel-style--ps2 .vel-h2::before {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  background: var(--cyan);
+  box-shadow: 0 0 0 2px rgba(51, 240, 255, 0.25);
+}
+
+.vel-menu.vel-style--ps2 .vel-setting + .vel-setting {
+  border-top-color: rgba(140, 170, 255, 0.12);
+}
+
+.vel-menu.vel-style--ps2 .vel-setting-label {
+  color: var(--ps2-text);
+}
+
+.vel-menu.vel-style--ps2 .vel-setting-hint {
+  color: var(--ps2-dim);
+}
+
+.vel-menu.vel-style--ps2 .vel-setting-value {
+  color: var(--cyan);
+}
+
+/* Regler: Schiene in 16 Segmenten wie die Fortschrittsbalken, Griff = helle Kappe */
+.vel-menu.vel-style--ps2 .vel-range::-webkit-slider-runnable-track {
+  height: 8px;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(100% / 16 - 2px), var(--ps2-ink) calc(100% / 16 - 2px) calc(100% / 16)),
+    linear-gradient(90deg, var(--cyan) 0 var(--fill), rgba(140, 170, 255, 0.16) var(--fill) 100%);
+  border: 1px solid var(--ps2-line);
+  box-shadow: none;
+}
+
+.vel-menu.vel-style--ps2 .vel-range::-webkit-slider-thumb {
+  width: 12px;
+  height: 22px;
+  margin-top: -8px;
+  background: #eef1ff;
+  border: 1px solid #fff;
+  box-shadow: 0 3px 0 #6a72a8;
+}
+
+.vel-menu.vel-style--ps2 .vel-range:hover::-webkit-slider-thumb {
+  box-shadow: 0 3px 0 var(--cyan);
+}
+
+/* Schalter: "an" = grüne Kappe mit Lämpchen, "aus" = dunkle Mulde mit grauem Lämpchen */
+.vel-menu.vel-style--ps2 .vel-toggle {
+  position: relative;
+  min-width: 84px;
+  padding-left: 26px;
+  color: var(--ps2-dim);
+  background: rgba(6, 8, 22, 0.7);
+  border: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .vel-toggle::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  background: rgba(140, 170, 255, 0.3);
+}
+
+.vel-menu.vel-style--ps2 .vel-toggle[aria-pressed='true'] {
+  color: var(--ps2-ink);
+  background: var(--gain);
+  border-color: #b8ffd4;
+  box-shadow: 0 3px 0 #1d7a45;
+}
+
+.vel-menu.vel-style--ps2 .vel-toggle[aria-pressed='true']::before {
+  background: var(--ps2-ink);
+}
+
+.vel-menu.vel-style--ps2 .vel-toggle:hover:not([aria-pressed='true']) {
+  color: var(--ps2-text);
+  background: var(--ps2-glass-hi);
+  border-color: var(--ps2-line-hi);
+  box-shadow: none;
+}
+
+/* Wahlgruppen (Preset, Pixelauflösung) */
+.vel-menu.vel-style--ps2 .vel-seg:not(.vel-bind):not(.vel-board-tabs) .vel-btn {
+  color: var(--ps2-text);
+  background: rgba(6, 8, 22, 0.7);
+  border: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .vel-seg:not(.vel-bind):not(.vel-board-tabs) .vel-btn[aria-pressed='true'] {
+  color: var(--ps2-ink);
+  background: #eef1ff;
+  border-color: #fff;
+  box-shadow: 0 3px 0 var(--cyan);
+}
+
+/* Tastenbelegung: jede Belegung als Tastenkappe */
+.vel-menu.vel-style--ps2 .vel-bind .vel-btn {
+  color: var(--ps2-ink);
+  background: #dfe4ff;
+  border: 1px solid #fff;
+  box-shadow: 0 3px 0 #6a72a8;
+}
+
+.vel-menu.vel-style--ps2 .vel-bind .vel-btn:hover {
+  background: #fff;
+  box-shadow: 0 3px 0 var(--cyan);
+}
+
+.vel-menu.vel-style--ps2 .vel-bind .vel-btn[aria-pressed='true'] {
+  color: var(--ps2-ink);
+  background: var(--gold);
+  border-color: #fff3b0;
+}
+
+.vel-menu.vel-style--ps2 .vel-text-input,
+.vel-menu.vel-style--ps2 .vel-number {
+  color: var(--cyan);
+  background: rgba(6, 8, 22, 0.8);
+  border: 1px solid var(--ps2-line);
+}
+
+/* Steuerung: Tasten als Kappen in einer Liste mit Linien */
+.vel-menu.vel-style--ps2 .vel-keys dt,
+.vel-menu.vel-style--ps2 .vel-keys dd {
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(140, 170, 255, 0.12);
+}
+
+.vel-menu.vel-style--ps2 .vel-keys .vel-kbd {
+  margin: 0 4px 3px 0;
+}
+
+/* Bestenliste: Ghost-Rennen über die Tabellen (sonst scrollen sie bei 21:9 unter die Fußlinie) */
+.vel-menu.vel-style--ps2 .vel-leaderboard-screen > .vel-row {
+  order: 1;
+}
+
+.vel-menu.vel-style--ps2 .vel-leaderboard-screen > .vel-board-grid,
+.vel-menu.vel-style--ps2 .vel-leaderboard-screen > .vel-lock-hint {
+  order: 2;
+}

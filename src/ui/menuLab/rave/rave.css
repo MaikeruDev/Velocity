@@ -1,0 +1,1318 @@
+/*
+ * Stil 'rave' (Plan 010): Warehouse-Rave-Flyer. Alles unter .vel-menu.vel-style--rave — sonst leckt es in andere Stile.
+ * Takt kommt als --k (Kick in 5 Stufen) und data-beat/-bar/-energy vom rAF; animiert wird nur transform/opacity.
+ * Schrift: Silkscreen nur in Vielfachen von 8 px (--f*), Pixel-Einheit --px = Schriftpixel bei 16 px × Stufe.
+ */
+
+/* ------------------------------------------------------------------ Größenstufen + Grundfläche */
+
+.vel-menu.vel-style--rave[data-screen='title'] {
+  background: none;
+}
+
+.vel-menu.vel-style--rave[data-screen='title']::after {
+  display: none;
+}
+
+.vel-menu.vel-style--rave .rv {
+  /* Stufe A (≤ 1599 × 899): 8-px-Raster. */
+  --g: 8px;
+  --px: 2px;
+  --f1: 16px;
+  --f2: 24px;
+  --f3: 32px;
+  --f4: 48px;
+  --fh: 128px;
+  --fx: 512px;
+  --k: 0;
+  --amp: 6px;
+  --ink: #07040f;
+  --ink-2: #120a24;
+  --paper: #f1edff;
+  /* 16:9-Bühne in der Mitte; Breitbild bekommt links/rechts nur Deko. */
+  --sw: min(100vw, calc(100vh * 16 / 9));
+  --sh: min(100vh, calc(100vw * 9 / 16));
+  --gut: calc((100vw - var(--sw)) / 2);
+
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  font-family: var(--font-head);
+  color: var(--paper);
+  isolation: isolate;
+}
+
+@media (min-width: 1600px) and (min-height: 900px) {
+  .vel-menu.vel-style--rave .rv {
+    --g: 12px;
+    --px: 3px;
+    --f1: 24px;
+    --f2: 32px;
+    --f3: 48px;
+    --f4: 64px;
+    --fh: 192px;
+    --fx: 768px;
+    --amp: 9px;
+  }
+}
+
+@media (min-width: 2311px) and (min-height: 1300px) {
+  .vel-menu.vel-style--rave .rv {
+    --g: 16px;
+    --px: 4px;
+    --f1: 32px;
+    --f2: 48px;
+    --f3: 64px;
+    --f4: 96px;
+    --fh: 256px;
+    --fx: 1024px;
+    --amp: 12px;
+  }
+}
+
+.vel-menu.vel-style--rave .rv[data-energy='1'] {
+  --amp: calc(var(--px) * 4);
+}
+
+.vel-menu.vel-style--rave .rv[data-energy='2'] {
+  --amp: calc(var(--px) * 6);
+}
+
+/* ------------------------------------------------------------------ Xerox-Foto (Spiel dahinter, kopiert) */
+
+.vel-menu.vel-style--rave .rv-photo {
+  position: absolute;
+  z-index: 0;
+  top: calc((100vh - var(--sh)) / 2 + var(--g) * 8);
+  left: calc(var(--g) * -6);
+  right: calc(var(--g) * -6);
+  height: calc(var(--g) * 30);
+  transform: skewY(-2deg);
+  transform-origin: left top;
+  overflow: hidden;
+  /* Grau + harter Kontrast = Fotokopie, dann per Sepia+Drehung eingefärbt (Duotone). Kein Blur (look.md).
+     Einfärben MUSS hier passieren: backdrop-filter isoliert die Gruppe, mix-blend-mode im Kind sieht die Kulisse nicht. */
+  backdrop-filter: grayscale(1) contrast(1.8) brightness(1.15) sepia(1) hue-rotate(268deg) saturate(3.2);
+  border-top: var(--px) solid var(--paper);
+  border-bottom: calc(var(--px) * 2) solid var(--magenta);
+  /* Tinte um das Fenster herum: deckt die Kulisse überall sonst ab. */
+  box-shadow: 0 0 0 calc(100vw + 100vh) var(--ink);
+}
+
+/* Alle zwei Takte wechselt die Druckfarbe des Fotos (Magenta ↔ Cyan) — ein harter Schnitt, kein Überblenden. */
+.vel-menu.vel-style--rave .rv[data-bar='2'] .rv-photo,
+.vel-menu.vel-style--rave .rv[data-bar='3'] .rv-photo,
+.vel-menu.vel-style--rave .rv[data-bar='6'] .rv-photo,
+.vel-menu.vel-style--rave .rv[data-bar='7'] .rv-photo {
+  backdrop-filter: grayscale(1) contrast(1.8) brightness(1.15) sepia(1) hue-rotate(140deg) saturate(3.2);
+}
+
+.vel-menu.vel-style--rave .rv-photo-dotlayer {
+  position: absolute;
+  inset: 0;
+  background-size: calc(var(--px) * 3) calc(var(--px) * 3);
+  image-rendering: pixelated;
+}
+
+.vel-menu.vel-style--rave .rv-photo-cap {
+  position: absolute;
+  right: calc(var(--gut) + var(--g) * 12);
+  bottom: calc(var(--g) * 1);
+  font-size: var(--f1);
+  line-height: 1;
+  padding: var(--px) calc(var(--px) * 2);
+  color: var(--paper);
+  background: var(--ink);
+}
+
+/* ------------------------------------------------------------------ Druck-Untergrund */
+
+.vel-menu.vel-style--rave .rv-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.vel-menu.vel-style--rave .rv-print {
+  position: absolute;
+  left: 0;
+  top: 0;
+  image-rendering: pixelated;
+  opacity: 0.55;
+}
+
+.vel-menu.vel-style--rave .rv-bgtype {
+  position: absolute;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  /* Kontur per Schatten (harte Kante): Glyphe in Tinte, darunter vier um 1 Schriftpixel versetzte Kopien. */
+  color: var(--ink);
+  --line: #4a1a52;
+  text-shadow:
+    var(--px) 0 0 var(--line),
+    calc(var(--px) * -1) 0 0 var(--line),
+    0 var(--px) 0 var(--line),
+    0 calc(var(--px) * -1) 0 var(--line);
+}
+
+.vel-menu.vel-style--rave .rv-bgtype {
+  font-size: var(--fx);
+  left: calc(var(--gut) + var(--g) * -6);
+  bottom: calc(var(--g) * -22);
+  transform: skewX(-12deg);
+  opacity: calc(0.55 + var(--k) * 0.45);
+}
+
+
+/* ------------------------------------------------------------------ Ticker */
+
+.vel-menu.vel-style--rave .rv-ticker {
+  position: absolute;
+  z-index: 3;
+  left: -5vw;
+  right: -5vw;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.vel-menu.vel-style--rave .rv-ticker-track {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+}
+
+.vel-menu.vel-style--rave .rv-ticker-unit {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+
+.vel-menu.vel-style--rave .rv-ticker--a {
+  top: calc(var(--g) * 1);
+  height: calc(var(--g) * 5);
+  display: flex;
+  align-items: center;
+  background: var(--magenta);
+  color: var(--ink);
+  font-size: var(--f2);
+  font-weight: 700;
+  transform: rotate(-0.8deg);
+  box-shadow: 0 var(--px) 0 var(--ink), 0 calc(var(--px) * 3) 0 var(--cyan);
+}
+
+.vel-menu.vel-style--rave .rv-ticker--b {
+  top: calc(var(--g) * 6.75);
+  height: calc(var(--g) * 3);
+  display: flex;
+  align-items: center;
+  background: var(--ink);
+  color: var(--cyan);
+  font-size: var(--f1);
+  transform: rotate(-0.8deg);
+  border-top: var(--px) solid var(--cyan);
+  border-bottom: var(--px) solid var(--cyan);
+}
+
+.vel-menu.vel-style--rave .rv-ticker-word {
+  padding: 0 calc(var(--g) * 1.5);
+  letter-spacing: var(--px);
+}
+
+.vel-menu.vel-style--rave .rv-ticker-word--hl {
+  color: var(--ink);
+  background: var(--gold);
+  padding: 0 var(--g);
+}
+
+.vel-menu.vel-style--rave .rv-ticker-sep {
+  opacity: 0.6;
+}
+
+.vel-menu.vel-style--rave .rv-ticker-star {
+  width: calc(var(--px) * 4);
+  height: calc(var(--px) * 4);
+  background: var(--magenta);
+  clip-path: polygon(50% 0, 65% 35%, 100% 50%, 65% 65%, 50% 100%, 35% 65%, 0 50%, 35% 35%);
+  flex: none;
+}
+
+/* ------------------------------------------------------------------ Bühne (16:9) */
+
+.vel-menu.vel-style--rave .rv-safe {
+  position: absolute;
+  z-index: 4;
+  left: var(--gut);
+  top: calc((100vh - var(--sh)) / 2);
+  width: var(--sw);
+  height: var(--sh);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) calc(var(--g) * 56);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  column-gap: calc(var(--g) * 6);
+  padding: calc(var(--g) * 11) calc(var(--g) * 6) calc(var(--g) * 2);
+}
+
+/* ------------------------------------------------------------------ Kopf */
+
+.vel-menu.vel-style--rave .rv-head {
+  grid-column: 1 / -1;
+  position: relative;
+}
+
+.vel-menu.vel-style--rave .rv-kicker {
+  margin: 0;
+  display: flex;
+  gap: calc(var(--g) * 2);
+  font-size: var(--f1);
+  line-height: 1;
+  letter-spacing: var(--px);
+}
+
+.vel-menu.vel-style--rave .rv-kicker-a {
+  color: var(--gold);
+}
+
+.vel-menu.vel-style--rave .rv-kicker-b {
+  color: var(--dim);
+}
+
+.vel-menu.vel-style--rave .rv-hero {
+  position: relative;
+  margin: calc(var(--g) * 2) 0 0;
+  height: calc(var(--fh) * 1.2);
+  font-size: var(--fh);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: calc(var(--px) * -4);
+  white-space: nowrap;
+  transform: skewX(-12deg) scaleY(1.25);
+  transform-origin: left top;
+}
+
+.vel-menu.vel-style--rave .rv-hero-plate {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.vel-menu.vel-style--rave .rv-hero-plate--c {
+  color: var(--cyan);
+  transform: translate(calc(var(--px) * -3 - var(--k) * var(--amp)), calc(var(--px) * -1));
+}
+
+.vel-menu.vel-style--rave .rv-hero-plate--m {
+  color: var(--magenta);
+  transform: translate(calc(var(--px) * 3 + var(--k) * var(--amp)), var(--px));
+}
+
+.vel-menu.vel-style--rave .rv-hero-plate--k {
+  color: var(--paper);
+}
+
+.vel-menu.vel-style--rave .rv-hero-plate--x {
+  color: var(--gold);
+  clip-path: inset(44% 0 38% 0);
+  opacity: 0;
+}
+
+.vel-menu.vel-style--rave .rv[data-beat='0'] .rv-hero-plate--x {
+  opacity: calc(var(--k) * 4 - 2);
+  transform: translateX(calc(var(--k) * var(--g) * 4));
+}
+
+.vel-menu.vel-style--rave .rv-tag {
+  position: absolute;
+  left: calc(var(--g) * 52);
+  top: calc(var(--fh) * 1.08);
+  margin: 0;
+  padding: var(--px) var(--g);
+  font-size: var(--f2);
+  line-height: 1.2;
+  color: var(--ink);
+  background: var(--gold);
+  transform: rotate(-2deg);
+  box-shadow: calc(var(--px) * 2) calc(var(--px) * 2) 0 var(--ink);
+}
+
+/* ------------------------------------------------------------------ Abschnittsköpfe */
+
+.vel-menu.vel-style--rave .rv-sechead {
+  display: flex;
+  align-items: baseline;
+  gap: calc(var(--g) * 2);
+  margin-bottom: var(--g);
+  border-bottom: var(--px) solid var(--paper);
+  padding-bottom: calc(var(--px) * 2);
+}
+
+.vel-menu.vel-style--rave .rv-h2 {
+  margin: 0;
+  font-size: var(--f2);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: var(--px);
+}
+
+.vel-menu.vel-style--rave .rv-secmeta {
+  margin-left: auto;
+  font-size: var(--f1);
+  line-height: 1;
+  color: var(--dim);
+}
+
+/* ------------------------------------------------------------------ Line-up */
+
+.vel-menu.vel-style--rave .rv-left {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 0;
+}
+
+.vel-menu.vel-style--rave .rv-lineup {
+  display: flex;
+  flex-direction: column;
+}
+
+.vel-menu.vel-style--rave .rv-tba {
+  font-size: var(--f2);
+  color: var(--dim);
+  padding: calc(var(--g) * 2) 0;
+}
+
+:where(.vel-menu.vel-style--rave .rv button) {
+  /* Spezifität 0: jede .rv-*-Regel darf das überschreiben. */
+  font-family: var(--font-head);
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+:where(.vel-menu.vel-style--rave .rv button:focus) {
+  outline: none;
+}
+
+.vel-menu.vel-style--rave .rv button:focus-visible {
+  outline: var(--px) dashed var(--gold);
+  outline-offset: var(--px);
+}
+
+.vel-menu.vel-style--rave .rv-act {
+  position: relative;
+  display: grid;
+  grid-template-columns: calc(var(--g) * 3) calc(var(--g) * 7) auto minmax(var(--g), 1fr) auto calc(var(--g) * 12);
+  align-items: center;
+  column-gap: var(--g);
+  height: calc(var(--g) * 7);
+  padding-right: var(--g);
+  border-bottom: var(--px) dotted rgba(241, 237, 255, 0.25);
+}
+
+.vel-menu.vel-style--rave .rv-act-num {
+  font-size: var(--f3);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--magenta);
+}
+
+.vel-menu.vel-style--rave .rv-act-body {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--px) * 2);
+  min-width: 0;
+}
+
+.vel-menu.vel-style--rave .rv-act-name {
+  font-size: var(--f2);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: var(--px);
+}
+
+.vel-menu.vel-style--rave .rv-act-line {
+  display: flex;
+  gap: var(--g);
+  white-space: nowrap;
+}
+
+.vel-menu.vel-style--rave .rv-act-sub {
+  font-family: var(--font-body);
+  font-size: var(--f1);
+  line-height: 1;
+  color: var(--dim);
+}
+
+.vel-menu.vel-style--rave .rv-act-rec {
+  font-family: var(--font-body);
+  font-size: var(--f1);
+  line-height: 1;
+  color: var(--magenta);
+}
+
+.vel-menu.vel-style--rave .rv-act-lead {
+  align-self: center;
+  height: var(--px);
+  background: repeating-linear-gradient(90deg, rgba(241, 237, 255, 0.35) 0 var(--px), transparent var(--px) calc(var(--px) * 3));
+}
+
+.vel-menu.vel-style--rave .rv-act-time {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--px);
+}
+
+.vel-menu.vel-style--rave .rv-act-tl {
+  font-size: var(--f1);
+  line-height: 1;
+  color: var(--dim);
+}
+
+.vel-menu.vel-style--rave .rv-act-tv {
+  font-size: var(--f2);
+  line-height: 1;
+}
+
+.vel-menu.vel-style--rave .rv-act-tv.is-none {
+  color: var(--dim);
+}
+
+.vel-menu.vel-style--rave .rv-act-chev {
+  width: calc(var(--g) * 2);
+  height: calc(var(--g) * 3);
+  justify-self: center;
+  background: var(--ink);
+  clip-path: polygon(0 0, 40% 0, 100% 50%, 40% 100%, 0 100%, 60% 50%);
+  opacity: 0;
+}
+
+/* Gewählter Akt = Headliner: invertierter Block, Chevron pumpt mit der Kick. */
+.vel-menu.vel-style--rave .rv-act.is-sel {
+  color: var(--ink);
+  background: var(--cyan);
+  border-bottom-color: transparent;
+}
+
+/* Schatten als eigene Ebene: springt mit der Kick heraus (transform statt box-shadow → kein Repaint). */
+.vel-menu.vel-style--rave .rv-act::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--magenta);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.vel-menu.vel-style--rave .rv-act.is-sel::after {
+  opacity: 1;
+  transform: translate(calc(var(--px) * 3 + var(--k) * var(--amp)), calc(var(--px) * 3 + var(--k) * var(--px) * 2));
+}
+
+.vel-menu.vel-style--rave .rv[data-focus='tracks'] .rv-act.is-sel::after {
+  opacity: 0;
+}
+
+.vel-menu.vel-style--rave .rv-act.is-sel .rv-act-num,
+.vel-menu.vel-style--rave .rv-act.is-sel .rv-act-sub,
+.vel-menu.vel-style--rave .rv-act.is-sel .rv-act-tl,
+.vel-menu.vel-style--rave .rv-act.is-sel .rv-act-tv,
+.vel-menu.vel-style--rave .rv-act.is-sel .rv-act-rec {
+  color: var(--ink);
+}
+
+.vel-menu.vel-style--rave .rv-act.is-sel .rv-act-lead {
+  background: repeating-linear-gradient(90deg, var(--ink) 0 var(--px), transparent var(--px) calc(var(--px) * 3));
+}
+
+.vel-menu.vel-style--rave .rv-act.is-sel .rv-act-chev {
+  opacity: 1;
+  transform: translateX(calc(var(--k) * var(--g)));
+}
+
+.vel-menu.vel-style--rave .rv[data-focus='tracks'] .rv-act.is-sel {
+  background: transparent;
+  color: var(--cyan);
+  outline: var(--px) solid var(--cyan);
+  outline-offset: calc(var(--px) * -1);
+}
+
+.vel-menu.vel-style--rave .rv[data-focus='tracks'] .rv-act.is-sel .rv-act-chev {
+  background: var(--cyan);
+}
+
+.vel-menu.vel-style--rave .rv[data-focus='tracks'] .rv-act.is-sel .rv-act-num,
+.vel-menu.vel-style--rave .rv[data-focus='tracks'] .rv-act.is-sel .rv-act-tv {
+  color: var(--cyan);
+}
+
+/* Fokus in der Tracklist: Akt bleibt als Umriss markiert, Nebentexte in ihren normalen Farben. */
+.vel-menu.vel-style--rave .rv[data-focus='tracks'] .rv-act.is-sel .rv-act-sub,
+.vel-menu.vel-style--rave .rv[data-focus='tracks'] .rv-act.is-sel .rv-act-tl {
+  color: var(--dim);
+}
+
+.vel-menu.vel-style--rave .rv[data-focus='tracks'] .rv-act.is-sel .rv-act-rec {
+  color: var(--magenta);
+}
+
+.vel-menu.vel-style--rave .rv[data-focus='tracks'] .rv-act.is-sel .rv-act-lead {
+  background: repeating-linear-gradient(90deg, rgba(241, 237, 255, 0.35) 0 var(--px), transparent var(--px) calc(var(--px) * 3));
+}
+
+.vel-menu.vel-style--rave .rv-act:not(.is-sel):hover {
+  background: rgba(51, 240, 255, 0.12);
+}
+
+/* Stempel (Medaille): gedreht, Rahmen in Medaillenfarbe. */
+.vel-menu.vel-style--rave .rv-stamp {
+  justify-self: center;
+  padding: var(--px) calc(var(--px) * 2);
+  font-size: var(--f1);
+  line-height: 1;
+  border: var(--px) solid currentColor;
+  transform: rotate(-8deg);
+}
+
+.vel-menu.vel-style--rave .rv-stamp.is-empty {
+  border-style: dashed;
+  color: rgba(241, 237, 255, 0.28);
+}
+
+.vel-menu.vel-style--rave .rv-stamp--bronze {
+  color: #e0915a;
+}
+
+.vel-menu.vel-style--rave .rv-stamp--silver {
+  color: #cfd6e6;
+}
+
+.vel-menu.vel-style--rave .rv-stamp--gold {
+  color: var(--gold);
+}
+
+.vel-menu.vel-style--rave .rv-stamp--velocity {
+  color: var(--cyan);
+  box-shadow: var(--px) var(--px) 0 var(--magenta);
+}
+
+.vel-menu.vel-style--rave .rv[data-focus='lineup'] .rv-act.is-sel .rv-stamp {
+  color: var(--ink);
+}
+
+/* ------------------------------------------------------------------ Start-Sticker */
+
+.vel-menu.vel-style--rave .rv-startrow {
+  display: flex;
+  align-items: flex-end;
+  gap: calc(var(--g) * 3);
+  margin-top: calc(var(--g) * 3);
+}
+
+.vel-menu.vel-style--rave .rv-start {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--g) * 2);
+  padding: calc(var(--g) * 1.5) calc(var(--g) * 3);
+  color: var(--ink);
+  white-space: nowrap;
+  transform: rotate(-1.5deg);
+}
+
+/* Zwei Druckplatten: Magenta-Fläche, Cyan-Schatten springt mit der Kick heraus (eigene Ebenen, nur transform). */
+.vel-menu.vel-style--rave .rv-start::before,
+.vel-menu.vel-style--rave .rv-start::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.vel-menu.vel-style--rave .rv-start::before {
+  z-index: -1;
+  background: var(--magenta);
+}
+
+.vel-menu.vel-style--rave .rv-start::after {
+  z-index: -2;
+  background: var(--cyan);
+  transform: translate(calc(var(--px) * 3 + var(--k) * var(--amp)), calc(var(--px) * 3 + var(--k) * var(--amp)));
+}
+
+.vel-menu.vel-style--rave .rv-start-main {
+  display: flex;
+  align-items: center;
+  gap: var(--g);
+}
+
+.vel-menu.vel-style--rave .rv-start-play {
+  width: calc(var(--g) * 3);
+  height: calc(var(--g) * 4);
+  background: var(--ink);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+
+.vel-menu.vel-style--rave .rv-start-word {
+  font-size: var(--f4);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: var(--px);
+}
+
+.vel-menu.vel-style--rave .rv-start-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--px);
+}
+
+.vel-menu.vel-style--rave .rv-start-name {
+  font-size: var(--f2);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.vel-menu.vel-style--rave .rv-start-goal {
+  font-size: var(--f1);
+  line-height: 1;
+}
+
+.vel-menu.vel-style--rave .rv-key {
+  display: inline-block;
+  padding: calc(var(--px) * 1) calc(var(--px) * 3);
+  font-size: var(--f1);
+  line-height: 1;
+  border: var(--px) solid currentColor;
+  box-shadow: 0 var(--px) 0 currentColor;
+}
+
+.vel-menu.vel-style--rave .rv-start:hover::before {
+  background: var(--paper);
+}
+
+.vel-menu.vel-style--rave .rv-start:disabled,
+.vel-menu.vel-style--rave .rv-start[data-off='1'] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.vel-menu.vel-style--rave .rv-newbie-slot {
+  margin-bottom: calc(var(--g) * 3);
+}
+
+.vel-menu.vel-style--rave .rv-newbie {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--g) * 2);
+  width: 100%;
+  padding: var(--g) calc(var(--g) * 2) var(--g) var(--g);
+  color: var(--ink);
+  background: var(--gold);
+  white-space: nowrap;
+  transform: rotate(-1.5deg);
+  box-shadow: calc(var(--px) * 3) calc(var(--px) * 3) 0 var(--ink);
+}
+
+.vel-menu.vel-style--rave .rv-newbie-tag {
+  padding: var(--px) var(--g);
+  font-size: var(--f1);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--gold);
+  background: var(--ink);
+}
+
+.vel-menu.vel-style--rave .rv-newbie-txt {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--px) * 2);
+  flex: 1;
+}
+
+.vel-menu.vel-style--rave .rv-newbie-top {
+  font-family: var(--font-body);
+  font-size: var(--f1);
+  line-height: 1;
+}
+
+.vel-menu.vel-style--rave .rv-newbie-main {
+  font-size: var(--f2);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.vel-menu.vel-style--rave .rv-newbie-play {
+  width: calc(var(--g) * 2);
+  height: calc(var(--g) * 3);
+}
+
+.vel-menu.vel-style--rave .rv-newbie:hover {
+  background: var(--paper);
+}
+
+.vel-menu.vel-style--rave .rv-left {
+  position: relative;
+}
+
+/* Lock-Fehler: liegt über dem Kleingedruckten unter dem Start (schiebt das Line-up nicht ins Foto). */
+.vel-menu.vel-style--rave .rv-lockerr {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  top: calc(100% + var(--g));
+  margin: 0;
+  padding: var(--g) calc(var(--g) * 2) var(--g) calc(var(--g) * 6);
+  font-family: var(--font-body);
+  font-size: var(--f1);
+  line-height: 1.25;
+  color: var(--paper);
+  background: #2a0814;
+  border: var(--px) solid var(--loss);
+}
+
+.vel-menu.vel-style--rave .rv-lockerr::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: calc(var(--g) * 4);
+  background: repeating-linear-gradient(-45deg, var(--gold) 0 var(--g), var(--ink) var(--g) calc(var(--g) * 2));
+}
+
+.vel-menu.vel-style--rave .rv-lockerr[hidden] {
+  display: none;
+}
+
+/* ------------------------------------------------------------------ Tracklist */
+
+.vel-menu.vel-style--rave .rv-right {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 0;
+}
+
+.vel-menu.vel-style--rave .rv-tracks {
+  display: flex;
+  flex-direction: column;
+}
+
+.vel-menu.vel-style--rave .rv-track {
+  display: grid;
+  grid-template-columns: calc(var(--g) * 4) calc(var(--g) * 4) auto 1fr;
+  align-items: center;
+  column-gap: var(--g);
+  height: calc(var(--g) * 4);
+  padding: 0 var(--g);
+  font-size: var(--f1);
+  line-height: 1;
+}
+
+.vel-menu.vel-style--rave .rv-track[data-side='B'] .rv-track-code {
+  color: var(--magenta);
+}
+
+.vel-menu.vel-style--rave .rv-track-code {
+  color: var(--cyan);
+  font-weight: 700;
+}
+
+.vel-menu.vel-style--rave .rv-track-rule {
+  height: var(--px);
+  background: currentColor;
+  opacity: 0.6;
+}
+
+.vel-menu.vel-style--rave .rv-track-label {
+  letter-spacing: var(--px);
+}
+
+.vel-menu.vel-style--rave .rv-track-meta {
+  justify-self: end;
+  color: var(--dim);
+}
+
+.vel-menu.vel-style--rave .rv-track:hover,
+.vel-menu.vel-style--rave .rv-track.is-sel {
+  color: var(--ink);
+  background: var(--gold);
+}
+
+.vel-menu.vel-style--rave .rv-track:hover .rv-track-code,
+.vel-menu.vel-style--rave .rv-track:hover .rv-track-meta,
+.vel-menu.vel-style--rave .rv-track.is-sel .rv-track-code,
+.vel-menu.vel-style--rave .rv-track.is-sel .rv-track-meta {
+  color: var(--ink);
+}
+
+/* ------------------------------------------------------------------ Armband (Konto) */
+
+.vel-menu.vel-style--rave .rv-wrist-slot {
+  position: absolute;
+  right: 0;
+  top: calc(var(--g) * 2);
+  width: calc(var(--g) * 52);
+  transform: rotate(3deg);
+}
+
+.vel-menu.vel-style--rave .rv-wrist {
+  display: flex;
+  align-items: stretch;
+  min-height: calc(var(--g) * 7);
+  color: var(--ink);
+  background: var(--gold);
+  clip-path: polygon(0 0, 100% 0, calc(100% - var(--g)) 50%, 100% 100%, 0 100%, var(--g) 50%);
+}
+
+.vel-menu.vel-style--rave .rv-wrist.is-off {
+  background: var(--dim);
+}
+
+.vel-menu.vel-style--rave .rv-wrist.is-vip {
+  background: var(--magenta);
+}
+
+.vel-menu.vel-style--rave .rv-wrist-stub {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--g) * 8);
+  padding-left: var(--g);
+  font-size: var(--f1);
+  font-weight: 700;
+  border-right: var(--px) dashed var(--ink);
+}
+
+.vel-menu.vel-style--rave .rv-wrist-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: calc(var(--px) * 2);
+  padding: var(--g) var(--g) var(--g) calc(var(--g) * 2);
+  min-width: 0;
+}
+
+.vel-menu.vel-style--rave .rv-wrist-top {
+  font-size: var(--f1);
+  line-height: 1;
+}
+
+.vel-menu.vel-style--rave .rv-wrist-name {
+  display: flex;
+  align-items: center;
+  gap: var(--g);
+  font-size: var(--f2);
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.vel-menu.vel-style--rave .rv-wrist-nm {
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vel-menu.vel-style--rave .rv-wrist-sub {
+  font-family: var(--font-body);
+  font-size: var(--f1);
+  line-height: 1;
+}
+
+.vel-menu.vel-style--rave .rv-wrist-code {
+  flex: none;
+  width: calc(var(--g) * 4);
+  margin-right: calc(var(--g) * 2);
+  background: repeating-linear-gradient(90deg, var(--ink) 0 var(--px), transparent var(--px) calc(var(--px) * 2), var(--ink) calc(var(--px) * 2) calc(var(--px) * 4), transparent calc(var(--px) * 4) calc(var(--px) * 5));
+  margin-block: var(--g);
+}
+
+.vel-menu.vel-style--rave .rv-wrist-btn {
+  align-self: flex-start;
+  padding: var(--px) var(--g);
+  font-size: var(--f1);
+  line-height: 1.2;
+  color: var(--paper);
+  background: var(--ink);
+}
+
+.vel-menu.vel-style--rave .rv-wrist-btn--discord {
+  background: #5865f2;
+}
+
+.vel-menu.vel-style--rave .rv-avatar {
+  width: calc(var(--px) * 16);
+  height: calc(var(--px) * 16);
+  image-rendering: pixelated;
+  border: var(--px) solid var(--ink);
+}
+
+.vel-menu.vel-style--rave .rv-avatar--none {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--f2);
+  color: var(--gold);
+  background: var(--ink);
+}
+
+.vel-menu.vel-style--rave .rv-dev {
+  padding: var(--px) calc(var(--px) * 2);
+  font-size: var(--f1);
+  color: var(--ink);
+  background: var(--cyan);
+  box-shadow: var(--px) var(--px) 0 var(--ink), calc(var(--px) * 2) calc(var(--px) * 2) 0 var(--gold);
+}
+
+/* ------------------------------------------------------------------ Kleingedrucktes */
+
+.vel-menu.vel-style--rave .rv-fine {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--g) * 3);
+  margin-top: calc(var(--g) * 2);
+  padding-top: var(--g);
+  border-top: var(--px) solid rgba(241, 237, 255, 0.25);
+  font-family: var(--font-body);
+  font-size: var(--f1);
+  line-height: 1;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.vel-menu.vel-style--rave .rv-fine-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.vel-menu.vel-style--rave .rv-fine-keys {
+  margin-left: auto;
+}
+
+.vel-menu.vel-style--rave .rv-fine-btn {
+  font-size: var(--f1);
+  color: var(--dim);
+}
+
+.vel-menu.vel-style--rave .rv-fine-btn:hover {
+  color: var(--paper);
+}
+
+.vel-menu.vel-style--rave .rv-key--s {
+  padding: 0 var(--px);
+}
+
+/* ------------------------------------------------------------------ Korn, Blitz, Wischer */
+
+.vel-menu.vel-style--rave .rv-grain {
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  top: 0;
+  width: calc(100% + 256px);
+  height: calc(100% + 256px);
+  pointer-events: none;
+  background-size: calc(var(--px) * 128) calc(var(--px) * 128);
+  image-rendering: pixelated;
+  opacity: 0.5;
+  will-change: transform;
+}
+
+.vel-menu.vel-style--rave .rv-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* ------------------------------------------------------------------ Auswahl-Ruckler */
+
+.vel-menu.vel-style--rave .rv[data-stutter='a'] .is-sel {
+  animation: rv-stut-a 140ms steps(1, end);
+}
+
+.vel-menu.vel-style--rave .rv[data-stutter='b'] .is-sel {
+  animation: rv-stut-b 140ms steps(1, end);
+}
+
+@keyframes rv-stut-a {
+  0% { transform: translateX(calc(var(--px) * 4)); }
+  33% { transform: translateX(calc(var(--px) * -2)); }
+  66% { transform: translateX(var(--px)); }
+}
+
+@keyframes rv-stut-b {
+  0% { transform: translateX(calc(var(--px) * 4)); }
+  33% { transform: translateX(calc(var(--px) * -2)); }
+  66% { transform: translateX(var(--px)); }
+}
+
+/* ------------------------------------------------------------------ Intro (boot) */
+
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-flash {
+  animation: rv-flash 1.6s steps(1, end) both;
+}
+
+@keyframes rv-flash {
+  /* Zwei farbige Blitze im Abstand von 0.48 s (≈ 2 Hz < 3 Hz), nie Vollweiß. */
+  0% { opacity: 0; background: var(--magenta); }
+  14% { opacity: 0.85; background: var(--magenta); }
+  19% { opacity: 0; }
+  44% { opacity: 0.6; background: var(--cyan); }
+  49% { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-hero {
+  animation: rv-slam 0.5s steps(4, end) 0.2s both;
+}
+
+@keyframes rv-slam {
+  0% { opacity: 0; transform: skewX(-12deg) scaleY(1.25) translateX(-40%); }
+  25% { opacity: 1; transform: skewX(-24deg) scaleY(1.6) translateX(-6%); }
+  75% { transform: skewX(-8deg) scaleY(1.2) translateX(1%); }
+  100% { transform: skewX(-12deg) scaleY(1.25); }
+}
+
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-ticker {
+  animation: rv-in-x 0.4s steps(3, end) 0.05s both;
+}
+
+.vel-menu.vel-style--rave .rv-photo-cover {
+  position: absolute;
+  inset: 0;
+  background: var(--ink);
+  transform: translateX(101%);
+}
+
+/* Foto selbst nie ausblenden — es trägt die Tinte (box-shadow) für den ganzen Schirm. Ein Deckel wischt weg. */
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-photo-cover {
+  animation: rv-uncover 0.45s steps(4, end) 0.45s both;
+}
+
+@keyframes rv-uncover {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(101%); }
+}
+
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-kicker,
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-tag,
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-sechead {
+  animation: rv-cut 0.2s steps(2, end) 0.7s both;
+}
+
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-act,
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-track {
+  animation: rv-cut 0.15s steps(2, end) both;
+}
+
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-act:nth-child(1) { animation-delay: 0.8s; }
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-act:nth-child(2) { animation-delay: 0.9s; }
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-act:nth-child(3) { animation-delay: 1s; }
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-act:nth-child(4) { animation-delay: 1.1s; }
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-act:nth-child(n + 5) { animation-delay: 1.2s; }
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-track { animation-delay: 1s; }
+
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-newbie-slot,
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-startrow,
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-wrist-slot,
+.vel-menu.vel-style--rave .rv[data-boot='full'] .rv-fine {
+  animation: rv-slap 0.3s steps(3, end) 1.25s both;
+}
+
+@keyframes rv-in-x {
+  0% { opacity: 0; translate: -30% 0; }
+  100% { opacity: 1; translate: 0 0; }
+}
+
+@keyframes rv-cut {
+  0% { opacity: 0; }
+  50% { opacity: 1; translate: calc(var(--px) * 6) 0; }
+  100% { opacity: 1; translate: 0 0; }
+}
+
+@keyframes rv-slap {
+  0% { opacity: 0; scale: 1.3; }
+  66% { opacity: 1; scale: 0.96; }
+  100% { opacity: 1; scale: 1; }
+}
+
+/* Rückkehr: kurzer Schnitt statt Intro. */
+.vel-menu.vel-style--rave .rv[data-boot='return'] .rv-safe {
+  animation: rv-cut 0.2s steps(2, end) both;
+}
+
+/* ------------------------------------------------------------------ Ruhige Fassung */
+
+.vel-menu.vel-style--rave .rv[data-reduced='1'] *,
+.vel-menu.vel-style--rave .rv[data-reduced='1'] *::before {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vel-menu.vel-style--rave .rv *,
+  .vel-menu.vel-style--rave .rv *::before {
+    animation: none !important;
+  }
+}
+
+/* Warnband am unteren Rand: rahmt den Flyer. */
+.vel-menu.vel-style--rave .rv-hazard {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--g);
+  pointer-events: none;
+  background: repeating-linear-gradient(-45deg, var(--gold) 0 var(--g), var(--ink) var(--g) calc(var(--g) * 2));
+}
+
+/* Breitbild-Ränder (21:9, 32:9): senkrechte Flyer-Streifen außerhalb der 16:9-Bühne, nur wenn Platz ist. */
+.vel-menu.vel-style--rave .rv-side {
+  position: absolute;
+  z-index: 2;
+  top: calc((100vh - var(--sh)) / 2 + var(--g) * 40);
+  bottom: calc(var(--g) * 2);
+  width: var(--gut);
+  overflow: hidden;
+  pointer-events: none;
+  display: flex;
+  gap: calc(var(--g) * 2);
+  padding: 0 calc(var(--g) * 3);
+}
+
+.vel-menu.vel-style--rave .rv-side--l {
+  left: 0;
+  justify-content: flex-end;
+}
+
+.vel-menu.vel-style--rave .rv-side--r {
+  right: 0;
+  justify-content: flex-start;
+}
+
+.vel-menu.vel-style--rave .rv-side-type {
+  /* Exakt 90° gedreht bleibt die Pixelschrift scharf (writing-mode statt rotate). */
+  writing-mode: vertical-rl;
+  font-size: var(--f4);
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--ink);
+  --line: #5a2266;
+  text-shadow:
+    var(--px) 0 0 var(--line),
+    calc(var(--px) * -1) 0 0 var(--line),
+    0 var(--px) 0 var(--line),
+    0 calc(var(--px) * -1) 0 var(--line);
+}
+
+.vel-menu.vel-style--rave .rv-side-type--hot {
+  color: var(--magenta);
+  text-shadow: none;
+  opacity: calc(0.5 + var(--k) * 0.5);
+}
+
+.vel-menu.vel-style--rave .rv-side-small {
+  writing-mode: vertical-rl;
+  font-size: var(--f1);
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--cyan);
+  letter-spacing: var(--px);
+}
+
+.vel-menu.vel-style--rave .rv-side-bar {
+  flex: none;
+  width: calc(var(--g) * 2);
+  background: repeating-linear-gradient(-45deg, var(--gold) 0 var(--g), var(--ink) var(--g) calc(var(--g) * 2));
+}
+
+@media (max-aspect-ratio: 16/9) {
+  .vel-menu.vel-style--rave .rv-side {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------ Bestands-Screens im Flyer-Look
+   Nur Farben/Schatten/Kanten — Layout bleibt das von Menu.ts. */
+
+.vel-menu.vel-style--rave:not([data-screen='title']) {
+  background:
+    radial-gradient(circle at 1px 1px, rgba(255, 63, 208, 0.16) 1px, transparent 1.5px) 0 0 / 6px 6px,
+    linear-gradient(180deg, rgba(7, 4, 15, 0.9) 0%, rgba(7, 4, 15, 0.78) 50%, rgba(7, 4, 15, 0.92) 100%);
+}
+
+.vel-menu.vel-style--rave .vel-h1 {
+  /* Passer-Fehler wie der Flyer-Titel: Cyan links, Magenta rechts versetzt. */
+  text-shadow: -3px 0 0 var(--cyan), 3px 2px 0 var(--magenta);
+}
+
+.vel-menu.vel-style--rave .vel-h1::before {
+  background: var(--gold);
+  box-shadow: 3px 3px 0 var(--magenta);
+}
+
+.vel-menu.vel-style--rave .vel-h2 {
+  color: var(--gold);
+}
+
+.vel-menu.vel-style--rave .vel-panel {
+  background: rgba(7, 4, 15, 0.94);
+  border-left: 0;
+  border-top: 2px solid var(--text);
+  box-shadow: 6px 6px 0 rgba(255, 63, 208, 0.55);
+}
+
+.vel-menu.vel-style--rave .vel-panel::before {
+  background: var(--gold);
+}
+
+.vel-menu.vel-style--rave .vel-btn {
+  background: #0d0719;
+  border-color: rgba(241, 237, 255, 0.4);
+}
+
+.vel-menu.vel-style--rave .vel-btn:hover,
+.vel-menu.vel-style--rave .vel-btn.is-selected {
+  color: #07040f;
+  background: var(--gold);
+  border-color: var(--gold);
+  box-shadow: 3px 3px 0 var(--magenta);
+}
+
+.vel-menu.vel-style--rave .vel-btn--primary {
+  color: #07040f;
+  background: var(--magenta);
+  border-color: var(--magenta);
+  box-shadow: 4px 4px 0 var(--cyan);
+}
+
+.vel-menu.vel-style--rave .vel-btn--primary:hover {
+  background: var(--text);
+  border-color: var(--text);
+}
+
+.vel-menu.vel-style--rave .vel-lab-card.is-active {
+  border-top-color: var(--cyan);
+  box-shadow: 6px 6px 0 var(--cyan);
+}

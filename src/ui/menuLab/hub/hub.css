@@ -1,0 +1,869 @@
+/*
+ * Stil 'hub' (Plan 010). Alles unter .vel-menu.vel-style--hub — sonst leckt es in andere Stile.
+ * Die Szene ist ein eigenes Low-Res-Canvas (deckend). DOM nur für Text: Silkscreen nur bei 8/16/24/32/40/48 px.
+ */
+
+/* Titel: kein Verlauf, keine DOM-Scanlines (das Canvas hat eigene im Low-Res-Raster, über Text würden sie ihn zerschneiden). */
+.vel-menu.vel-style--hub[data-screen='title'] {
+  background: #07040f;
+}
+.vel-menu.vel-style--hub[data-screen='title']::after {
+  display: none;
+}
+
+.vel-menu.vel-style--hub .vel-frontdoor--hub {
+  --hub-ink: #07040f;
+  --hub-plate: rgba(9, 5, 26, 0.84);
+  --hub-plate-2: rgba(20, 11, 48, 0.9);
+  --hub-title: 32px;
+  --hub-card-w: 416px;
+  --hub-pad: 24px;
+  background: #07040f;
+}
+
+.vel-menu.vel-style--hub .hub-canvas {
+  position: absolute;
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.vel-menu.vel-style--hub .hub-ui {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.vel-menu.vel-style--hub .hub-ui button {
+  pointer-events: auto;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* 16:9-Rahmen in der Mitte: bei 21:9/32:9 bleibt die Oberfläche zusammen, die Welt läuft seitlich weiter. */
+.vel-menu.vel-style--hub .hub-safe {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: min(100%, 177.78vh);
+  transform: translateX(-50%);
+}
+
+.vel-menu.vel-style--hub .hub-safe > *,
+.vel-menu.vel-style--hub .hub-tag {
+  opacity: 0;
+  transition: opacity 240ms steps(4, end);
+}
+.vel-menu.vel-style--hub .hub-ui.is-revealed .hub-safe > * {
+  opacity: 1;
+}
+
+/* ------------------------------------------------------------------ Kopf */
+
+.vel-menu.vel-style--hub .hub-top {
+  position: absolute;
+  left: 32px;
+  top: 24px;
+}
+.vel-menu.vel-style--hub .hub-logo {
+  display: block;
+  height: 56px;
+  width: auto;
+  filter: drop-shadow(4px 4px 0 rgba(7, 4, 15, 0.85));
+}
+
+.vel-menu.vel-style--hub .hub-account {
+  position: absolute;
+  right: 32px;
+  top: 32px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 16px 4px 4px;
+  border: 2px solid rgba(255, 63, 208, 0.6);
+  background: var(--hub-plate);
+  font-family: var(--font-head);
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.vel-menu.vel-style--hub .hub-account.is-dev {
+  border-color: var(--gold);
+}
+.vel-menu.vel-style--hub .hub-account:hover,
+.vel-menu.vel-style--hub .hub-account:focus-visible {
+  border-color: var(--cyan);
+  outline: none;
+}
+.vel-menu.vel-style--hub .hub-account-text {
+  color: var(--dim);
+}
+
+.vel-menu.vel-style--hub .hub-avatar {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  image-rendering: pixelated;
+  background: #2a2458;
+}
+.vel-menu.vel-style--hub .hub-avatar--none {
+  display: inline-grid;
+  place-items: center;
+  font-family: var(--font-head);
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--magenta);
+}
+
+/* Name + DEV-Abzeichen: Farben springen in Stufen (kein weicher Verlauf). */
+.vel-menu.vel-style--hub .hub-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.vel-menu.vel-style--hub .hub-name--dev .hub-name-text {
+  color: var(--gold);
+  text-shadow: 2px 0 0 var(--magenta), -2px 0 0 var(--cyan);
+  animation: hub-dev-name 1.6s steps(1, end) infinite;
+}
+.vel-menu.vel-style--hub .hub-dev {
+  font-family: var(--font-head);
+  font-size: 16px;
+  line-height: 24px;
+  padding: 0 6px;
+  color: var(--ink);
+  background: var(--gold);
+  box-shadow: 2px 2px 0 var(--magenta), -2px -2px 0 var(--cyan);
+  animation: hub-dev-badge 1.6s steps(1, end) infinite;
+}
+@keyframes hub-dev-name {
+  0%, 100% { text-shadow: 2px 0 0 var(--magenta), -2px 0 0 var(--cyan); }
+  25% { text-shadow: 2px 2px 0 var(--magenta), -2px 0 0 var(--cyan); }
+  50% { text-shadow: 0 2px 0 var(--cyan), 2px -2px 0 var(--magenta); }
+  75% { text-shadow: -2px 0 0 var(--magenta), 2px 0 0 var(--cyan); }
+}
+@keyframes hub-dev-badge {
+  0%, 100% { background: var(--gold); }
+  33% { background: var(--cyan); }
+  66% { background: var(--magenta); }
+}
+
+/* ------------------------------------------------------------------ Schilder über den Stationen */
+
+.vel-menu.vel-style--hub .hub-tags {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+}
+.vel-menu.vel-style--hub .hub-safe {
+  z-index: 1;
+}
+
+.vel-menu.vel-style--hub .hub-tag {
+  --c: var(--cyan);
+  position: absolute;
+  left: 0;
+  top: 0;
+  translate: -50% -100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 4px 12px 6px;
+  border: 2px solid var(--c);
+  background: var(--hub-plate);
+  white-space: nowrap;
+  visibility: hidden;
+  box-shadow: 4px 4px 0 rgba(7, 4, 15, 0.7);
+}
+.vel-menu.vel-style--hub .hub-tag.is-on {
+  visibility: visible;
+  opacity: 0.82;
+}
+.vel-menu.vel-style--hub .hub-tag.is-on.is-hover,
+.vel-menu.vel-style--hub .hub-tag.is-on:hover {
+  opacity: 1;
+  background: var(--c);
+  color: var(--hub-ink);
+}
+.vel-menu.vel-style--hub .hub-tag.is-on.is-hover .hub-tag-sub,
+.vel-menu.vel-style--hub .hub-tag.is-on:hover .hub-tag-sub {
+  color: var(--hub-ink);
+}
+/* Kleiner Fuß: Schild "hängt" an der Station. */
+.vel-menu.vel-style--hub .hub-tag::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -10px;
+  width: 2px;
+  height: 8px;
+  margin-left: -1px;
+  background: var(--c);
+}
+.vel-menu.vel-style--hub .hub-tag-title {
+  font-family: var(--font-head);
+  font-size: 16px;
+  line-height: 24px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--c);
+}
+.vel-menu.vel-style--hub .hub-tag.is-hover .hub-tag-title,
+.vel-menu.vel-style--hub .hub-tag:hover .hub-tag-title {
+  color: var(--hub-ink);
+}
+.vel-menu.vel-style--hub .hub-tag-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 16px;
+  color: var(--dim);
+}
+.vel-menu.vel-style--hub .hub-tag-medal {
+  width: 8px;
+  height: 8px;
+  background: var(--m);
+}
+.vel-menu.vel-style--hub .hub-tag.is-newbie {
+  animation: hub-blink 1.2s steps(1, end) infinite;
+}
+@keyframes hub-blink {
+  0%, 60% { border-color: var(--c); }
+  61%, 100% { border-color: var(--text); }
+}
+
+/* ------------------------------------------------------------------ Stationskarte */
+
+.vel-menu.vel-style--hub .hub-card {
+  --c: var(--cyan);
+  position: absolute;
+  right: 4%;
+  top: 50%;
+  width: var(--hub-card-w);
+  max-height: calc(100% - 248px);
+  overflow-y: auto;
+  transform: translateY(-54%);
+  padding: 16px var(--hub-pad) 20px;
+  background: var(--hub-plate);
+  border-left: 4px solid var(--c);
+  clip-path: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 24px 100%, 0 calc(100% - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scrollbar-width: none;
+}
+/* Ecke oben rechts + Lichtkante unten (gestuft, kein Glow). */
+.vel-menu.vel-style--hub .hub-card::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 24px;
+  height: 24px;
+  background: var(--c);
+  clip-path: polygon(0 0, 100% 100%, 100% 60%, 40% 0);
+}
+.vel-menu.vel-style--hub .hub-card.is-in {
+  animation: hub-card-in 200ms steps(4, end);
+}
+@keyframes hub-card-in {
+  from { opacity: 0; translate: 24px 0; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+.vel-menu.vel-style--hub .hub-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.vel-menu.vel-style--hub .hub-card-kicker {
+  font-family: var(--font-head);
+  font-size: 16px;
+  line-height: 24px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--c);
+}
+.vel-menu.vel-style--hub .hub-card-head::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: repeating-linear-gradient(90deg, var(--c) 0 4px, transparent 4px 8px);
+  opacity: 0.6;
+}
+
+.vel-menu.vel-style--hub .hub-title {
+  margin: 0;
+  font-family: var(--font-head);
+  font-size: var(--hub-title);
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text);
+  text-shadow: 4px 4px 0 rgba(7, 4, 15, 0.9);
+  overflow-wrap: anywhere;
+}
+.vel-menu.vel-style--hub .hub-subtitle {
+  margin: -8px 0 0;
+  font-family: var(--font-body);
+  font-size: 16px;
+  color: var(--c);
+}
+.vel-menu.vel-style--hub .hub-text {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--dim);
+}
+.vel-menu.vel-style--hub .hub-version-line {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 16px;
+  color: rgba(155, 147, 196, 0.7);
+}
+
+.vel-menu.vel-style--hub .hub-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.vel-menu.vel-style--hub .hub-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 24px;
+}
+.vel-menu.vel-style--hub .hub-row-label,
+.vel-menu.vel-style--hub .hub-label {
+  margin: 0;
+  font-family: var(--font-head);
+  font-size: 16px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.vel-menu.vel-style--hub .hub-row-value {
+  font-family: var(--font-body);
+  font-size: 16px;
+  color: var(--text);
+  text-align: right;
+}
+.vel-menu.vel-style--hub .hub-best {
+  font-family: var(--font-head);
+  font-size: 24px;
+  color: var(--text);
+}
+.vel-menu.vel-style--hub .hub-best.is-empty {
+  color: var(--dim);
+}
+
+.vel-menu.vel-style--hub .hub-medal {
+  display: inline-block;
+  padding: 0 8px;
+  font-family: var(--font-head);
+  font-size: 16px;
+  line-height: 24px;
+  letter-spacing: 1px;
+  color: var(--hub-ink);
+  background: var(--m);
+}
+.vel-menu.vel-style--hub .hub-medal--velocity {
+  background: var(--cyan);
+  box-shadow: 4px 0 0 var(--magenta);
+}
+.vel-menu.vel-style--hub .hub-medal--none {
+  color: var(--dim);
+  background: transparent;
+  border: 2px solid rgba(155, 147, 196, 0.4);
+  line-height: 20px;
+}
+
+.vel-menu.vel-style--hub .hub-ladder {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+.vel-menu.vel-style--hub .hub-rung {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 6px 4px;
+  border-top: 4px solid var(--m);
+  background: rgba(255, 255, 255, 0.04);
+  opacity: 0.55;
+}
+.vel-menu.vel-style--hub .hub-rung.is-got {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+}
+.vel-menu.vel-style--hub .hub-rung.is-next {
+  opacity: 1;
+  outline: 2px dashed var(--m);
+  outline-offset: -2px;
+}
+.vel-menu.vel-style--hub .hub-rung-name {
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 16px;
+  font-weight: 700;
+  color: var(--m);
+  text-transform: uppercase;
+}
+.vel-menu.vel-style--hub .hub-rung-time {
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 20px;
+  color: var(--text);
+}
+
+.vel-menu.vel-style--hub .hub-next {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 16px;
+  color: var(--text);
+}
+.vel-menu.vel-style--hub .hub-rec {
+  margin: 0;
+  font-family: var(--font-head);
+  font-size: 16px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--magenta);
+}
+.vel-menu.vel-style--hub .hub-newbie {
+  padding: 8px 12px;
+  border: 2px solid var(--gain);
+  font-family: var(--font-body);
+  font-size: 16px;
+  color: var(--text);
+  background: rgba(70, 255, 158, 0.08);
+}
+.vel-menu.vel-style--hub .hub-newbie strong {
+  font-family: var(--font-head);
+  font-weight: 700;
+  color: var(--gain);
+  text-transform: uppercase;
+}
+
+.vel-menu.vel-style--hub .hub-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.vel-menu.vel-style--hub .hub-progress-label {
+  font-family: var(--font-body);
+  font-size: 16px;
+  color: var(--text);
+}
+.vel-menu.vel-style--hub .hub-seg {
+  display: flex;
+  gap: 4px;
+}
+.vel-menu.vel-style--hub .hub-seg span {
+  flex: 1;
+  height: 8px;
+  background: rgba(155, 147, 196, 0.25);
+}
+.vel-menu.vel-style--hub .hub-seg span.is-on {
+  background: var(--c);
+}
+
+.vel-menu.vel-style--hub .hub-lesson {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 8px 12px;
+  border: 2px solid var(--c);
+  background: var(--hub-plate-2);
+}
+.vel-menu.vel-style--hub .hub-lesson-short {
+  font-family: var(--font-head);
+  font-size: 24px;
+  color: var(--c);
+}
+.vel-menu.vel-style--hub .hub-lesson-name {
+  font-family: var(--font-head);
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.vel-menu.vel-style--hub .hub-lesson-sub {
+  grid-column: 1 / -1;
+  font-family: var(--font-body);
+  font-size: 16px;
+  color: var(--dim);
+}
+.vel-menu.vel-style--hub .hub-stars {
+  display: inline-flex;
+  gap: 4px;
+}
+/* Pixel-Stern als 8×8-Raute mit Kreuz (clip-path), keine Glyphe. */
+.vel-menu.vel-style--hub .hub-stars span {
+  width: 12px;
+  height: 12px;
+  background: rgba(155, 147, 196, 0.35);
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+}
+.vel-menu.vel-style--hub .hub-stars span.is-on {
+  background: var(--gold);
+}
+
+.vel-menu.vel-style--hub .hub-board {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.vel-menu.vel-style--hub .hub-board-row {
+  display: grid;
+  grid-template-columns: 32px 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 8px;
+  border-left: 2px solid transparent;
+}
+.vel-menu.vel-style--hub .hub-board-row.is-sel {
+  border-left-color: var(--c);
+  background: rgba(255, 255, 255, 0.06);
+}
+.vel-menu.vel-style--hub .hub-board-num {
+  font-family: var(--font-head);
+  font-size: 16px;
+  color: var(--c);
+}
+.vel-menu.vel-style--hub .hub-board-name {
+  font-family: var(--font-head);
+  font-size: 16px;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vel-menu.vel-style--hub .hub-board-time {
+  font-family: var(--font-body);
+  font-size: 16px;
+}
+.vel-menu.vel-style--hub .hub-board-time.is-empty {
+  color: var(--dim);
+}
+
+.vel-menu.vel-style--hub .hub-id {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px;
+  border: 2px solid var(--c);
+  background: linear-gradient(180deg, rgba(255, 63, 208, 0.14) 0 24px, var(--hub-plate-2) 24px);
+}
+.vel-menu.vel-style--hub .hub-id.is-dev {
+  border-color: var(--gold);
+  background: linear-gradient(180deg, rgba(255, 216, 74, 0.16) 0 24px, var(--hub-plate-2) 24px);
+}
+.vel-menu.vel-style--hub .hub-id .hub-avatar {
+  width: 64px;
+  height: 64px;
+  font-size: 32px;
+}
+.vel-menu.vel-style--hub .hub-id-who {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-family: var(--font-head);
+  font-size: 24px;
+  text-transform: uppercase;
+}
+.vel-menu.vel-style--hub .hub-id-state {
+  font-family: var(--font-body);
+  font-size: 16px;
+  text-transform: none;
+  color: var(--dim);
+}
+
+/* Aktionen: vertikale Liste, aktive Zeile in Stationsfarbe gefüllt. */
+.vel-menu.vel-style--hub .hub-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+.vel-menu.vel-style--hub .hub-act {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 40px;
+  padding: 4px 12px 4px 28px;
+  border: 2px solid rgba(155, 147, 196, 0.35);
+  background: rgba(7, 4, 15, 0.6);
+  text-align: left;
+}
+.vel-menu.vel-style--hub .hub-act--primary {
+  border-color: var(--c);
+  min-height: 48px;
+}
+.vel-menu.vel-style--hub .hub-act--discord {
+  border-color: #5865f2;
+}
+.vel-menu.vel-style--hub .hub-act--quiet {
+  min-height: 32px;
+  border-style: dashed;
+}
+.vel-menu.vel-style--hub .hub-act-label {
+  font-family: var(--font-head);
+  font-size: 16px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.vel-menu.vel-style--hub .hub-act--primary .hub-act-label {
+  font-size: 24px;
+  letter-spacing: 2px;
+}
+.vel-menu.vel-style--hub .hub-act-sub {
+  margin-left: auto;
+  font-family: var(--font-body);
+  font-size: 16px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+.vel-menu.vel-style--hub .hub-act-caret {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 8px;
+  height: 12px;
+  margin-top: -6px;
+  background: currentColor;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  opacity: 0;
+}
+.vel-menu.vel-style--hub .hub-act.is-active {
+  background: var(--c);
+  border-color: var(--c);
+  color: var(--hub-ink);
+}
+.vel-menu.vel-style--hub .hub-act--discord.is-active {
+  background: #5865f2;
+  border-color: #5865f2;
+  color: #fff;
+}
+.vel-menu.vel-style--hub .hub-act.is-active .hub-act-sub {
+  color: inherit;
+  opacity: 0.75;
+}
+.vel-menu.vel-style--hub .hub-act.is-active .hub-act-caret {
+  opacity: 1;
+}
+.vel-menu.vel-style--hub .hub-act:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.vel-menu.vel-style--hub .hub-act:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+.vel-menu.vel-style--hub .hub-error {
+  margin: 0;
+  padding: 8px 12px;
+  border: 2px solid var(--loss);
+  font-family: var(--font-body);
+  font-size: 16px;
+  color: var(--loss);
+  background: rgba(255, 77, 109, 0.1);
+}
+
+/* ------------------------------------------------------------------ Stationsleiste (Linienplan) */
+
+.vel-menu.vel-style--hub .hub-dock {
+  position: absolute;
+  left: 50%;
+  bottom: 56px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 64px);
+}
+.vel-menu.vel-style--hub .hub-rail {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.vel-menu.vel-style--hub .hub-rail::before {
+  content: '';
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  top: 11px;
+  height: 2px;
+  background: rgba(155, 147, 196, 0.45);
+}
+.vel-menu.vel-style--hub .hub-stop {
+  --c: var(--cyan);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  min-width: 48px;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+}
+.vel-menu.vel-style--hub .hub-stop-pip {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--c);
+  background: var(--hub-ink);
+}
+.vel-menu.vel-style--hub .hub-stop--portal .hub-stop-pip {
+  transform: rotate(45deg) scale(0.85);
+}
+.vel-menu.vel-style--hub .hub-stop-label {
+  font-family: var(--font-head);
+  font-size: 16px;
+  line-height: 16px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--dim);
+  text-shadow: 2px 2px 0 var(--hub-ink);
+}
+.vel-menu.vel-style--hub .hub-stop.is-selected .hub-stop-pip {
+  background: var(--c);
+}
+.vel-menu.vel-style--hub .hub-stop.is-hover .hub-stop-label,
+.vel-menu.vel-style--hub .hub-stop:hover .hub-stop-label {
+  color: var(--text);
+}
+.vel-menu.vel-style--hub .hub-stop.is-focus .hub-stop-pip {
+  background: var(--c);
+  box-shadow: 0 0 0 2px var(--hub-ink), 0 0 0 4px var(--c);
+}
+.vel-menu.vel-style--hub .hub-stop.is-focus .hub-stop-label {
+  color: var(--c);
+}
+.vel-menu.vel-style--hub .hub-stop:focus-visible {
+  outline: 2px solid var(--text);
+}
+
+.vel-menu.vel-style--hub .hub-hints {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: 16px;
+  color: var(--dim);
+  text-shadow: 2px 2px 0 var(--hub-ink);
+}
+.vel-menu.vel-style--hub .hub-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.vel-menu.vel-style--hub .hub-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border: 2px solid rgba(155, 147, 196, 0.6);
+  font-family: var(--font-head);
+  font-size: 16px;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--text);
+  background: rgba(7, 4, 15, 0.7);
+}
+.vel-menu.vel-style--hub .hub-arrow {
+  display: block;
+  width: 8px;
+  height: 8px;
+  background: var(--text);
+}
+.vel-menu.vel-style--hub .hub-key--lr .hub-arrow--a { clip-path: polygon(100% 0, 0 50%, 100% 100%); }
+.vel-menu.vel-style--hub .hub-key--lr .hub-arrow--b { clip-path: polygon(0 0, 100% 50%, 0 100%); }
+.vel-menu.vel-style--hub .hub-key--ud .hub-arrow--a { clip-path: polygon(0 100%, 50% 0, 100% 100%); }
+.vel-menu.vel-style--hub .hub-key--ud .hub-arrow--b { clip-path: polygon(0 0, 50% 100%, 100% 0); }
+.vel-menu.vel-style--hub .hub-version {
+  color: rgba(155, 147, 196, 0.55);
+}
+
+/* ------------------------------------------------------------------ Große Fenster: alles eine Stufe größer (8er-Raster bleibt). */
+
+@media (min-height: 960px) {
+  .vel-menu.vel-style--hub .vel-frontdoor--hub {
+    --hub-title: 40px;
+    --hub-card-w: 496px;
+    --hub-pad: 32px;
+  }
+  .vel-menu.vel-style--hub .hub-logo {
+    height: 80px;
+  }
+  .vel-menu.vel-style--hub .hub-top {
+    left: 48px;
+    top: 40px;
+  }
+  .vel-menu.vel-style--hub .hub-account {
+    right: 48px;
+    top: 48px;
+  }
+  .vel-menu.vel-style--hub .hub-dock {
+    bottom: 72px;
+  }
+  .vel-menu.vel-style--hub .hub-hints {
+    bottom: 24px;
+  }
+  .vel-menu.vel-style--hub .hub-card {
+    max-height: calc(100% - 320px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vel-menu.vel-style--hub .hub-card.is-in,
+  .vel-menu.vel-style--hub .hub-tag.is-newbie,
+  .vel-menu.vel-style--hub .hub-name--dev .hub-name-text,
+  .vel-menu.vel-style--hub .hub-dev {
+    animation: none;
+  }
+  .vel-menu.vel-style--hub .hub-safe > *,
+  .vel-menu.vel-style--hub .hub-tag {
+    transition: none;
+  }
+}
+
+.vel-menu.vel-style--hub .hub-best-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.vel-menu.vel-style--hub .hub-act--newbie {
+  border-color: var(--gain);
+}
+.vel-menu.vel-style--hub .hub-act--newbie .hub-act-label {
+  color: var(--gain);
+}
+.vel-menu.vel-style--hub .hub-act--newbie.is-active {
+  background: var(--gain);
+  border-color: var(--gain);
+}
+.vel-menu.vel-style--hub .hub-act--newbie.is-active .hub-act-label {
+  color: var(--hub-ink);
+}
+.vel-menu.vel-style--hub .hub-act--primary.is-long .hub-act-label {
+  font-size: 16px;
+}

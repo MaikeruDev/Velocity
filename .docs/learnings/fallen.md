@@ -2174,3 +2174,40 @@ Metadaten kopiert, übernimmt dann beliebige Namen und fremde Bild-URLs in die �
 Anlegen (bereinigt), danach nur über die eigene, geprüfte Spalte; Avatar nur von `cdn.discordapp.com`; "ist ein
 Discord-Konto?" aus `raw_app_meta_data` (setzt nur der Auth-Server). E-Mail-Signups (falls der Anbieter an ist) bekommen
 kein Profil → können nicht einreichen.
+
+## 210. Verifier-Bundle "veraltet", obwohl sich am Server-Code nichts geändert hat
+
+`tests/submitFunction.test.ts` vergleicht das eingecheckte Bundle bytegenau mit einem frischen Build. esbuild vergibt
+die minifizierten Namen über den GANZEN Modulgraphen. Eine Textänderung in einem Modul, das nur über Typen oder
+tree-geshakten Code im Graph hängt (`online/types.ts` über Ghost → Settings → settingsTypes, `Settings.sanitizeSettings`),
+benennt deshalb Bezeichner um (`g2` ↔ `y2`). Das Bundle tut dasselbe, hat aber einen anderen SHA, und Hochladen geht nur mit
+dem Secret-Key. `export type * from './x'` zieht `x` ebenfalls in den Graph, ein `import type` nicht.
+**Richtig:** neue Online-Typen in eigene Dateien (`online/adminTypes.ts`, `online/profileTypes.ts`), in `types.ts` nur per
+`import type` und re-exportiert aus `online/index.ts`. Ob eine Änderung das Bundle berührt, prüft man in einem
+HEAD-Worktree (`git worktree add`, `node_modules` als Junction, eigene Dateien hineinkopieren,
+`build-function.mjs --out` und `cmp`). Ist es nur eine Umbenennung (gleiche `PHYSICS_VERSION`, gleiche Level-Hashes wie im
+GET der Live-Function), bleibt die Live-Function auf ihrem alten Pin kompatibel.
+
+## 211. Prettier ohne Projekt-Konfig formatiert auf 80 Zeichen um
+
+Das Repo hat keine `.prettierrc`, der Code ist rund 150 Zeichen breit und auch nicht einheitlich prettier-formatiert.
+`npx prettier --write` bricht dann alles auf 80 Zeichen um, auch fremde Dateien, wenn man ein Glob angibt
+(`src/online/*.ts` traf zwei unbeteiligte Dateien). Ein anderer `--print-width` stellt den alten Stand nicht wieder her.
+**Richtig:** kein Prettier über bestehende Dateien. Änderungen als wiederholbare Patch-Skripte halten, dann reicht
+`git checkout HEAD -- <datei>` plus die Skripte erneut ausführen.
+
+## 212. Postgres-Rechte prüfen: ganzen Testablauf in einen DO-Block, der mit `raise exception` endet
+
+Beim Prüfen von Rollen und RLS gegen die echte Datenbank darf nichts liegen bleiben. In einem `DO $$ … $$`-Block gehen
+`set local role anon|authenticated|service_role`, `set_config('request.jwt.claims', '{"sub":…}', true)` und
+Testnutzer in `auth.users` (der Trigger legt das Profil an). Jeden erwarteten Fehler mit `begin … exception when others`
+fangen, `sqlstate` in ein jsonb sammeln, zum Schluss `raise exception 'RESULT %', res`. Die MCP-Antwort zeigt das
+Ergebnis, und die Exception rollt alles zurück, auch Testnutzer, Läufe und Audit-Zeilen. Danach mit `count(*)`
+bestätigen, dass nichts übrig ist.
+
+## 213. Policies dürfen Spalten lesen, die der Aufrufer nicht sehen darf
+
+`profiles.is_banned` hat keinen Spalten-Grant für anon, trotzdem funktioniert
+`using (not is_banned or (select auth.uid()) = id)` in der SELECT-Policy, denn Policy-Ausdrücke unterliegen nicht den
+Spalten-Grants des Aufrufers. Ein Funktionsaufruf in der Policy auf das Schema `private` scheitert dagegen (kein USAGE
+für anon). So verschwinden gebannte Profile öffentlich, ohne dass der Bann-Status lesbar wird.

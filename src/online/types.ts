@@ -6,6 +6,9 @@
  * Kein SDK hier — Typen und Fehler sind reine Daten, damit Menü und Game ohne Backend testbar bleiben.
  */
 
+import type { AdminService } from './adminTypes';
+import type { PlayerProfile } from './profileTypes';
+
 export type OnlineBackend = 'mock' | 'supabase' | 'off';
 
 export interface PlayerIdentity {
@@ -70,14 +73,6 @@ export interface LeaderboardPage {
   readonly me: LeaderboardEntry | null;
 }
 
-export interface PlayerProfile {
-  readonly uid: string;
-  readonly name: string;
-  /** Eingereichte (angenommene) Läufe insgesamt. */
-  readonly runs: number;
-  readonly bests: readonly { readonly levelId: string; readonly time: number; readonly rank: number; readonly runId: string }[];
-}
-
 export type OnlineErrorCode = 'offline' | 'timeout' | 'auth' | 'notFound' | 'server' | 'invalid' | 'unavailable' | 'rate' | 'banned';
 
 export class OnlineError extends Error {
@@ -116,7 +111,13 @@ export interface OnlineService {
   getLeaderboard(levelId: string, range: LeaderboardRange): Promise<LeaderboardPage>;
   /** Replay eines Eintrags (für den Ghost: replayToGhost). */
   getGhost(runId: string): Promise<Uint8Array>;
+  /**
+   * Profil eines Spielers (Default: ich — wirft 'auth' ohne Anmeldung). Fremde Profile ohne Login lesbar (z. B. Klick
+   * auf einen Namen in der Bestenliste). Bestzeiten/Ränge nur auf den aktuellen Tafeln. Unbekannt/gebannt → 'notFound'.
+   */
   getProfile(uid?: string): Promise<PlayerProfile>;
+  /** Moderations-Werkzeuge; nicht null nur, solange identity.dev true ist (Server prüft trotzdem jeden Aufruf). */
+  readonly admin: AdminService | null;
 }
 
 /** Spielername: 2–16 Zeichen, Buchstaben/Ziffern/Leerzeichen/_-. — sonst leer (= automatischer Name). */

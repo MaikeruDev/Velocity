@@ -1,6 +1,6 @@
 import { createClient, FunctionsFetchError, FunctionsHttpError, FunctionsRelayError } from '@supabase/supabase-js';
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
-import type { BoardRow, Database } from './supabaseTypes';
+import type { AdminAuditRow, AdminPlayerRow, AdminRunRow, BoardRow, Database, Json, ProfileRpc, ProfileRpcBest } from './supabaseTypes';
 import { OnlineError } from './types';
 
 /**
@@ -49,6 +49,31 @@ export type SubmitResponse =
     }
   | { readonly valid: false; readonly reason: string; readonly detail: string | null };
 
+/** Antwort der Edge Function admin (action deleteRun; supabase/functions/admin/index.ts). */
+export interface AdminDeleteResponse {
+  readonly runId: string;
+  readonly userId: string;
+  readonly levelId: string;
+  readonly wasBest: boolean;
+  readonly newBestRunId: string | null;
+  readonly newBestMs: number | null;
+  readonly replayRemoved: boolean;
+}
+
+export interface AdminRunFilter {
+  readonly levelId: string | null;
+  readonly uid: string | null;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+export interface AdminPlayerFilter {
+  readonly search: string | null;
+  readonly bannedOnly: boolean;
+  readonly limit: number;
+  readonly offset: number;
+}
+
 export interface SupabaseApi {
   getSession(): Promise<SessionInfo | null>;
   onAuthChange(cb: (s: SessionInfo | null) => void): () => void;
@@ -60,12 +85,21 @@ export interface SupabaseApi {
   leaderboard(q: BoardQuery, limit: number, offset: number): Promise<BoardRow[]>;
   rankAround(q: BoardQuery, uid: string, radius: number): Promise<BoardRow[]>;
   bestRuns(uid: string): Promise<BestRow[]>;
-  runCount(uid: string): Promise<number>;
+  /** RPC get_player_profile: Profil + Bestzeiten/Ränge auf genau diesen Tafeln. null = unbekannt oder gebannt. */
+  playerProfile(uid: string, boards: readonly BoardQuery[]): Promise<ProfileRpc | null>;
   /** Storage-Pfad des Replays eines Laufs (null = kein Replay gespeichert). Wirft notFound ohne Lauf. */
   replayPath(runId: string): Promise<string | null>;
   /** Öffentliche Replay-Bytes (Bucket 'replays', ohne Login). */
   downloadReplay(path: string): Promise<Uint8Array>;
   submitRun(bytes: Uint8Array, timeoutMs: number): Promise<SubmitResponse>;
+  // ---- Entwickler (Server prüft role = 'dev'; Fehler 42501 → 'auth', 22023 → 'invalid', P0002 → 'notFound')
+  adminListRuns(f: AdminRunFilter): Promise<AdminRunRow[]>;
+  adminListPlayers(f: AdminPlayerFilter): Promise<AdminPlayerRow[]>;
+  adminSetBan(uid: string, banned: boolean, reason: string | null): Promise<AdminPlayerRow | null>;
+  adminRename(uid: string, name: string, reason: string | null): Promise<AdminPlayerRow | null>;
+  adminAudit(limit: number, offset: number, uid: string | null): Promise<AdminAuditRow[]>;
+  /** Edge Function admin (deleteRun): Lauf + Replay löschen, Bestzeit neu bestimmen. */
+  adminDeleteRun(runId: string, reason: string, timeoutMs: number): Promise<AdminDeleteResponse>;
 }
 
 // ------------------------------------------------------------------ Umsetzung mit supabase-js
@@ -87,6 +121,9 @@ function dbError(err: { message: string; code?: string } | null, what: string): 
   const msg = err?.message ?? 'unbekannt';
   if (/Failed to fetch|NetworkError|fetch failed|Load failed/i.test(msg)) return new OnlineError('offline', `${what}: keine Verbindung`);
   if (err?.code === '42501' || /permission denied|JWT/i.test(msg)) return new OnlineError('auth', `${what}: keine Berechtigung`);
+  // Admin-RPCs: 22023 = Eingabe ungültig (Text nach "invalid: "), P0002 = Ziel unbekannt.
+  if (err?.code === '22023') return new OnlineError('invalid', `${what}: ${msg.replace(/^invalid:\s*/, '')}`);
+  if (err?.code === 'P0002') return new OnlineError('notFound', `${what}: nicht gefunden`);
   return new OnlineError('server', `${what}: ${msg}`);
 }
 
@@ -94,6 +131,95 @@ function isBoardRow(v: unknown): v is BoardRow {
   if (typeof v !== 'object' || v === null) return false;
   const r = v as Record<string, unknown>;
   return typeof r.rank === 'number' && typeof r.user_id === 'string' && typeof r.display_name === 'string' && typeof r.time_ms === 'number' && typeof r.run_id === 'string';
+}
+
+function rec(v: unknown): Record<string, unknown> | null {
+  return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
+const optStr = (v: unknown): string | null => (typeof v === 'string' ? v : null);
+
+function parseProfileBest(v: unknown): ProfileRpcBest | null {
+  const r = rec(v);
+  if (!r || typeof r.level_id !== 'string' || typeof r.level_hash !== 'string' || typeof r.time_ms !== 'number' || typeof r.run_id !== 'string') return null;
+  return {
+    level_id: r.level_id,
+    level_hash: r.level_hash,
+    physics_version: Number(r.physics_version),
+    time_ms: r.time_ms,
+    run_id: r.run_id,
+    achieved_at: optStr(r.achieved_at) ?? '',
+    rank: Number(r.rank),
+    total: Number(r.total),
+  };
+}
+
+/** jsonb von get_player_profile prüfen (null = unbekannt/gebannt). */
+export function parseProfileRpc(v: unknown): ProfileRpc | null {
+  const r = rec(v);
+  if (!r || typeof r.id !== 'string' || typeof r.display_name !== 'string') return null;
+  const bests = Array.isArray(r.bests) ? r.bests.map(parseProfileBest).filter((b): b is ProfileRpcBest => b !== null) : [];
+  return {
+    id: r.id,
+    display_name: r.display_name,
+    avatar_url: optStr(r.avatar_url),
+    role: optStr(r.role) ?? 'player',
+    created_at: optStr(r.created_at) ?? '',
+    runs: Number(r.runs ?? 0),
+    world_records: Number(r.world_records ?? 0),
+    bests,
+  };
+}
+
+function isAdminRunRow(v: unknown): v is AdminRunRow {
+  const r = rec(v);
+  return !!r && typeof r.run_id === 'string' && typeof r.user_id === 'string' && typeof r.level_id === 'string' && typeof r.time_ms === 'number' && typeof r.created_at === 'string';
+}
+
+function isAdminPlayerRow(v: unknown): v is AdminPlayerRow {
+  const r = rec(v);
+  return !!r && typeof r.user_id === 'string' && typeof r.display_name === 'string' && typeof r.is_banned === 'boolean';
+}
+
+function isAdminAuditRow(v: unknown): v is AdminAuditRow {
+  const r = rec(v);
+  return !!r && typeof r.id === 'number' && typeof r.at === 'string' && typeof r.actor_id === 'string' && typeof r.action === 'string';
+}
+
+function rows<T>(data: unknown, guard: (v: unknown) => v is T): T[] {
+  return Array.isArray(data) ? data.filter(guard) : [];
+}
+
+/** Antwort der Edge Function admin (deleteRun) prüfen. */
+export function parseAdminDelete(v: unknown): AdminDeleteResponse {
+  const r = rec(v);
+  if (!r || r.ok !== true || typeof r.runId !== 'string' || typeof r.userId !== 'string' || typeof r.levelId !== 'string') {
+    throw new OnlineError('server', 'Antwort des Servers unlesbar');
+  }
+  return {
+    runId: r.runId,
+    userId: r.userId,
+    levelId: r.levelId,
+    wasBest: r.wasBest === true,
+    newBestRunId: optStr(r.newBestRunId),
+    newBestMs: typeof r.newBestMs === 'number' ? r.newBestMs : null,
+    replayRemoved: r.replayRemoved === true,
+  };
+}
+
+/** Fehler aus functions.invoke (submit-run, admin) → OnlineError. */
+async function invokeError(error: unknown, what: string): Promise<OnlineError> {
+  if (error instanceof FunctionsHttpError) {
+    const ctx: unknown = error.context;
+    if (ctx instanceof Response) return httpError(ctx);
+    return new OnlineError('server', error.message);
+  }
+  if (error instanceof FunctionsFetchError) {
+    const m = String(error.message ?? '');
+    return new OnlineError(/abort|timeout/i.test(m) ? 'timeout' : 'offline', 'Server nicht erreichbar');
+  }
+  if (error instanceof FunctionsRelayError) return new OnlineError('offline', 'Server nicht erreichbar');
+  return new OnlineError('server', error instanceof Error ? error.message : `${what} fehlgeschlagen`);
 }
 
 function parseSubmit(v: unknown): SubmitResponse {
@@ -119,6 +245,7 @@ async function httpError(res: Response): Promise<OnlineError> {
   if (res.status === 401) return new OnlineError('auth', body.error === 'auth' ? msg : 'Anmeldung abgelaufen — bitte neu mit Discord anmelden');
   if (res.status === 403) return new OnlineError(body.error === 'banned' ? 'banned' : 'auth', msg);
   if (res.status === 429) return new OnlineError('rate', msg);
+  if (res.status === 404) return new OnlineError('notFound', msg);
   if (res.status === 413 || res.status === 400) return new OnlineError('invalid', msg);
   return new OnlineError('server', msg);
 }
@@ -174,10 +301,12 @@ export function createSupabaseApi(url: string, key: string): SupabaseApi {
       if (error) throw dbError(error, 'Bestzeiten');
       return (data ?? []).map((r) => ({ levelId: r.level_id, levelHash: r.level_hash, physicsVersion: r.physics_version, timeMs: r.time_ms, runId: r.run_id }));
     },
-    async runCount(uid) {
-      const { count, error } = await sb.from('runs').select('id', { count: 'exact', head: true }).eq('user_id', uid);
-      if (error) throw dbError(error, 'Läufe');
-      return count ?? 0;
+    async playerProfile(uid, boards) {
+      const p_boards: Json = boards.map((b) => ({ level: b.levelId, level_hash: b.levelHash, physics: b.physics }));
+      const { data, error } = await sb.rpc('get_player_profile', { p_user: uid, p_boards });
+      // 22P02: keine gültige UUID → wie unbekannt.
+      if (error) throw error.code === '22P02' ? new OnlineError('notFound', `Spieler ${uid} unbekannt`) : dbError(error, 'Profil');
+      return parseProfileRpc(data);
     },
     async replayPath(runId) {
       const { data, error } = await sb.from('runs').select('replay_path').eq('id', runId).maybeSingle();
@@ -205,21 +334,40 @@ export function createSupabaseApi(url: string, key: string): SupabaseApi {
         headers: { 'Content-Type': 'application/octet-stream' },
         timeout: timeoutMs,
       });
-      if (error) {
-        if (error instanceof FunctionsHttpError) {
-          const ctx: unknown = error.context;
-          if (ctx instanceof Response) throw await httpError(ctx);
-          throw new OnlineError('server', error.message);
-        }
-        if (error instanceof FunctionsFetchError) {
-          const m = String(error.message ?? '');
-          throw new OnlineError(/abort|timeout/i.test(m) ? 'timeout' : 'offline', 'Server nicht erreichbar');
-        }
-        if (error instanceof FunctionsRelayError) throw new OnlineError('offline', 'Server nicht erreichbar');
-        throw new OnlineError('server', error instanceof Error ? error.message : 'Einreichen fehlgeschlagen');
-      }
+      if (error) throw await invokeError(error, 'Einreichen');
       const body: unknown = data;
       return parseSubmit(body);
+    },
+    async adminListRuns(f) {
+      const { data, error } = await sb.rpc('admin_list_runs', { p_level: f.levelId ?? undefined, p_user: f.uid ?? undefined, p_limit: f.limit, p_offset: f.offset });
+      if (error) throw dbError(error, 'Läufe');
+      return rows(data, isAdminRunRow);
+    },
+    async adminListPlayers(f) {
+      const { data, error } = await sb.rpc('admin_list_players', { p_search: f.search ?? undefined, p_banned_only: f.bannedOnly, p_limit: f.limit, p_offset: f.offset });
+      if (error) throw dbError(error, 'Spieler');
+      return rows(data, isAdminPlayerRow);
+    },
+    async adminSetBan(uid, banned, reason) {
+      const { data, error } = await sb.rpc('admin_set_ban', { p_user: uid, p_banned: banned, p_reason: reason ?? undefined });
+      if (error) throw dbError(error, banned ? 'Bannen' : 'Entbannen');
+      return rows(data, isAdminPlayerRow)[0] ?? null;
+    },
+    async adminRename(uid, name, reason) {
+      const { data, error } = await sb.rpc('admin_rename_player', { p_user: uid, p_name: name, p_reason: reason ?? undefined });
+      if (error) throw dbError(error, 'Umbenennen');
+      return rows(data, isAdminPlayerRow)[0] ?? null;
+    },
+    async adminAudit(limit, offset, uid) {
+      const { data, error } = await sb.rpc('admin_audit_log', { p_limit: limit, p_offset: offset, p_user: uid ?? undefined });
+      if (error) throw dbError(error, 'Protokoll');
+      return rows(data, isAdminAuditRow);
+    },
+    async adminDeleteRun(runId, reason, timeoutMs) {
+      const { data, error } = await sb.functions.invoke('admin', { body: { action: 'deleteRun', runId, reason }, timeout: timeoutMs });
+      if (error) throw await invokeError(error, 'Löschen');
+      const body: unknown = data;
+      return parseAdminDelete(body);
     },
   };
 }

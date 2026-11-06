@@ -2060,6 +2060,11 @@ export class Game {
     return this.getLevel(id);
   }
 
+  /** IDs der spielbaren Level aus index.json (Online-Profil: Ränge der aktuellen Tafeln); leer vor boot(). */
+  levelIds(): readonly string[] {
+    return this.levels.map((l) => l.id);
+  }
+
   /**
    * Ziel-Foto (Plan 007 I3): Selfie mit dem Handy (RendererApi.selfie, Rückansicht 96×54 + Peace-Hand) in
    * FinishResult.photo, HUD-Stempel "FOTO". Nach dem Bild dieses Frames (Kamera des letzten render), einmal

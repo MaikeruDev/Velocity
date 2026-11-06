@@ -55,6 +55,8 @@ async function botToFinish(page: Page, seed: number, noise: number): Promise<{ t
 }
 
 // Wie tools/lib/devServer.mjs (dort ohne Typen): Vite im selben Prozess, Chromium mit ANGLE.
+// Klassischer Titel (Default ist 'ps2', Plan 010) — die Prüfungen suchen dessen Elemente.
+process.env.VITE_TEST_MENU_STYLE ??= 'classic';
 const vite = await createServer({ configFile: 'vite.config.ts', server: { port: PORT, strictPort: true, hmr: false }, logLevel: 'error' });
 await vite.listen();
 const srv = { url: `http://localhost:${PORT}/`, close: () => vite.close() };

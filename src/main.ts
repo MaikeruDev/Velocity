@@ -5,6 +5,7 @@ import { Game } from './engine/Game';
 import { InputManager } from './engine/Input';
 import { BestTimes, SettingsStore, movementConfigFor } from './engine/Settings';
 import { UnlockStore } from './engine/Unlocks';
+import { MENU_STYLE_IDS } from './engine/settingsTypes';
 import { createOnlineService, onlineBackend } from './online';
 import { PS2Renderer } from './render/PS2Renderer';
 import { Hud } from './ui/Hud';
@@ -93,10 +94,17 @@ async function main(): Promise<void> {
   const tuning = new TuningPanel(settings, movementConfigFor(settings.get()));
 
   const q = new URLSearchParams(location.search);
+  // Menü-Labor (Plan 010): Takt fürs Menü und ?menu=<id> als Sitzungs-Override (nicht gespeichert).
+  menu.setAudio(audio);
+  // VITE_TEST_MENU_STYLE: Playwright-Werkzeuge pinnen den klassischen Titel (tools/lib/devServer.mjs), ?menu gewinnt.
+  const menuStyle = MENU_STYLE_IDS.find((id) => id === (q.get('menu') ?? import.meta.env.VITE_TEST_MENU_STYLE));
+  if (menuStyle) menu.setStyleOverride(menuStyle);
   // Online-Schicht (Plan 009). Die Prüfung braucht kompilierte Level — aus dem Cache des Spiels (spät gebunden).
   let gameRef: Game | null = null;
   const online = await createOnlineService(onlineBackend(q.get('online')), {
     loadLevel: (id) => (gameRef ? gameRef.levelById(id) : Promise.reject(new Error('Spiel startet noch'))),
+    levelIds: () => (gameRef ? gameRef.levelIds() : []),
+    mockDev: q.has('mockdev'),
   }).catch(() => null); // SDK-Chunk nicht ladbar (offline) → Spiel startet offline
 
   const game = new Game({

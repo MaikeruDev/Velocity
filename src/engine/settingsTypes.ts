@@ -42,6 +42,14 @@ export type HeldItemId = 'none' | 'card' | 'can' | 'knife' | 'yoyo' | 'spinner' 
 export const HELD_ITEM_IDS: readonly HeldItemId[] = ['none', 'card', 'can', 'knife', 'yoyo', 'spinner', 'coin', 'lighter', 'kendama', 'phone'];
 
 /**
+ * Hauptmenü-Stil (Menü-Labor, Plan 010). 'classic' = der bisherige Titel; die anderen ersetzen den
+ * Titel-Screen durch eine "Front Door" aus src/ui/menuLab/<id>/ und färben die übrigen Screens per
+ * CSS-Klasse `vel-style--<id>` am Menü-Root um.
+ */
+export type MenuStyleId = 'classic' | 'ps2' | 'hub' | 'rave' | 'arcade';
+export const MENU_STYLE_IDS: readonly MenuStyleId[] = ['classic', 'ps2', 'hub', 'rave', 'arcade'];
+
+/**
  * Spieler-Einstellungen (persistiert in localStorage durch engine/Settings.ts).
  * Maus-Empfindlichkeit wie in CS: Grad pro Count = sensitivity × m_yaw.
  */
@@ -99,6 +107,8 @@ export interface GameSettings {
    * '' = automatischer Name "SPIELER-xxxx". Bereinigt über online/types.sanitizeName.
    */
   readonly playerName: string;
+  /** Hauptmenü-Stil (Plan 010), Default 'ps2' (Spieler-Wahl 2026-11-06). `?menu=<id>` überschreibt ihn nur für die Sitzung. */
+  readonly menuStyle: MenuStyleId;
   readonly keybinds: KeyBinds;
   readonly render: RenderSettings;
 }
@@ -129,6 +139,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   ghost: true,
   fullscreenOnStart: true,
   playerName: '',
+  menuStyle: 'ps2',
   keybinds: DEFAULT_KEYBINDS,
   render: DEFAULT_RENDER_SETTINGS,
 };

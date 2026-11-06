@@ -10,6 +10,8 @@ import { createServer } from 'vite';
 import { chromium } from 'playwright';
 
 export async function startDevServer(port) {
+  // Default-Menü ist 'ps2' (Plan 010); die Werkzeuge prüfen den klassischen Titel (.vel-start, .vel-side …).
+  process.env.VITE_TEST_MENU_STYLE ??= 'classic';
   const server = await createServer({
     configFile: 'vite.config.ts',
     server: { port, strictPort: true, hmr: false },

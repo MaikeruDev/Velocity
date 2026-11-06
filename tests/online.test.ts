@@ -66,7 +66,11 @@ describe('LocalMockService', () => {
 
     const prof = await svc.getProfile();
     expect(prof.runs).toBe(3);
-    expect(prof.bests).toEqual([{ levelId: 'level2', time: fast.header.time, rank: 1, runId: page.entries[0].runId }]);
+    expect(prof.bests).toEqual([{ levelId: 'level2', time: fast.header.time, rank: 1, total: 1, runId: page.entries[0].runId, date: page.entries[0].date }]);
+    expect(prof.worldRecords).toBe(1);
+    expect(prof.dev).toBe(false);
+    expect(typeof prof.memberSince).toBe('string');
+    expect(svc.admin).toBeNull(); // ohne dev keine Werkzeuge
 
     // Neue Instanz auf demselben Storage: alles noch da.
     const svc2 = new LocalMockService({ storage, loadLevel, latencyMs: 0, rivals: false });
@@ -108,6 +112,65 @@ describe('LocalMockService', () => {
     const svc = new LocalMockService({ storage: memStorage(), loadLevel, latencyMs: 0, failRate: 1 });
     await expect(svc.auth()).rejects.toBeInstanceOf(OnlineError);
     await expect(svc.getLeaderboard('level1', { kind: 'top', limit: 1 })).rejects.toMatchObject({ code: 'offline' });
+  });
+});
+
+describe('LocalMockService als Entwickler (dev: Moderation lokal)', () => {
+  it('Läufe/Spieler listen, Bann blendet aus + sperrt Einreichen + Profil unbekannt, Umbenennen, Löschen, Protokoll', async () => {
+    const svc = new LocalMockService({ storage: memStorage(), loadLevel, latencyMs: 0, dev: true });
+    const me = await svc.auth('Dev');
+    expect(me.dev).toBe(true);
+    const admin = svc.admin;
+    if (!admin) throw new Error('admin fehlt');
+    await svc.ensureRivals('level1');
+    const runs = await admin.listRuns({ levelId: 'level1', limit: 2 });
+    expect(runs.items).toHaveLength(2);
+    expect(runs.total).toBeGreaterThanOrEqual(4);
+    const victim = runs.items[0];
+    const players = await admin.listPlayers({ search: victim.name.slice(0, 4) });
+    expect(players.items.some((p) => p.uid === victim.uid)).toBe(true);
+
+    await expect(admin.setBan(victim.uid, true, '')).rejects.toMatchObject({ code: 'invalid' });
+    await expect(admin.setBan(me.uid, true, 'x')).rejects.toMatchObject({ code: 'invalid' });
+    const banned = await admin.setBan(victim.uid, true, 'Test-Bann');
+    expect(banned).toMatchObject({ banned: true, banReason: 'Test-Bann' });
+    const board = await svc.getLeaderboard('level1', { kind: 'top', limit: 50 });
+    expect(board.entries.some((e) => e.uid === victim.uid)).toBe(false);
+    await expect(svc.getProfile(victim.uid)).rejects.toMatchObject({ code: 'notFound' });
+    expect((await admin.listPlayers({ bannedOnly: true })).items.map((p) => p.uid)).toEqual([victim.uid]);
+    await admin.setBan(victim.uid, false);
+    expect((await svc.getLeaderboard('level1', { kind: 'top', limit: 50 })).entries.some((e) => e.uid === victim.uid)).toBe(true);
+
+    expect((await admin.renamePlayer(victim.uid, '  Neu<>Name ')).name).toBe('NeuName');
+    await expect(admin.renamePlayer(victim.uid, '!')).rejects.toMatchObject({ code: 'invalid' });
+
+    const del = await admin.deleteRun(victim.runId, 'Bug');
+    expect(del).toMatchObject({ runId: victim.runId, uid: victim.uid, wasBest: true, newBest: null });
+    await expect(admin.deleteRun(victim.runId, 'Bug')).rejects.toMatchObject({ code: 'notFound' });
+    await expect(svc.getGhost(victim.runId)).rejects.toMatchObject({ code: 'notFound' });
+
+    const log = await admin.auditLog({ uid: victim.uid });
+    expect(log.items.map((e) => e.action)).toEqual(['delete_run', 'rename', 'unban', 'ban']);
+    expect(log.items[1].detail).toMatchObject({ to: 'NeuName' });
+    expect(log.items[0]).toMatchObject({ actorUid: me.uid, actorName: 'Dev', targetName: 'NeuName', runId: victim.runId });
+  });
+
+  it('gebannter eigener Spieler: Einreichen → banned, eigenes Profil ohne Bestzeiten', async () => {
+    const storage = memStorage();
+    const dev = new LocalMockService({ storage, loadLevel, latencyMs: 0, rivals: false, dev: true });
+    const me = await dev.auth('Ich');
+    const rep = recordBotRun(await loadLevel('level1'), { follower: { aimNoiseDeg: 1, seed: 9 } });
+    if (!rep) throw new Error('Bot kam nicht ins Ziel');
+    await dev.submitRun(await packReplay(rep));
+    // Bann von außen (anderes Dev-Konto gibt es im Mock nicht) — direkt im Speicher wie ein Server-Bann.
+    const raw = JSON.parse(storage.getItem('velocity.online.mock.v1') ?? '{}') as { users: Record<string, { banned?: boolean }> };
+    raw.users[me.uid].banned = true;
+    storage.setItem('velocity.online.mock.v1', JSON.stringify(raw));
+    const svc = new LocalMockService({ storage, loadLevel, latencyMs: 0, rivals: false });
+    await expect(svc.submitRun(await packReplay(rep))).rejects.toMatchObject({ code: 'banned' });
+    const prof = await svc.getProfile();
+    expect(prof.bests).toEqual([]);
+    expect(prof.runs).toBe(1);
   });
 });
 
