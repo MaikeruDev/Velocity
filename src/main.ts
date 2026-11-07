@@ -12,6 +12,7 @@ import { installSaveMirror } from './platform/saveMirror';
 import { PS2Renderer } from './render/PS2Renderer';
 import { Hud } from './ui/Hud';
 import { Menu } from './ui/Menu';
+import { setMenuSoundSink } from './ui/menuSound';
 import { TuningPanel } from './ui/TuningPanel';
 
 /**
@@ -115,6 +116,24 @@ async function main(): Promise<void> {
   const q = new URLSearchParams(devTools ? location.search : '');
   // Menü-Labor (Plan 010): Takt fürs Menü und ?menu=<id> als Sitzungs-Override (nicht gespeichert).
   menu.setAudio(audio);
+  // Menü-Klänge (Fokus/Bestätigen/Zurück). Der Ton startet im Menü: am Desktop sofort (keine Autoplay-Sperre),
+  // im Web mit der ersten Geste (Klick/Taste) — vorher sind die Klänge still.
+  setMenuSoundSink((kind) => audio.uiSound(kind));
+  const startAudio = (): void => {
+    audio.unlock().catch(() => undefined);
+  };
+  if (plat.kind === 'desktop') startAudio();
+  else {
+    const onGesture = (): void => {
+      startAudio();
+      if (audio.unlocked) {
+        window.removeEventListener('pointerdown', onGesture, true);
+        window.removeEventListener('keydown', onGesture, true);
+      }
+    };
+    window.addEventListener('pointerdown', onGesture, true);
+    window.addEventListener('keydown', onGesture, true);
+  }
   // VITE_TEST_MENU_STYLE: Playwright-Werkzeuge pinnen den klassischen Titel (tools/lib/devServer.mjs), ?menu gewinnt.
   const menuStyle = MENU_STYLE_IDS.find((id) => id === (q.get('menu') ?? import.meta.env.VITE_TEST_MENU_STYLE));
   if (menuStyle) menu.setStyleOverride(menuStyle);

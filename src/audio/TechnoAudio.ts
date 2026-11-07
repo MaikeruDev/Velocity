@@ -1,7 +1,7 @@
 import type { GameEvent } from '../engine/events';
 import type { AudioApi, AudioVolumes, BeatInfo, MusicDrive } from './types';
 import { SILENT_BEAT } from './types';
-import { hashString } from './dsp';
+import { hashString, makeFilter, makeGain, releaseWhenEnded } from './dsp';
 import { EnergyModel } from './energy';
 import { Mixer, prewarmImpulses } from './Mixer';
 import { BPM, Music, type MusicPart } from './Music';
@@ -15,6 +15,19 @@ export interface TechnoAudioOptions {
   /** Sicherheits-Clipper hinter dem Limiter (Default an). Aus nur für Messungen (audiocheck). */
   readonly clipper?: boolean;
 }
+
+/** Menü-Blips: [Hz, Dauer s, Spitzenpegel]. Leise gegen die Spiel-SFX (Kick-Pegel ~1). */
+const UI_NOTES: Record<'move' | 'confirm' | 'back', readonly (readonly [number, number, number])[]> = {
+  move: [[1760, 0.03, 0.035]],
+  confirm: [
+    [1046.5, 0.05, 0.05],
+    [1568, 0.08, 0.05],
+  ],
+  back: [
+    [784, 0.05, 0.045],
+    [523.25, 0.08, 0.045],
+  ],
+};
 
 interface Engine {
   readonly ctx: BaseAudioContext;
@@ -328,6 +341,39 @@ export class TechnoAudio implements AudioApi {
     this.volumes = v;
     const eng = this.engine;
     if (eng !== null) eng.mixer.setVolumes(v, eng.ctx.currentTime);
+  }
+
+  /**
+   * Menü-Klang (src/ui/menuSound.ts): kurze Rechteck-Blips durch einen Tiefpass, direkt auf den SFX-Bus (am
+   * Menü-Tiefpass der Musik vorbei, folgt der SFX-Lautstärke). move = ein Tick, confirm = Quinte hoch, back = runter.
+   * Vor dem Audio-Start still.
+   */
+  uiSound(kind: 'move' | 'confirm' | 'back'): void {
+    const eng = this.engine;
+    if (eng === null || !eng.realtime) return;
+    const ctx = eng.ctx;
+    const notes = UI_NOTES[kind];
+    const lp = makeFilter(ctx, 'lowpass', kind === 'move' ? 2600 : 3400, 0.7);
+    lp.connect(eng.mixer.sfx);
+    const sources: OscillatorNode[] = [];
+    const nodes: AudioNode[] = [lp];
+    let at = ctx.currentTime + 0.004;
+    for (const [hz, dur, peak] of notes) {
+      const osc = ctx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.value = hz;
+      const env = makeGain(ctx, 0);
+      env.gain.setValueAtTime(0, at);
+      env.gain.linearRampToValueAtTime(peak, at + 0.002);
+      env.gain.setTargetAtTime(0, at + 0.002, dur / 4);
+      osc.connect(env).connect(lp);
+      osc.start(at);
+      osc.stop(at + dur + 0.02);
+      sources.push(osc);
+      nodes.push(env);
+      at += dur * 0.55;
+    }
+    releaseWhenEnded(sources, nodes);
   }
 
   /**

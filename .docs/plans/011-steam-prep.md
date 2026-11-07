@@ -216,6 +216,10 @@ StrafeBot sync 1 mit hartem `maxTurnRate` (= linearer Stick ohne Rauschen):
 `maxYawRate` **420 °/s** · Kurve `exponent` **2.4** · Boost **+50 %** nach **0.15 s** am Rand (Betrag ≥ 0.95 nach
 Deadzone), Rampe 0.1 s → Spitze 630 °/s · Deadzone innen 0.12 / außen 0.95 · `maxPitchRate` 220 °/s (nicht vermessen).
 **Einstellbereich Grundrate: 180–900 °/s** (darunter zäher Anlauf: t→500 ≥ 2.3×; darüber kein messbarer Gewinn: t→500 ≤ 1.01×).
+**Änderung 2026-11-07 (Desktop-Playtest: „rechter Stick generell langsamer“):** Default **320 / 170 °/s** (Verhältnis
+wie vorher). Gespeicherte, nie veränderte 420/220 migriert `PadSettingsStore` auf die neuen Werte. Stick-Sim bei 320:
+H20 96.2 / 97.4 / 97.3 %, t→500 **1.19×** / 1.21× / 1.26× — das Tempo-Kriterium (≤ 1.15×) hält bewusst nicht mehr:
+Gefühl schlägt Anlauf-Sekunden; wer schneller dreht, stellt Kamera X höher.
 API: `radialDeadzone`, `lookRate(x, y, params, heldEdgeTime, out)` (rad/s, Vorzeichen wie Stick: x rechts +, y unten +;
 Invertierung/Yaw-Vorzeichen macht `InputState`), `boostFactor`, `stickMagnitude`, `STICK_EDGE`,
 `digitizeMove(x, y, inner, diagonalBand, out)`. Die Boost-Uhr (`heldEdgeTime`) führt der Aufrufer.

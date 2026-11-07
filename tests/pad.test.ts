@@ -132,13 +132,14 @@ describe('Pitch: Achsen-Deadzone, Boost nur Yaw (Review A2)', () => {
     expect(r.yaw / DEG).toBeCloseTo(c.maxYawRate * (1 + c.boost), 9);
   });
 
-  it('Pitch-Rate 220 °/s plausibel: fein bei 30 %, 45° in ≤ 0.25 s, ganzer Bereich (±89°) unter 1 s', () => {
+  it('Pitch-Rate plausibel: fein bei 30 %, 45° in ≤ 0.3 s, ganzer Bereich (±89°) unter 1.1 s', () => {
     const raw = c.inner + 0.3 * (c.outer - c.inner);
     lookRate(0, -raw, c, 0, r);
     // Gleiche Feinziel-Grenze wie Yaw (Plan 1.2: ≤ 25 °/s bei 30 % Auslenkung) — hier 12 °/s.
     expect(Math.abs(r.pitch) / DEG).toBeLessThanOrEqual(25);
-    expect(45 / c.maxPitchRate).toBeLessThanOrEqual(0.25);
-    expect(178 / c.maxPitchRate).toBeLessThan(1);
+    expect(45 / c.maxPitchRate).toBeLessThanOrEqual(0.3);
+    // 2026-11-07: Playtest wollte die Kamera langsamer (170 °/s → ±89° in 1.05 s).
+    expect(178 / c.maxPitchRate).toBeLessThan(1.1);
     // Vertikal langsamer als horizontal (Strafen braucht Yaw, nicht Pitch): ~0.5 der Grundrate.
     expect(c.maxPitchRate / c.maxYawRate).toBeGreaterThan(0.4);
     expect(c.maxPitchRate / c.maxYawRate).toBeLessThan(0.7);

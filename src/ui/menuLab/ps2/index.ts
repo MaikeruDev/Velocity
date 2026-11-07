@@ -9,6 +9,7 @@
  * Eigenes CSS: ./ps2.css, alles unter .vel-menu.vel-style--ps2.
  */
 import './ps2.css';
+import { menuSound } from '../../menuSound';
 import type { FrontDoor, FrontDoorAction, FrontDoorContext, FrontDoorFactory, FrontDoorLevel, FrontDoorPrompt, MedalId } from '../types';
 import { MEDAL_NAMES } from '../../medals';
 import { PadNav, hoverSync } from '../../padNav';
@@ -730,6 +731,7 @@ class Ps2Door implements FrontDoor {
     const n = MAIN_ITEMS.length;
     const j = ((i % n) + n) % n;
     if (j === memory.main) return;
+    menuSound('move');
     memory.main = j;
     this.applySelection();
     this.renderInfo();
@@ -903,6 +905,7 @@ class Ps2Door implements FrontDoor {
   private setLevel(i: number): void {
     const c = this.ctx;
     if (!c) return;
+    if (i !== this.levelSel) menuSound('move');
     this.levelSel = i;
     c.select(i);
     this.applySelection();
@@ -1074,6 +1077,7 @@ class Ps2Door implements FrontDoor {
     const n = this.cardSlots();
     const j = ((i % n) + n) % n;
     if (j === memory.card) return;
+    menuSound('move');
     memory.card = j;
     const lvN = this.ctx?.levels.length ?? 0;
     if (j < lvN && this.ctx) {
@@ -1187,7 +1191,9 @@ class Ps2Door implements FrontDoor {
 
   private selectSys(i: number): void {
     const n = this.sysItems().length;
-    memory.sys = ((i % n) + n) % n;
+    const j = ((i % n) + n) % n;
+    if (j !== memory.sys) menuSound('move');
+    memory.sys = j;
     if (this.sysItems()[memory.sys]?.id !== 'quit') this.disarmQuit();
     this.applySelection();
   }
@@ -1441,6 +1447,7 @@ class Ps2Door implements FrontDoor {
   private confirm(): void {
     const c = this.ctx;
     if (!c || this.booting) return;
+    menuSound('confirm');
     if (this.sub) {
       this.sub.confirm();
       return;
@@ -1463,6 +1470,7 @@ class Ps2Door implements FrontDoor {
 
   private back(): void {
     const prev = this.stack.pop();
+    if (prev || this.view !== 'main') menuSound('back');
     if (prev) this.go(prev.view, prev.params, true);
     else if (this.view !== 'main') this.go('main');
   }

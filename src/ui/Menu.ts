@@ -56,6 +56,7 @@ import { BeatClock } from './menuLab/beatClock';
 import { doorBoard } from './menuLab/doorData';
 import type { MenuAudio } from './menuLab/beatClock';
 import { FRONT_DOOR_ASSETS } from './menuLab/assets';
+import { menuSound } from './menuSound';
 
 /**
  * HTML-Overlays: Titel, Pause, Einstellungen, Steuerung, Ergebnis — und das Training (Plan 007):
@@ -391,6 +392,11 @@ export class Menu {
     });
     this.el = h('div', 'vel-menu');
     this.el.hidden = true;
+    // Menü-Klänge: Fokus/Hover = move, Klick = confirm bzw. back (Zurück-Knöpfe). Was ohne DOM-Fokus läuft
+    // (PS2-Disc-Bahn, Enter/Esc in Front Doors), meldet der Stil selbst.
+    this.el.addEventListener('focusin', this.onSoundFocus);
+    this.el.addEventListener('pointerover', this.onSoundHover);
+    this.el.addEventListener('click', this.onSoundClick, true);
     // An window statt am Menü: ohne Fokus im Menü (Normalfall) kämen die Pfeiltasten sonst nie an.
     window.addEventListener('keydown', this.onKeyDown);
     // Capture-Phase: die Tastenbelegung muss Tasten VOR InputManager und Menü-Aktionen abfangen.
@@ -1435,6 +1441,12 @@ export class Menu {
         break;
     }
     if (performance.now() < this.guardUntil) return true;
+    // Titel mit Front Door: der Stil meldet selbst (sonst doppelt bzw. falsch, z. B. Esc ohne Wirkung).
+    // Esc ohne Wirkung (Pause: Weiter nur per Klick/Enter, Klassik-Titel) bleibt still.
+    if (this.current !== 'title' || this.menuStyle === 'classic') {
+      if (a === 'pause' && this.current !== 'pause' && this.current !== 'title') menuSound('back');
+      else if (a === 'confirm') menuSound('confirm');
+    }
     if (a === 'tabPrev' || a === 'tabNext') {
       this.padTab(a === 'tabPrev' ? -1 : 1);
       return true;
@@ -1457,6 +1469,7 @@ export class Menu {
         }
         // Pause: B/Start = weiter (am Pad braucht es keinen Pointer Lock, Plan 011 §2.2.6).
         if (this.current === 'pause') {
+          menuSound('back');
           this.emit('resume', undefined);
           return true;
         }
@@ -1612,6 +1625,39 @@ export class Menu {
     const lv = this.levels[this.selected];
     if (lv) this.emit('play', { levelId: lv.id });
   }
+
+  /** Ziel eines Menü-Klangs: bedienbarer Knopf/Feld im Menü, sonst null. */
+  private soundTarget(t: EventTarget | null): HTMLElement | null {
+    if (!(t instanceof Element)) return null;
+    const el = t.closest<HTMLElement>('button, a[href], input, select, [role="button"], [tabindex]:not([tabindex="-1"])');
+    if (el === null || !this.el.contains(el)) return null;
+    if (el instanceof HTMLButtonElement && el.disabled) return null;
+    return el;
+  }
+
+  private soundHover: HTMLElement | null = null;
+
+  private readonly onSoundFocus = (e: FocusEvent): void => {
+    const el = this.soundTarget(e.target);
+    if (el === null || el === this.soundHover) return;
+    this.soundHover = el;
+    menuSound('move');
+  };
+
+  private readonly onSoundHover = (e: PointerEvent): void => {
+    if (e.pointerType !== 'mouse') return;
+    const el = this.soundTarget(e.target);
+    if (el === null || el === this.soundHover) return;
+    this.soundHover = el;
+    menuSound('move');
+  };
+
+  private readonly onSoundClick = (e: MouseEvent): void => {
+    const el = this.soundTarget(e.target);
+    if (el === null || (el instanceof HTMLInputElement && el.type === 'range')) return;
+    const back = el.querySelector('[data-glyph="back"]') !== null || /^\s*Zurück/.test(el.textContent ?? '');
+    menuSound(back ? 'back' : 'confirm');
+  };
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     // F8: Admin-Menü aus Titel/Pause auf und wieder zu. Hier statt als InputAction: reine

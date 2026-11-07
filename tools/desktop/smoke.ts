@@ -433,6 +433,15 @@ let savedA: Record<string, string> = {};
     check('Bridge velocityDesktop', env.bridge !== null && env.dev === true, `${env.bridge?.join(',')} · dev ${env.dev}`);
     check('Secure Context + Gamepad API', env.secure && env.gamepad === 'function', `isSecureContext ${env.secure}, getGamepads ${env.gamepad}`);
     console.log(`  Electron ${env.versions?.electron} · Chromium ${env.versions?.chrome}`);
+    // Ton ohne Geste (autoplay-policy + main.ts startet ihn am Desktop sofort): der Takt läuft im Menü.
+    const beat = await page.evaluate(async () => {
+      const w = window as unknown as { __vel?: { ready?: boolean; beat(): { beat: number } } };
+      for (let i = 0; i < 100 && w.__vel?.ready !== true; i++) await new Promise((r) => setTimeout(r, 100));
+      const a = w.__vel?.beat().beat ?? -1;
+      await new Promise((r) => setTimeout(r, 600));
+      return { a, b: w.__vel?.beat().beat ?? -1 };
+    });
+    check('Ton läuft im Menü ohne Klick', beat.b > beat.a && beat.b > 0, `Beat ${beat.a.toFixed(2)} → ${beat.b.toFixed(2)}`);
 
     const lv = await page.evaluate(async () => {
       const r = await fetch('/levels/index.json');

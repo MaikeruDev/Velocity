@@ -746,12 +746,13 @@ describe('Pad: Boost-Rand mit Hysterese (Review A3)', () => {
     let seed = 3;
     const rnd = (): number => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32) * 2 - 1;
     const jitter = meanRate(() => 0.93 + rnd() * 0.03);
-    expect(jitter).toBeGreaterThan(520);
+    // Spitze = Grundrate · (1 + Boost); vorher fiel Zittern auf die Grundkurve (~0.95 · Grundrate).
+    expect(jitter).toBeGreaterThan(DEFAULT_PAD_SETTINGS.yawRate * 1.238);
   });
 
   it('0.90 von unten = Grundkurve; vom Rand auf 0.90 zurückgenommen = Boost bleibt; unter 0.85 aus', () => {
     const below = meanRate(() => 0.9);
-    expect(below).toBeCloseTo(362, -1);
+    expect(below / DEFAULT_PAD_SETTINGS.yawRate).toBeCloseTo(362 / 420, 1);
     const fromRim = meanRate((f) => (f < 30 ? 1 : 0.9));
     expect(fromRim).toBeCloseTo(below * (1 + DEFAULT_PAD_SETTINGS.boost), 0);
     // Betrag 0.84 nach Deadzone = roh 0.12 + 0.84 · 0.83 → Uhr fällt auf 0, nur die Kurve.

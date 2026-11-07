@@ -122,6 +122,8 @@ npx tsx tools/pad/menu-check.ts         # Menü nur mit Fake-Pad (echter Pfad In
                        #   (PADMENU_REVIEW=0 aus): Belegung ohne Pad gesperrt, Vollbild ohne Geste → Hinweis, Fokus nach Neuaufbau
 npx tsx tools/menu/desktop-check.ts     # Menü mit Fake-Desktop-Bridge (Port 5722): "Login läuft" (Abbrechen per Esc/Pad A/B/Maus,
                        #   erneut öffnen, Frist), alle Stile ohne --dev ohne Admin → shots/menu/desktop/
+npx tsx tools/menu/sound-check.ts       # Menü-Klänge (Port 5732): PS2 + Klassik, Pfeile/Enter/Esc → genau ein move/confirm/back,
+                       #   wirkungsloses Esc still (src/ui/menuSound.ts → TechnoAudio.uiSound)
 npm run build          # danach: grep -rE "electron|ipcRenderer|contextBridge|steamworks|require\(" dist/assets = 0 Treffer
                        #   (`velocityDesktop` steht zwangsläufig drin: detectPlatform liest die Bridge, fallen.md #314)
 npm run desktop:dev    # Electron-Hülle (Plan 011) gegen den Vite-Dev-Server 5173, mit --dev (DevTools)
