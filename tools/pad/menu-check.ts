@@ -477,6 +477,192 @@ async function otherStyles(browser: Browser, base: string): Promise<void> {
   }
 }
 
+/** Menü-Hinweis (NOTICE_MS in Menu.ts) ist danach sicher weg. */
+const NOTICE_GONE_MS = 3000;
+
+/**
+ * Review-Befunde Plan 011 (Strang menu-ui), je Größe:
+ *  B1 Belegungsfelder ohne Pad gesperrt + "Kein Controller verbunden"; Frist im Hinweistext = PAD_CAPTURE_TIMEOUT.
+ *  B2 "Vollbild" per Pad-A (ps2 System, classic Titel) scheitert im Web nicht mehr stumm: Hinweis statt nichts.
+ *  B3 Fokus-Element ersetzt (Teil-Neuaufbau): Fokus fällt auf denselben Platz, das erste A zeigt nur, das zweite löst aus.
+ */
+async function reviewFixes(browser: Browser, base: string, size: { w: number; h: number }): Promise<void> {
+  const tag = `review-${size.w}x${size.h}`;
+  const notice = `document.querySelector('.vel-menu-notice')?.textContent ?? ''`;
+  const swapFocused = `(() => {
+    const f = document.querySelector('.is-padfocus');
+    if (!f) return false;
+    const n = f.cloneNode(true);
+    n.classList.remove('is-padfocus');
+    n.textContent = 'Ersetzt';
+    window.__swapClicks = 0;
+    n.addEventListener('click', () => { window.__swapClicks++; });
+    f.replaceWith(n);
+    window.__swapped = n;
+    return true;
+  })()`;
+  const swapState = `({ onIt: window.__swapped?.classList.contains('is-padfocus') === true, n: document.querySelectorAll('.is-padfocus').length, clicks: window.__swapClicks ?? -1 })`;
+  type Swap = { onIt: boolean; n: number; clicks: number };
+  /**
+   * Pad-A wie ein echtes Pad: ohne Nutzeraktivierung. page.evaluate läuft mit userGesture (CDP) und gäbe 5 s lang
+   * Aktivierung — darum erst abwarten, dann per CDP ohne Geste drücken. Rückgabe: war die Seite dabei aktiviert?
+   */
+  const pressNoGesture = async (page: Page, b: Btn): Promise<boolean> => {
+    await page.waitForTimeout(5600);
+    const cdp = await page.context().newCDPSession(page);
+    const act = await cdp.send('Runtime.evaluate', { expression: 'navigator.userActivation.isActive', returnByValue: true, userGesture: false });
+    await cdp.send('Runtime.evaluate', { expression: `window.__padTest.press(${JSON.stringify(b)}, 3)`, awaitPromise: true, userGesture: false });
+    await cdp.detach();
+    return act.result.value === true;
+  };
+  const errors: string[] = [];
+  const open = async (url: string, pad: boolean): Promise<{ page: Page; close: () => Promise<void> }> => {
+    const ctx = await browser.newContext({ viewport: { width: size.w, height: size.h } });
+    if (pad) await ctx.addInitScript({ content: PAGE_JS });
+    const page = await ctx.newPage();
+    page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+    page.on('console', (m) => {
+      if (m.type() === 'error') errors.push(`console: ${m.text()}`);
+    });
+    await page.goto(url);
+    await page.waitForFunction(() => window.__vel?.ready === true, null, { timeout: 30000 });
+    await page.waitForSelector('.vel-menu[data-screen="title"]', { timeout: 10000 });
+    await page.waitForLoadState('networkidle');
+    return { page, close: () => ctx.close() };
+  };
+  /** B3 im aktuellen Bereich: fokussiertes Element ersetzen (anderer Text = andere Signatur), dann zweimal A. */
+  const b3 = async (r: Run, label: string): Promise<void> => {
+    if (!(await r.page.evaluate(swapFocused))) {
+      fail(`B3 ${label}: kein Pad-Fokus zum Ersetzen`);
+      return;
+    }
+    await r.page.waitForTimeout(150);
+    const s0: Swap = await r.page.evaluate(swapState);
+    await r.press('A');
+    const s1: Swap = await r.page.evaluate(swapState);
+    await r.press('A');
+    const s2: Swap = await r.page.evaluate(swapState);
+    if (!s0.onIt || s0.n !== 1) fail(`B3 ${label}: Fokus nach dem Ersetzen nicht auf dem Ersatz (${JSON.stringify(s0)})`);
+    else if (s1.clicks !== 0 || !s1.onIt) fail(`B3 ${label}: erstes A nach Fokusverlust löst aus / springt (${JSON.stringify(s1)})`);
+    else if (s2.clicks !== 1) fail(`B3 ${label}: zweites A löst den Ersatz nicht aus (${JSON.stringify(s2)})`);
+    else ok(`B3 ${label}: Fokus bleibt am Platz, 1. A zeigt nur, 2. A löst aus`);
+  };
+  console.log(`\n[pad-menu] Review ${size.w}x${size.h}`);
+  try {
+    // ---- ps2 nur mit Pad: B3 (onNavigate-Ansicht), B2 (System → Vollbild)
+    {
+      const { page, close } = await open(`${base}?menu=ps2&online=mock`, true);
+      const r = new Run(page, `${tag}-ps2`);
+      await page.waitForSelector('.vel-menu[data-door="ready"]', { timeout: 15000 });
+      await page.evaluate(`window.__padTest.connect()`);
+      await r.press('A');
+      await r.press('A');
+      await r.view('main');
+      await page.waitForTimeout(400);
+      await b3(r, 'ps2 Hauptmenü');
+      await r.goto('.ps2-stage', '.ps2-item[data-id="system"]');
+      await r.press('A');
+      await r.view('system');
+      if (await r.goto('.ps2-stage', '.ps2-sys-item', 'Vollbild')) {
+        const active = await pressNoGesture(page, 'A');
+        await page.waitForTimeout(200);
+        const t: string = await page.evaluate(notice);
+        const fs: boolean = await page.evaluate(`document.fullscreenElement !== null`);
+        if (active) fail('B2 ps2: Probe ungültig — Seite war beim Druck aktiviert');
+        else if (fs || !t.includes('Vollbild braucht')) fail(`B2 ps2: Vollbild per Pad scheitert stumm (Vollbild ${String(fs)}, Hinweis "${t}")`);
+        else ok(`B2 ps2: Hinweis "${t}"`);
+        await r.shot('b2-fullscreen-notice');
+      }
+      await close();
+    }
+    // ---- classic nur mit Pad: B2 (Titel → Vollbild), B3 (Bestands-Screen)
+    {
+      const { page, close } = await open(`${base}?menu=classic&online=mock`, true);
+      const r = new Run(page, `${tag}-classic`);
+      await page.evaluate(`window.__padTest.connect()`);
+      await r.press('Down');
+      if (await r.goto('.vel-screen', 'button', 'Vollbild')) {
+        const active = await pressNoGesture(page, 'A');
+        await page.waitForTimeout(200);
+        const t: string = await page.evaluate(notice);
+        const fs: boolean = await page.evaluate(`document.fullscreenElement !== null`);
+        if (active) fail('B2 classic: Probe ungültig — Seite war beim Druck aktiviert');
+        else if (fs || !t.includes('Vollbild braucht')) fail(`B2 classic: Vollbild per Pad scheitert stumm (Vollbild ${String(fs)}, Hinweis "${t}")`);
+        else ok(`B2 classic: Hinweis "${t}"`);
+        await r.shot('b2-fullscreen-notice');
+        // Gegenprobe: mit echter Geste (Klick) geht Vollbild weiterhin, ohne Hinweis.
+        await page.waitForTimeout(NOTICE_GONE_MS);
+        await page.click('.vel-screen button:has-text("Vollbild")');
+        await page.waitForTimeout(400);
+        const fs2: boolean = await page.evaluate(`document.fullscreenElement !== null`);
+        const t2: string = await page.evaluate(notice);
+        if (!fs2 || t2 !== '') fail(`B2 classic: Klick auf Vollbild (Geste) — Vollbild ${String(fs2)}, Hinweis "${t2}"`);
+        else ok('B2 classic: Klick (Geste) → Vollbild, kein Hinweis');
+        await page.evaluate(`document.exitFullscreen()`).catch(() => undefined);
+      }
+      if (await r.goto('.vel-screen', 'button', 'Steuerung')) await b3(r, 'classic Titel');
+      await close();
+    }
+    // ---- classic: B1 (Pad abziehen in den Einstellungen, wieder einstecken)
+    {
+      const { page, close } = await open(`${base}?menu=classic&online=mock`, true);
+      const r = new Run(page, `${tag}-classic-b1`);
+      await page.evaluate(`window.__padTest.connect()`);
+      await r.press('Down');
+      if (await r.goto('.vel-screen', 'button', 'Einstellungen')) {
+        await r.press('A');
+        await r.screen('settings');
+        await page.waitForTimeout(300);
+        const state = `({ dis: Array.from(document.querySelectorAll('button[data-pad-bind]')).filter((b) => b.disabled).length, all: document.querySelectorAll('button[data-pad-bind]').length, msg: (() => { const e = document.querySelector('.vel-pad-bind-state'); return e !== null && !e.hidden && e.offsetParent !== null; })(), hint: Array.from(document.querySelectorAll('.vel-setting-hint')).map((e) => e.textContent ?? '').find((t) => t.startsWith('Feld wählen')) ?? '' })`;
+        type S = { dis: number; all: number; msg: boolean; hint: string };
+        const on: S = await page.evaluate(state);
+        if (on.all === 0 || on.dis !== 0 || on.msg) fail(`B1: mit Pad gesperrt/Meldung (${JSON.stringify(on)})`);
+        else ok(`B1: mit Pad ${on.all} Felder frei, keine Meldung`);
+        const secs = /\((\d+) s;/.exec(on.hint)?.[1];
+        if (secs !== '5') fail(`B1: Frist im Hinweis "${on.hint}" passt nicht zu PAD_CAPTURE_TIMEOUT = 5`);
+        else ok('B1: Hinweis nennt 5 s (= PAD_CAPTURE_TIMEOUT)');
+        await page.evaluate(`window.__padTest.disconnect()`);
+        await page.waitForTimeout(300);
+        const off: S = await page.evaluate(state);
+        if (off.dis !== off.all || !off.msg) fail(`B1: ohne Pad nicht gesperrt (${JSON.stringify(off)})`);
+        else ok(`B1: Pad weg → ${off.dis} Felder gesperrt, "Kein Controller verbunden" sichtbar`);
+        await page.evaluate(`document.querySelector('.vel-pad-bind-state')?.scrollIntoView({ block: 'center' })`);
+        await r.shot('b1-no-pad');
+        await page.evaluate(`window.__padTest.connect()`);
+        await page.waitForTimeout(300);
+        const back: S = await page.evaluate(state);
+        if (back.dis !== 0 || back.msg) fail(`B1: Pad zurück, Felder bleiben gesperrt (${JSON.stringify(back)})`);
+        else ok('B1: Pad zurück → Felder frei');
+      }
+      await close();
+    }
+    // ---- ohne Fake-Pad (headless: kein Gamepad), ps2 per Maus in die Einstellungen
+    {
+      const { page, close } = await open(`${base}?menu=ps2&online=mock`, false);
+      const r = new Run(page, `${tag}-ps2-b1`);
+      await page.waitForSelector('.vel-menu[data-door="ready"]', { timeout: 15000 });
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(400);
+      await page.click('.ps2-item[data-id="system"]');
+      await r.view('system');
+      await page.click('.ps2-sys-item:has-text("Einstellungen")');
+      await r.screen('settings');
+      await page.waitForTimeout(300);
+      const n: { dis: number; all: number } = await page.evaluate(`({ dis: Array.from(document.querySelectorAll('button[data-pad-bind]')).filter((b) => b.disabled).length, all: document.querySelectorAll('button[data-pad-bind]').length })`);
+      if (n.all === 0 || n.dis !== n.all) fail(`B1 ps2 ohne Pad: Felder nicht gesperrt (${JSON.stringify(n)})`);
+      else ok(`B1 ps2 ohne Pad: ${n.dis} Felder gesperrt`);
+      await page.evaluate(`document.querySelector('.vel-pad-bind-state')?.scrollIntoView({ block: 'center' })`);
+      await r.shot('b1-no-pad');
+      await close();
+    }
+  } catch (err) {
+    fail(`Review: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`);
+  } finally {
+    for (const e of errors) fail(e);
+    if (errors.length === 0) ok('keine Konsolenfehler');
+  }
+}
+
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 const vite = await createServer({ configFile: 'vite.config.ts', server: { port: PORT, strictPort: true, hmr: false }, logLevel: 'error' });
@@ -485,6 +671,7 @@ const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=de
 try {
   for (const size of SIZES) await flow(browser, `http://localhost:${PORT}/`, size);
   if (process.env.PADMENU_STYLES !== '0') await otherStyles(browser, `http://localhost:${PORT}/`);
+  if (process.env.PADMENU_REVIEW !== '0') for (const size of SIZES) await reviewFixes(browser, `http://localhost:${PORT}/`, size);
 } finally {
   await browser.close();
   await vite.close();

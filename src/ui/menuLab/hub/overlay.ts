@@ -222,7 +222,7 @@ export class Overlay {
     else if (st.kind === 'profile') sub = ctx.account.signedIn && ctx.account.name ? ctx.account.name : ctx.account.loginRequired ? 'Anmelden' : 'Konto';
     else if (st.kind === 'trophy') sub = 'Bestenliste';
     else if (st.kind === 'setup') sub = 'Einstellungen';
-    else if (st.kind === 'lab') sub = 'Admin · Menü-Labor';
+    else if (st.kind === 'lab') sub = ctx.adminMenu ? 'Admin · Menü-Labor' : 'Menü-Labor';
     if (sub) tag.append(el('span', 'hub-tag-sub', sub));
     tag.classList.toggle('is-newbie', st.kind === 'training' && ctx.training.newbie);
   }

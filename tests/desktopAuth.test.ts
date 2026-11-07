@@ -287,6 +287,21 @@ describe('Desktop-Login: Loopback-Empfänger (electron/auth.ts)', () => {
     expect(broken.port).toBeNull();
   });
 
+  it('Abbruch während begin() noch bindet → begin meldet cancelled, Port frei, kein Versuch lebt weiter (Review N2)', async () => {
+    const [p] = await freePorts(1);
+    const { login, opened } = makeLogin([p]);
+    const pending = login.begin();
+    await login.cancel();
+    expect(await pending).toMatchObject({ ok: false, error: 'cancelled' });
+    expect(login.port).toBeNull();
+    await tick();
+    expect(await portFree(p)).toBe(true);
+    expect(await login.open(authUrl(`http://127.0.0.1:${p}/auth/callback?state=00`))).toMatchObject({ ok: false, error: 'cancelled' });
+    expect(opened).toEqual([]);
+    // Danach geht ein neuer Versuch normal.
+    expect((await started(login)).startsWith(`http://127.0.0.1:${p}/`)).toBe(true);
+  });
+
   it('Pixel-Titel: ganze Pixel aus dem 5×7-HUD-Font', () => {
     const t = pixelTitle('LOGIN FERTIG');
     // L O G I(3) N, Leerzeichen 3, F E R T I(3) G — je 1 Pixel Abstand.

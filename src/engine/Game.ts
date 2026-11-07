@@ -361,7 +361,8 @@ export class Game {
   /**
    * Steuer-Modus 'pad' (Plan 011 §2.2.6): die letzte Start-/Weiter-Geste kam vom Pad. Ein Pad-Druck ist
    * keine User-Aktivierung (kein Pointer Lock, kein Vollbild, kein Ton) — also ohne Lock spielen,
-   * Fokus-/Sichtbarkeitsverlust pausiert. Klick ins Spiel → zurück auf Maus + Lock.
+   * Fokus-/Sichtbarkeitsverlust pausiert. Klick oder Taste ins Spiel schaltet nur den Ton frei (Review A7);
+   * zurück auf Maus + Lock geht es über die Pause ("Weiter" per Klick).
    */
   private padMode = false;
   private cursorHidden = false;
@@ -436,6 +437,12 @@ export class Game {
   // Replays + Online (Plan 009): die Physik bekommt quantisierte Eingaben, jeder Lauf wird aufgenommen.
   private readonly quant = new InputQuantizer();
   private readonly replayRec = new ReplayRecorder();
+  /**
+   * Grund, warum dieser Lauf manipuliert ist (F1-Tuning, Debug-Teleport/-Geschwindigkeit) — enger als
+   * replayRec.invalid, das auch "zu lang", "zu viele Respawns" und ehrliches Umschalten von Auto-Hop zählt.
+   * Nur danach sperrt der Desktop die lokale Wertung (Review N3). Zurückgesetzt mit jeder neuen Aufnahme.
+   */
+  private runTampered: string | null = null;
   private readonly levelHashes = new WeakMap<CompiledLevel, string>();
   private readonly online: OnlineService | null;
   private submitToken = 0;
@@ -630,7 +637,12 @@ export class Game {
       tickRate: this.config.tickRate,
       onTick: this.onTick,
       onFrame: this.onFrame,
-      onFrameStart: (frameDt) => this.input.beginFrame(frameDt),
+      onFrameStart: (frameDt) => {
+        // Pad-Kontext VOR dem Poll (Review A1): "Weiter" per Klick setzt resume() zwischen zwei Frames — sonst
+        // liefen die Ticks dieses Frames noch mit dem Menü-Kontext (ohne den gehaltenen Stick).
+        this.syncPadContext();
+        this.input.beginFrame(frameDt);
+      },
     });
 
     this.hudData = {
@@ -718,6 +730,7 @@ export class Game {
 
     window.addEventListener('resize', this.onResize);
     window.addEventListener('blur', this.onWindowBlur);
+    window.addEventListener('keydown', this.onKeyGesture);
     document.addEventListener('visibilitychange', this.onVisibility);
     this.canvas.addEventListener('click', this.onCanvasClick);
     this.onResize();
@@ -786,9 +799,16 @@ export class Game {
     };
   }
 
-  /** Tools (`__vel.pad`): Fake-Pad einspeisen (null = echte Pads). */
+  /**
+   * Tools (`__vel.pad`): Fake-Pad einspeisen (null = echte Pads). Skriptgesteuerte Eingabe wie ein Bot: der laufende
+   * Lauf (und jeder Tick, solange der Fake steht) gilt als assistiert, Lektionen zählen nicht für Achievements —
+   * `__vel` hängt auch in Produktion, submit-run lehnt assistierte Replays ab (Review A6).
+   */
   setFakePad(pad: GamepadLike | null): void {
     this.input.setFakePad(pad);
+    if (pad === null) return;
+    this.replayRec.markAssisted();
+    if (this.session !== null) this.lessonTainted = true;
   }
 
   /** Tasten-Hinweis der Aktion auf dem aktuellen Gerät (InputManager.promptLabel). */
@@ -1133,6 +1153,7 @@ export class Game {
     const yaw = yawDeg !== undefined ? yawDeg : this.viewYaw / DEG;
     this.placeAt(pos, yaw);
     this.replayRec.invalidate('Teleport (Debug)');
+    this.markTampered('Teleport (Debug)');
     if (this.session !== null) this.lessonTainted = true;
   }
 
@@ -1142,6 +1163,7 @@ export class Game {
     this.movement.copySnapshot(this.cur);
     copySnap(this.cur, this.prev);
     this.replayRec.invalidate('Geschwindigkeit gesetzt (Debug)');
+    this.markTampered('Geschwindigkeit gesetzt (Debug)');
     if (this.session !== null) this.lessonTainted = true;
   }
 
@@ -1342,6 +1364,7 @@ export class Game {
     this.clearBot();
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('blur', this.onWindowBlur);
+    window.removeEventListener('keydown', this.onKeyGesture);
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.canvas.removeEventListener('click', this.onCanvasClick);
     this.input.dispose();
@@ -1497,6 +1520,10 @@ export class Game {
     }
   }
 
+  private markTampered(reason: string): void {
+    if (this.replayRec.recording && this.runTampered === null) this.runTampered = reason;
+  }
+
   private unlockAudio(): void {
     // Audio ist Beiwerk: ohne Gerät/Geste läuft das Spiel stumm weiter.
     this.audio.unlock().catch(() => undefined);
@@ -1508,7 +1535,7 @@ export class Game {
    */
   private hintAudio(): void {
     window.setTimeout(() => {
-      if (this.padMode && this.gameState === 'playing' && !this.audio.unlocked) this.hud.showNotice('Für Ton einmal klicken');
+      if (this.padMode && this.gameState === 'playing' && !this.audio.unlocked) this.hud.showNotice('Für Ton: Klick oder Taste');
     }, 800);
   }
 
@@ -1712,9 +1739,11 @@ export class Game {
     const q = this.quant;
     const cmd = q.apply(this.input.tickInput(i, n, u));
     const rec = this.replayRec;
+    // Fake-Pad (`__vel.pad`) ist Skript-Eingabe wie ein Override (Review A6).
+    const scripted = this.overrideActive || this.input.fakePadActive;
     if (rec.recording) {
       rec.record(q.buttons, q.yawQ, q.pitchQ);
-      if (this.overrideActive) rec.markAssisted();
+      if (scripted) rec.markAssisted();
     }
     const dYaw = cmd.yaw - this.lastYaw;
     this.lastYaw = cmd.yaw;
@@ -1738,9 +1767,9 @@ export class Game {
       const hullH = this.movement.hullMaxs.y - this.movement.hullMins.y;
       const out = this.lessonEvents;
       out.length = 0;
-      // Bot/Override steuert diesen Tick → keine Achievements aus der Sitzung (die Vorführung per H hält die
+      // Bot/Override/Fake-Pad steuert diesen Tick → keine Achievements aus der Sitzung (die Vorführung per H hält die
       // Session an und zählt ohnehin keine Stufe, sie bleibt erlaubt). Nur ein Merker, nichts allokiert.
-      if (this.overrideActive && (this.demo === null || this.demoPlays)) this.lessonTainted = true;
+      if ((this.overrideActive && (this.demo === null || this.demoPlays)) || this.input.fakePadActive) this.lessonTainted = true;
       const t0 = this.costProbe ? performance.now() : 0;
       session.tick(dt, this.prev, this.cur, cmd, hullH, out);
       if (this.costProbe) this.lessonTickCpuSum += performance.now() - t0;
@@ -1946,11 +1975,18 @@ export class Game {
     const time = run.time ?? 0;
     const splits = run.splits();
     const bestSplits = this.bestSplitsAtStart;
-    const res = this.best.submit(this.levelId, time, splits);
+    // Desktop: Bestzeit, Medaille und Freischaltung nicht aus einem manipulierten Lauf (Review A10/N3) — F1-Tuning
+    // oder Debug-Teleport/-Geschwindigkeit zählen dort nicht (Kosmetik, später Steam). Ehrliche Gründe für eine
+    // ungültige Aufnahme ("zu lang", "zu viele Respawns", Auto-Hop in der Pause umgeschaltet) zählen lokal weiter,
+    // sie sperren nur das Einreichen. Das Web speichert wie bisher lokal alles. Bot-Läufe (assistiert) zählen weiter:
+    // der Desktop-Smoke legt so seine Bestzeiten an; Achievements schließt isCleanFinish sie ohnehin aus.
+    const invalid = this.input.desktop ? this.runTampered : null;
+    const res = invalid === null ? this.best.submit(this.levelId, time, splits) : { best: false, previous: this.best.get(this.levelId) };
+    if (invalid !== null) this.notify(`Lauf nicht gewertet: ${invalid}.`);
     this.bestTime = this.best.get(this.levelId);
     this.hudData.nextMedal = level.def.medals ? nextMedal(this.bestTime, level.def.medals) : null;
     // Neue Freischaltung? Groß im Ergebnis zeigen und gleich anlegen — das ist der Belohnungsmoment.
-    const fresh = this.unlocks.sync(this.levels, (id) => this.best.get(id), this.progress);
+    const fresh = invalid === null ? this.unlocks.sync(this.levels, (id) => this.best.get(id), this.progress) : [];
     if (fresh.length > 0) {
       // Die neueste Freischaltung gleich anlegen (Reihenfolge wie UNLOCKS: späteres gewinnt).
       let patch: SettingsPatch = {};
@@ -2035,7 +2071,11 @@ export class Game {
       tickRate: this.config.tickRate,
       settings: { preset: s.movementPreset, autoHop: s.autoHop, strafeAssist: s.strafeAssist, airControl: s.airControl },
     });
-    if (hash !== configHash(movementConfigFor(s))) this.replayRec.invalidate('Physik per Tuning-Panel verändert');
+    this.runTampered = null;
+    if (hash !== configHash(movementConfigFor(s))) {
+      this.replayRec.invalidate('Physik per Tuning-Panel verändert');
+      this.markTampered('Physik per Tuning-Panel verändert');
+    }
   }
 
   /** Ziel: Aufnahme abschließen und (ohne Warten) einreichen. Rückgabe = Stand für den Ergebnis-Screen. */
@@ -2312,8 +2352,8 @@ export class Game {
       this.showFinishMenu();
     }
 
-    // Pad-Knöpfe gehören dem Menü, solange es sichtbar ist (gilt ab dem nächsten poll).
-    this.input.setMenuContext(this.menu.visible);
+    // Pause/Ergebnis aus den Aktionen dieses Frames: Kontext sofort wechseln (nullt die Pad-Rate, Review A1).
+    this.syncPadContext();
     this.updateCursor();
     this.updateLeaveGuard();
     this.updateCamera(alpha, frameDt);
@@ -2446,7 +2486,9 @@ export class Game {
         else if (st === 'playing' && this.session?.done === true && this.demo === null) this.showLessonResult();
         break;
       case 'toggleTuning':
-        this.toggleTuning();
+        // Desktop: F1-Panel wie Admin (F8) nur mit --dev (Review A10) — sonst Gravitation/airaccelerate per Panel
+        // → VELOCITY-Medaille und Kosmetik in Sekunden. Web unverändert.
+        if (this.input.devTools) this.toggleTuning();
         break;
       case 'toggleMute':
         this.muted = !this.muted;
@@ -2944,6 +2986,14 @@ export class Game {
     }
   }
 
+  /**
+   * Pad-Knöpfe gehören dem Menü, solange es sichtbar ist — und immer, wenn nichts tickt (Laden, F1-Pause): dort
+   * würde InputState die Drehrate des Kamera-Sticks sonst in den Blick integrieren (Review A1).
+   */
+  private syncPadContext(): void {
+    this.input.setMenuContext(this.menu.visible || !this.ticking);
+  }
+
   /** Pad-Modus im Spiel: Mauszeiger weg (kein Lock, der ihn verstecken würde). */
   private updateCursor(): void {
     const hide = this.padMode && this.gameState === 'playing' && !this.menu.visible;
@@ -3016,7 +3066,12 @@ export class Game {
   /** Config wirksam machen: Movement, Coach, Session, HUD, Kamera, Bots, Tick-Rate. */
   private useConfig(c: MovementConfig): void {
     // Physik mitten im Lauf geändert (Einstellungen, F1): der Replay ließe sich so nicht nachspielen.
-    if (c !== this.config) this.replayRec.invalidate('Physik-Einstellung im Lauf geändert');
+    if (c !== this.config) {
+      this.replayRec.invalidate('Physik-Einstellung im Lauf geändert');
+      // Manipuliert nur, wenn die neue Config nicht die der Einstellungen ist (F1, Tools); Lektionen haben ihre
+      // eigene Lehr-Config und keine lokale Wertung über finishRun.
+      if (this.session === null && configTampered(c, this.settings.get())) this.markTampered('Physik per Tuning-Panel verändert');
+    }
     this.config = c;
     this.movement.setConfig(c);
     this.coach.setConfig(c);
@@ -3109,12 +3164,16 @@ export class Game {
   private readonly onCanvasClick = (): void => {
     if (this.gameState === 'paused' && !this.menu.visible) this.requestResume();
     else if (this.gameState === 'playing' && !this.lockless && !this.input.locked) {
-      // Pad-Modus: Klick ins Spiel = zurück auf Maus (Klick ist eine Geste, Lock und Ton gehen jetzt).
+      if (this.padMode && !this.audio.unlocked) {
+        // Pad-Modus (Web), Ton fehlt: der Klick ist nur die Geste dafür — kein Lock, der Pad-Modus bleibt (Review A7).
+        this.unlockAudio();
+        return;
+      }
+      // Pad-Modus mit Ton (Desktop immer, Web ab dem zweiten Klick): Klick = zurück auf Maus, wie vor A7 (Review N1).
       // Sonst ging der Lock ohne Pause verloren (sollte nicht passieren) — Klick holt ihn zurück.
       const p = this.requestLockTracked();
       if (this.padMode) {
         this.padMode = false;
-        this.unlockAudio();
         const token = this.loadToken;
         void p.then((ok) => {
           if (!ok && token === this.loadToken) this.lockFailed();
@@ -3122,9 +3181,25 @@ export class Game {
       }
     }
   };
+
+  /**
+   * Taste im Spiel = Geste für den Ton (Review A7): im Pad-Modus kam der Ton sonst nur über einen Klick (Web; am
+   * Desktop läuft er ohnehin ohne Geste). Nur solange er fehlt — danach tut das nichts.
+   */
+  private readonly onKeyGesture = (): void => {
+    if (this.gameState !== 'title' && !this.audio.unlocked) this.unlockAudio();
+  };
 }
 
 // ================================================================== Helfer
+
+/**
+ * Config weicht von der ab, die die Einstellungen ergeben (F1-Tuning, Tools) → Manipulation (Review N3). Ein
+ * ehrliches Umschalten von Auto-Hop/Strafe-Assist/Preset ergibt genau movementConfigFor(settings).
+ */
+export function configTampered(c: MovementConfig, s: GameSettings): boolean {
+  return configHash(c) !== configHash(movementConfigFor(s));
+}
 
 function copySnap(a: PlayerSnapshot, out: MutablePlayerSnapshot): void {
   out.pos.copy(a.pos);

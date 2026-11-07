@@ -6,6 +6,11 @@ import { InputManager } from '../src/engine/Input';
 import type { PointerLockTarget } from '../src/engine/Input';
 import { DEFAULT_KEYBINDS, DEFAULT_SETTINGS } from '../src/engine/settingsTypes';
 import { DEFAULT_PAD_SETTINGS } from '../src/engine/pad/types';
+import { WEB_PLATFORM } from '../src/platform/web';
+import { configTampered } from '../src/engine/Game';
+import { movementConfigFor } from '../src/engine/Settings';
+import { ReplayRecorder } from '../src/engine/replay/recorder';
+import { withMovement } from '../src/player/MovementConfig';
 import { PlayerMovement } from '../src/player/PlayerMovement';
 import { VELOCITY_DEFAULT } from '../src/player/MovementConfig';
 import type { PlayerInput } from '../src/player/types';
@@ -321,6 +326,90 @@ describe('InputManager: Controller (Plan 011 §1.3)', () => {
     expect(im.device).toBe('xbox');
     expect(seen).toEqual(['playstation', 'keyboard', 'xbox']);
     im.dispose();
+  });
+
+  it('linker Stick gehalten + Maus im Lock: kein Gerätewechsel je Frame; Maus übernimmt erst nach 0.25 s Pad-Ruhe (Review A4)', async () => {
+    const dom = installDom('promise');
+    const im = new InputManager(dom.target, () => DEFAULT_SETTINGS);
+    const seen: string[] = [];
+    im.onDevice((d) => seen.push(d));
+    const pad = fake();
+    im.setFakePad(pad);
+    im.setMenuContext(false);
+    expect(await im.requestLock()).toBe(true);
+    const mouse = (): void => {
+      dom.doc.dispatchEvent(Object.assign(new Event('mousemove'), { movementX: 3, movementY: 0 }));
+    };
+    pad.axes[0] = -0.9; // links laufen (Deck: Stick), Blick mit dem Trackpad als Maus
+    for (let i = 0; i < 60; i++) {
+      im.beginFrame(1 / 60);
+      mouse();
+    }
+    // Vorher: playstation/keyboard im Wechsel, 2 Meldungen je Frame (120).
+    expect(seen).toEqual(['playstation']);
+    expect(im.usingPad).toBe(true);
+    pad.axes[0] = 0;
+    for (let i = 0; i < 10; i++) {
+      im.beginFrame(1 / 60);
+      mouse();
+    }
+    expect(im.usingPad).toBe(true); // 0.17 s Pad-Ruhe: noch Pad
+    for (let i = 0; i < 10; i++) {
+      im.beginFrame(1 / 60);
+      mouse();
+    }
+    expect(seen).toEqual(['playstation', 'keyboard']);
+    // Stick erneut über die Schwelle = Flanke → wieder Pad; eine Taste schaltet sofort.
+    pad.axes[0] = -0.9;
+    im.beginFrame(1 / 60);
+    expect(im.device).toBe('playstation');
+    window.dispatchEvent(Object.assign(new Event('keydown', { cancelable: true }), { code: 'KeyW', repeat: false }));
+    expect(im.device).toBe('keyboard');
+    im.dispose();
+  });
+
+  it('Fake-Pad ist Skript-Eingabe: fakePadActive für die Assistiert-Markierung (Review A6)', () => {
+    const dom = installDom('promise');
+    const im = new InputManager(dom.target, () => DEFAULT_SETTINGS);
+    expect(im.fakePadActive).toBe(false);
+    im.setFakePad(fake());
+    expect(im.fakePadActive).toBe(true);
+    im.setFakePad(null);
+    expect(im.fakePadActive).toBe(false);
+    im.dispose();
+  });
+
+  it('F1-Tuning: Web immer, Desktop nur mit --dev — wie Admin/F8 (Review A10)', () => {
+    const dom = installDom('promise');
+    const cases = [
+      [WEB_PLATFORM, true],
+      [{ ...WEB_PLATFORM, kind: 'desktop' as const, dev: false }, false],
+      [{ ...WEB_PLATFORM, kind: 'desktop' as const, dev: true }, true],
+    ] as const;
+    for (const [plat, allowed] of cases) {
+      const im = new InputManager(dom.target, () => DEFAULT_SETTINGS, plat);
+      expect(im.devTools, `${plat.kind} dev=${plat.dev}`).toBe(allowed);
+      im.dispose();
+    }
+  });
+
+  it('Desktop-Sperre nur bei Manipulation: Auto-Hop im Lauf umschalten zählt lokal weiter (Review N3)', () => {
+    const s0 = { ...DEFAULT_SETTINGS, autoHop: false };
+    const run = movementConfigFor(s0);
+    // Ehrlich: Auto-Hop/Strafe-Assist/Preset in der Pause umgestellt → neue Config = die der Einstellungen.
+    for (const patch of [{ autoHop: true }, { strafeAssist: !s0.strafeAssist }, { movementPreset: 'cs2' as const }]) {
+      const s1 = { ...s0, ...patch };
+      expect(configTampered(movementConfigFor(s1), s1), JSON.stringify(patch)).toBe(false);
+    }
+    // Die Aufnahme wird trotzdem ungültig (nicht einreichbar) — nur die lokale Wertung bleibt.
+    const rec = new ReplayRecorder();
+    rec.begin({ levelId: 'x', levelHash: 'h', configHash: 'c', tickRate: 128, settings: { preset: s0.movementPreset, autoHop: false, strafeAssist: s0.strafeAssist, airControl: s0.airControl } });
+    rec.invalidate('Physik-Einstellung im Lauf geändert');
+    expect(rec.invalid).not.toBeNull();
+    // F1-Tuning: Config weicht von den Einstellungen ab → manipuliert.
+    expect(configTampered(withMovement(run, { gravity: run.gravity * 0.5 }), s0)).toBe(true);
+    expect(configTampered(withMovement(run, { airAccelerate: 200 }), s0)).toBe(true);
+    expect(configTampered(run, s0)).toBe(false);
   });
 
   it('Fokusverlust lässt Pad-Knöpfe und Sticks los', () => {

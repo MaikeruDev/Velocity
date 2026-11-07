@@ -54,12 +54,16 @@ export interface SteamworksLike {
 /** off = nicht angefordert · real = steamworks.js · fake/fake-fail = Fake (nur mit --dev) · blocked = Fake ohne --dev. */
 export type SteamMode = 'off' | 'real' | 'fake' | 'fake-fail' | 'blocked';
 
-export function steamMode(argv: readonly string[], env: Readonly<Record<string, string | undefined>>): SteamMode {
+/**
+ * `dev` = Dev-Modus der Hülle (unverpackt + --dev, policy.isDevRun). Fehlt er, zählt nur ein --dev im argv — so
+ * prüfen es Tests ohne Hülle; die Hülle reicht immer den echten Wert durch (im Paket nie dev, Review C1).
+ */
+export function steamMode(argv: readonly string[], env: Readonly<Record<string, string | undefined>>, dev = argv.includes('--dev')): SteamMode {
   if (!argv.includes('--steam') && env.VELOCITY_STEAM !== '1') return 'off';
   const fake = argv.find((a) => a === '--steam-fake' || a.startsWith('--steam-fake='));
   if (fake === undefined) return 'real';
   // Wer einen Fake verlangt, bekommt NIE stillschweigend das echte Modul (sonst "Spielt Spacewar" beim Testen).
-  if (!argv.includes('--dev')) return 'blocked';
+  if (!dev) return 'blocked';
   return fake === '--steam-fake=fail' ? 'fake-fail' : 'fake';
 }
 
@@ -253,12 +257,14 @@ export function createSteamModule(deps: SteamModuleDeps): SteamModule {
 
   return {
     name: 'steam',
+    // Der Preload fragt beim Laden synchron, ob Steam angefordert ist — scheitert setup, antwortet main.ts mit null.
+    syncChannels: [STEAM_IPC.requested],
     get mode() {
       return mode;
     },
     status,
-    beforeReady() {
-      mode = steamMode(deps.argv, deps.env);
+    beforeReady(info) {
+      mode = steamMode(deps.argv, deps.env, info.dev);
       if (mode === 'off') {
         settle();
         return;

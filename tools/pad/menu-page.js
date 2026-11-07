@@ -30,7 +30,13 @@
   };
   window.__padTest = {
     connect() {
+      pad.connected = true;
       window.dispatchEvent(new Event('gamepadconnected'));
+    },
+    // Pad abgezogen (Review B1): getGamepads liefert es noch, aber connected = false — wie Chrome kurz nach dem Abziehen.
+    disconnect() {
+      pad.connected = false;
+      window.dispatchEvent(new Event('gamepaddisconnected'));
     },
     kind(id) {
       pad.id = id;

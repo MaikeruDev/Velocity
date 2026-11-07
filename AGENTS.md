@@ -110,22 +110,30 @@ npx tsx tools/online/login-check.ts     # Playwright gegen das ECHTE Supabase (P
 node tools/online/build-function.mjs [--check]   # Verifier-Bundle der Edge Function (esbuild, 1 ESM-Datei mit Leveln)
 SUPABASE_SECRET_KEY=… node tools/online/upload-bundle.mjs   # Bundle → privater Bucket function-assets, SHA in index.ts
                        #   pinnen; danach index.ts deployen (npx supabase functions deploy submit-run | MCP). Ablauf: Plan 009 §14
+                       #   PowerShell: $env:SUPABASE_SECRET_KEY="…"; node tools/online/upload-bundle.mjs; Remove-Item Env:SUPABASE_SECRET_KEY
 npx tsx tools/menu/shot.ts              # Menü-Labor (Plan 010): Screenshots je Hauptmenü-Stil + Konsolenfehler → shots/menu/<id>/
                        #   (Port 5720, MENU_PORT=…; MENU_STYLE=<id>[,<id>], MENU_SIZE=WxH[,WxH], MENU_WAIT=ms; immer ?online=mock)
 npx tsx tools/pad/pad-check.ts          # Controller im Spiel nur mit Fake-Pad (__vel.pad): Start per A ohne Lock, Stick/Kamera/LB,
-                       #   Blur/Start/Trennen pausiert → shots/pad/ (Port 5730, PAD_PORT=…; immer ?online=mock)
+                       #   Blur/Start/Trennen pausiert, kein Blick-Drift hinter der Pause, Fake-Pad-Lauf = assistiert, Ton-Geste
+                       #   per Taste/Klick unter emuliertem Autoplay → shots/pad/ (Port 5730, PAD_PORT=…; immer ?online=mock)
 npx tsx tools/pad/menu-check.ts         # Menü nur mit Fake-Pad (echter Pfad InputManager → Menü): alle Screens erreichbar, Glyphen
                        #   Xbox/PS/Tastatur im nächsten Frame, Belegungs-Aufnahme, Web ohne Beenden → shots/pad/menu/
-                       #   (Port 5731, PADMENU_PORT=…; PADMENU_SIZE=WxH[,…], PADMENU_STYLES=0 = nur ps2)
+                       #   (Port 5731, PADMENU_PORT=…; PADMENU_SIZE=WxH[,…], PADMENU_STYLES=0 = nur ps2); dazu Review-Proben
+                       #   (PADMENU_REVIEW=0 aus): Belegung ohne Pad gesperrt, Vollbild ohne Geste → Hinweis, Fokus nach Neuaufbau
+npx tsx tools/menu/desktop-check.ts     # Menü mit Fake-Desktop-Bridge (Port 5722): "Login läuft" (Abbrechen per Esc/Pad A/B/Maus,
+                       #   erneut öffnen, Frist), alle Stile ohne --dev ohne Admin → shots/menu/desktop/
 npm run build          # danach: grep -rE "electron|ipcRenderer|contextBridge|steamworks|require\(" dist/assets = 0 Treffer
+                       #   (`velocityDesktop` steht zwangsläufig drin: detectPlatform liest die Bridge, fallen.md #314)
 npm run desktop:dev    # Electron-Hülle (Plan 011) gegen den Vite-Dev-Server 5173, mit --dev (DevTools)
 npm run desktop:start  # Electron gegen die gebaute dist/ (app://velocity); vorher npm run build
 npm run desktop:build  # build + tsc -p electron + electron-builder --win dir → release/win-unpacked/VELOCITY.exe, danach
                        #   tools/desktop/check-build.mjs (kein steam_appid.txt, steam_api64.dll neben der exe, Binding entpackt)
 npx tsx tools/desktop/smoke.ts [--no-exe]   # Desktop-Smoke (Playwright _electron + exe per CDP): Sicherheit, Kürzel (echte
-                       #   OS-Tasten nur nach PID-Prüfung des Vordergrundfensters), Strg-Ducken, Lock + Esc, Anzeigemodus, Spiegel
-                       #   (Local Storage gelöscht → eingespielt), kein Admin ohne --dev, Beenden per Fake-Pad, Determinismus
-                       #   L1–L4 ⇄ Node → shots/desktop/ (öffnet echte Fenster; vorher npm run build bzw. desktop:build)
+                       #   OS-Tasten nur nach PID-Prüfung des Vordergrundfensters), Strg-Ducken, Lock + Esc, Anzeigemodus, Alt+Enter/
+                       #   F11, Spiegel (Local Storage gelöscht → eingespielt), kein Admin/__vel ohne --dev, Beenden per Fake-Pad,
+                       #   Determinismus L1–L4 ⇄ Node; D: Minimieren ohne Playwright (rohes CDP, Visibility/Drosselung/Blocker),
+                       #   E: Fehler-Injektion --fault=… (nur Dev-Binary); exe: --dev/--query wirkungslos → shots/desktop/
+                       #   (öffnet echte Fenster; vorher npm run build bzw. desktop:build; Hang-Fall dauert bis ~50 s)
 npx tsx tools/desktop/authSmoke.ts      # Desktop-Login (Plan 011 §3.1): echtes Electron + Live-Supabase, --dev --auth-no-browser
                        #   (kein System-Browser, keine OS-Tasten): Empfänger/state/Allowlist, Tresor (DPAPI), Login-Knopf →
                        #   simulierter Abbruch bei Discord → Toast im Menü → shots/desktop/auth-report.json (vorher npm run build)
@@ -169,8 +177,10 @@ src/
                      Desktop-Chunk): steam (Rich Presence, Overlay → Pause), achievements (Live-Ereignisse → IDs,
                      velocity.achv.v1, 480-Test-Tabelle), live (Game-Hook-Typen, isCleanFinish)
 electron/            Desktop-Hülle (Plan 011, eigenes tsconfig, Node-Typen nur hier): main, preload.cts (sandboxed, CJS),
-                     protocol (app://velocity → dist/, CSP), policy (reine Regeln), window (Anzeigemodus), save, modules
-                     (Hook-Liste für Login/Steam), auth + session + authModule (Loopback-Login, verschlüsselte Sitzung),
+                     protocol (app://velocity → dist/, CSP), policy (reine Regeln: isDevRun, Kürzel, Faults, IPC), window
+                     (Anzeigemodus, Alt+Enter/F11, Drosselung), power (Bildschirm wach), recovery (Renderer-Ausfälle), save
+                     (atomar, Generationen, Retry), modules + moduleRunner (Hook-Liste Login/Steam, gemeinsames Zeitlimit),
+                     auth + session + authModule (Loopback-Login, verschlüsselte Sitzung),
                      steam + steamFake (Steamworks hinter --steam, init(480) nach dem ersten Bild)
                      → kompiliert nach out/electron/, electron-builder.yml → release/
 supabase/            migrations/*.sql (Schema, RLS, Funktionen, Buckets — so auch eingespielt), functions/submit-run/
@@ -648,7 +658,7 @@ Settings/InputState/online-types (`engine/storage.ts`, Bundle-SHA `f2d04931…`,
 - **Front-Door-Vertrag** (`menuLab/types`): `ctx.input: FrontDoorInput {family, pad, glyphs(p)}`, `ctx.platform` 'web' | 'desktop',
   `ctx.adminMenu`, `ctx.quit: (() => void) | null` (null = kein Beenden-Eintrag); `FrontDoor.onNavigate?(dx, dy)`,
   `onTab?(dir)`, `onInput?()`. ps2: System-Panel mit "Beenden" (zweistufig) nur am Desktop, Admin nur mit `adminMenu`; hub
-  blendet Admin ebenso aus (rave/arcade: Knopf bleibt, `openAdmin` tut dann nichts).
+  blendet Admin ebenso aus, rave/arcade/stubDoor zeigen den Knopf seit Review B5 ebenfalls nur mit `adminMenu`.
 - **Plattform-Schicht** (`src/platform`): `platform()` → web (Default) | desktop (Bridge `window.velocityDesktop`),
   `PlatformApi {kind, caps, dev, versions, quit, window, openExternal, saveMirror}`. main.ts: `installSaveMirror(…)` VOR
   `new SettingsStore`, Dev-Parameter (`?online/level/menu/debug/mockdev/lockless`) am Desktop nur mit `--dev`.
@@ -667,11 +677,61 @@ Settings/InputState/online-types (`engine/storage.ts`, Bundle-SHA `f2d04931…`,
   true. Bridge-Feld `velocityDesktop.steam?` (`DesktopSteamBridge`, `DesktopSteamStatus`, `SpacewarAchievement`; Kanäle
   `STEAM_IPC` in electron/steam.ts) nur mit `--steam`/`VELOCITY_STEAM=1` und ladbarem Binding. **Modul-Hooks** (`modules.ts`):
   `beforeReady?()` (vor app.ready, nur erste Instanz), `windowReady?(win)` (erstes Bild — Steam-init läuft erst hier),
-  `ctx.handleSync`, setup höchstens `MODULE_SETUP_TIMEOUT_MS` (3 s) abgewartet, dispose/beforeReady/windowReady mit try/catch.
+  `ctx.handleSync`, setup höchstens `MODULE_SETUP_TIMEOUT_MS` (3 s) abgewartet, dispose/beforeReady/windowReady mit try/catch
+  (seit Review C6 über `electron/moduleRunner.ts`, siehe unten).
   **Game** (`platform/live.ts`): `onLiveProgress` (finish mit `isCleanFinish` = Aufnahme gültig + kein Bot, live geschaffte
   Lektionsstufen, angenommener Supabase-Lauf; Lektion unsauber bei Bot/Override/Teleport/Config-Patch), `ghostRace`.
   Achievements (`platform/achievements.ts`, `velocity.achv.v1`) nur aus diesen Ereignissen, nie aus Admin/Bestzeiten; komplett
   aus mit `--dev` oder Debug-Zugang (`--remote-debugging-port`, `--inspect`). Fake nur mit `--dev --steam --steam-fake[=fail]`.
+
+Plan 011 Review-Fix-Runde (07.11., Stränge pad-core/menu-ui/desktop + Abschluss) — Replay-Format, `PHYSICS_VERSION`,
+`GameSettings`, `OnlineService`-Signaturen **unverändert**; Bundle-SHA bleibt `f2d04931…`:
+- **Pad-Kurve** (`engine/pad/stickCurve`): `LookCurveParams.pitchSnap` (Default 0.2 in `DEFAULT_LOOK_CURVE`): axiale
+  Deadzone nur für Pitch (Vertikalanteil |y|/|Stick| stetig nachskaliert, kein Zeitfilter); Boost wirkt nur auf Yaw.
+  `edgeClock(clock, mag, dt)`: Boost-Uhr mit Hysterese (läuft ab `STICK_EDGE` 0.95, steht zwischen `STICK_EDGE_OFF` 0.85
+  und 0.95, fällt darunter auf 0) — PadInput und die Sim-Hand (`tools/sim/StickHand.ts`) nutzen dieselbe Funktion.
+  `digitizeMove(…, out, prev)`: Zustand = voriges Ergebnis, Winkel-Hysterese `MOVE_ANGLE_HOLD` ±3.5°, Betrag 0.3 an /
+  0.2 aus (`MOVE_MAG_HOLD`). Zustand nur in PadInput, nie im Replay.
+- **PadInput**: hält im Menü-/Pause-/Lade-Kontext, bei Aufnahme, `releaseAll` und Pad-Verlust Bewegung + Blickrate an
+  (`setPadMove(0,0)`, `setLookRate(0,0)`, Boost-Uhr 0). `idleSeconds` (Aktivität nur auf der Flanke: Knopfdruck oder Stick
+  über 0.5). Aufnahme-Frist läuft in `poll()` auch ohne Pad. Verlust des aktiven Pads lässt los und pausiert (im Spiel,
+  wenn es benutzt war; auch mit zweitem Pad); ein anderes Pad übernimmt frühestens im nächsten Poll, dort schon gehaltene Knöpfe zählen erst nach dem Loslassen (nur
+  wenn beim Verlust ein zweites Pad da war = Steam-Input-Spiegel; ohne Pad wird der Merker gelöscht). Pads mit
+  `mapping !== 'standard'` werden ignoriert.
+- **Belegung** (`engine/pad/types`): `sprint` (mit Auto-Sprint "Langsamer") in **beiden** Presets auf `PadLT`, L3 frei.
+  Gespeicherte Belegungen werden nicht migriert.
+- **Game**: `syncPadContext()` (Kontext = `menu.visible || !ticking`) in `onFrameStart` VOR dem Poll und nach den Aktionen.
+  Im Pad-Modus schaltet der erste Klick ins Spiel nur den Ton frei (kein Lock, Pad-Modus bleibt), solange der Ton fehlt;
+  danach wie früher Maus + Lock. Tasten schalten den Ton ebenfalls frei. `setFakePad(≠null)` und jeder Tick mit Fake-Pad
+  markieren den Lauf assistiert. `runTampered` (F1-Config, Debug-Teleport/-Tempo, `configTampered(cfg, settings)` = Config ≠
+  `movementConfigFor(settings)` außerhalb von Lektionen): **nur am Desktop** speichert `finishRun` dann weder Bestzeit
+  noch Medaille noch Freischaltung ("Lauf nicht gewertet"). Ungültig aus anderen Gründen (zu lang, Respawns, Auto-Hop
+  umgeschaltet) zählt lokal weiter; Web unverändert.
+- **InputManager**: `devTools` (Web immer, Desktop nur `platform.dev`; F1-Tuning wirkt nur damit), `fakePadActive`. Maus im
+  Lock schaltet erst nach 0.25 s Pad-Ruhe auf Tastatur (Tasten/Klicks sofort).
+- **Menu**: Pad-Belegungsfelder ohne Pad gesperrt + Hinweis (role=status); alle Vollbild-Wege über
+  `Menu.requestFullscreen` (Web ohne Nutzeraktivierung → Hinweis "Vollbild braucht einen Klick oder eine Taste"). Desktop-
+  Login: modaler Hinweis **"Login läuft"** (`.vel-login-wait`, Knöpfe `.vel-login-again` = dieselbe Auth-URL erneut,
+  `.vel-login-cancel` = `platform.auth.cancel()`; Esc/Pad B brechen ab, Screen darunter inert, Leertaste/Enter nur auf
+  Knöpfen im Hinweis). Tastenhilfe nennt F1 nur mit Dev-Werkzeugen. Anzeigemodus folgt `platform.window.onModeChange`.
+  `ui/padNav`: `refocusIndex` — nach Teil-Neuaufbau Rückfall auf den nächsten Index, erstes A zeigt nur den Fokus.
+- **Online** (`online/types`, nur Doku erweitert): `signIn()` am Desktop löst bei Abbruch (`'cancelled'`, auch schon aus
+  `begin()`) ohne Fehler auf; `onIdentityChange(null)` meldet jedes Login-Ende ohne Anmeldung (Abbruch/Frist/Fehler).
+  `LoopbackLogin.cancel()` zählt auch, wenn es ankommt, während `begin()` noch bindet.
+- **Plattform-Schicht**: `devToolsAllowed(p)` (Web immer, Desktop nur `dev`) — `window.__vel` und Dev-Parameter am
+  Desktop nur damit. `PlatformWindow.onModeChange(cb)` (Bridge `window.onModeChange?`, Kanal `IPC.windowMode`
+  `vel:window:mode`). Speicher-Spiegel: `saveMirror.onFlushRequest?(cb)` (Kanal `IPC.saveFlush`, Windows-Abmeldung),
+  Renderer plant nach Fehlschlag neu (Backoff bis `SAVE_RETRY_MAX_MS` 60 s) und vergleicht nur mit dem bestätigten Stand;
+  `flush()` → boolean.
+- **Electron**: `isDevRun(argv, app.isPackaged)` = `!packaged && --dev` — im Paket sind `--dev`, `--query`, `--fault`,
+  Steam-Fake und DevTools wirkungslos. `before-input-event`: Alt+Enter/F11 schalten den Anzeigemodus (gespeichert, Seite
+  sieht die Taste nicht, keyUp mitgeschluckt; `isDisplayModeToggle`). Drosselung nur minimiert/versteckt (Page Visibility
+  wirkt). `DisplaySleepGuard` (`power.ts`): Bildschirm wach nur im Vordergrund. `recovery.ts`: Startfehler → Dialog +
+  `app.exit(1)`; Absturz/Hänger/Ladefehler einmal neu laden, zweiter Fehler in 5 min → Dialog; Fenster spätestens nach
+  10 s sichtbar; `--fault=start|setup|crash-once|crash|load-once|load|noshow|hang` nur im Dev-Modus. `save.ts`:
+  Generationszähler, tmp + fsync + rename, Retry bei EPERM/EBUSY/EACCES, `flushPendingSync` bei will-quit/Fehler-Ende/
+  session-end. `moduleRunner.ts`: setups parallel unter EINEM Zeitlimit, windowReady/dispose genau einmal; Sync-Kanäle
+  eines gescheiterten Moduls antworten null. `beforeReady(info: DesktopStartInfo {dev, syncChannels?})`.
 
 ### 3.5 Musik folgt dem Movement
 Der Techno-Track (132 BPM) ist aus Oszillatoren und Rauschen gebaut. Er bekommt
@@ -684,7 +744,10 @@ Renderer, damit die Neon-Trims im Takt pulsieren.
 ### 3.6 Debug-Handle
 Im Browser hängt `window.__vel` am Spiel (State lesen, teleportieren, Config
 setzen, Eingaben injizieren, Ticks deterministisch vorspulen). Playwright-Tools
-nutzen ausschließlich dieses Handle.
+nutzen ausschließlich dieses Handle. Am Desktop gibt es es nur im Dev-Modus
+(unverpackt mit `--dev`, `devToolsAllowed`); Werkzeuge für Paket/ohne `--dev`
+warten auf das Menü (`data-door="ready"`, `.vel-menu[data-screen="title"]`) und
+ersetzen `navigator.getGamepads` für das Fake-Pad.
 
 ---
 

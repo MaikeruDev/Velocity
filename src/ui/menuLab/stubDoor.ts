@@ -85,8 +85,9 @@ export function createStubDoor(id: FrontDoorStyleId, label: string): FrontDoor {
         btn('Steuerung', () => ctx?.openControls()),
         btn('Profil', () => ctx?.openProfile()),
         btn('Menü-Labor', () => ctx?.openLab()),
-        btn('Admin', () => ctx?.openAdmin()),
       );
+      // Admin nur, wo er etwas tut (Vertrag: adminMenu false → Eintrag weglassen).
+      if (c.adminMenu) row.append(btn('Admin', () => ctx?.openAdmin()));
       box.append(el('h1', 'vel-h1', `${label} — im Bau`), pulse, list, row, status);
       r.append(box);
       renderList();

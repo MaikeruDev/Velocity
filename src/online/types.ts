@@ -98,11 +98,18 @@ export interface OnlineService {
    * ignoriert. null = nicht angemeldet. Idempotent.
    */
   auth(name?: string): Promise<PlayerIdentity | null>;
-  /** Interaktiv anmelden. Supabase: OAuth-Redirect zu Discord — VERLÄSST DIE SEITE. Mock: wie auth(). */
+  /**
+   * Interaktiv anmelden. Supabase: OAuth-Redirect zu Discord — VERLÄSST DIE SEITE. Desktop (Plan 011 §3.1): wartet auf den
+   * System-Browser und löst nach dem Code-Tausch auf; abgebrochen über platform.auth.cancel() löst es ohne Fehler auf.
+   * Mock: wie auth().
+   */
   signIn(): Promise<void>;
   /** Abmelden (Supabase: Sitzung beenden; lokale Bestzeiten/Ghosts bleiben). Mock: nichts. */
   signOut(): Promise<void>;
-  /** Anmeldestand geändert (Login, Logout, Namenswechsel). Rückgabe: Abo beenden. */
+  /**
+   * Anmeldestand geändert (Login, Logout, Namenswechsel) — auch, wenn ein wartender Desktop-Login ohne Anmeldung endet
+   * (Fehler, Frist, Abbruch; id null, Plan 011 Review B4). Rückgabe: Abo beenden.
+   */
   onIdentityChange(cb: (id: PlayerIdentity | null) => void): () => void;
   /** Anzeigenamen ändern (Einstellung "Spielername"). Wirft 'auth' ohne Anmeldung. */
   setName(name: string): Promise<PlayerIdentity>;

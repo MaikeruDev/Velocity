@@ -1,5 +1,5 @@
 import type { InputAction } from '../InputState';
-import { DEFAULT_LOOK_CURVE, STICK_EDGE, boostFactor, digitizeMove, lookRate, stickMagnitude } from './stickCurve';
+import { DEFAULT_LOOK_CURVE, boostFactor, digitizeMove, edgeClock, lookRate, stickMagnitude } from './stickCurve';
 import type { LookCurveParams, LookRateOut, MoveOut } from './stickCurve';
 import { padKindFromId } from './prompts';
 import type { InputDevice, PadBindAction, PadButtonCode, PadSettings } from './types';
@@ -22,7 +22,11 @@ import {
  * Kontexte: Spiel = Knöpfe als Pseudo-Codes ins held-Set + Aktionen aus der Belegung; Menü = feste
  * Menü-Aktionen (A bestätigt, B/Start zurück, Steuerkreuz/Stick navigieren mit Wiederholung, LB/RB Tabs).
  * Beim Kontextwechsel gedrückte Knöpfe zählen erst nach dem Loslassen wieder (A bestätigt im Menü →
- * kein Sprung im Spiel).
+ * kein Sprung im Spiel), und Laufrichtung/Drehrate gehen auf 0 — InputState integriert die Rate jeden
+ * Frame, auch hinter einem Menü (Review A1: sonst drehte die Welt hinter der Pause mit 630 °/s weiter).
+ *
+ * Nur Pads mit `mapping === 'standard'` (Review A8): sonst stimmen Knopf- und Achsen-Indizes nicht
+ * (DirectInput: Trigger auf axes[2], Ruhewert −1 = Dauerdrehen).
  */
 
 export interface GamepadButtonLike {
@@ -111,13 +115,20 @@ export class PadInput {
   private sent = 0;
   private restartHeld = 0;
   private restartFired = false;
+  /** Boost-Uhr des Kamera-Sticks (s am Rand, stickCurve.edgeClock). */
   private edgeTime = 0;
   private navDir = NAV_NONE;
   private navTimer = 0;
-  /** Seit dem letzten consumeActivity() Eingaben am Pad (Gerätewechsel). */
+  /** Seit dem letzten consumeActivity() Eingaben am Pad (Gerätewechsel): Knopfdruck oder Stick-Flanke. */
   private activity = false;
+  /** Ein Stick stand im letzten Poll über STICK_ACTIVE — Aktivität zählt nur die Flanke (Review A4). */
+  private stickHot = false;
+  /** Sekunden seit der letzten Pad-Eingabe (Knopfdruck, Stick über STICK_ACTIVE); Infinity = noch nie. */
+  private idle = Infinity;
   /** Pad seit dem Verbinden benutzt (nur dann pausiert ein Trennen im Spiel). */
   private used = false;
+  /** Das aktive Pad ging verloren: beim nächsten Pad zählen schon gehaltene Knöpfe erst nach dem Loslassen. */
+  private afterLoss = false;
   /** Knopf-Drücke seit consumePresses() (Vorführung endet mit "jeder Taste"; Sticks zählen nicht). */
   private presses = 0;
   /** Letzte Stick-Rohwerte (Debug/Test-Anzeige im Menü). */
@@ -191,6 +202,8 @@ export class PadInput {
     this.restartFired = (this.down & this.actionMask.restart) !== 0;
     // Gehaltene Richtung (Stick zum Laufen) navigiert im Menü erst nach dem Loslassen.
     this.navDir = NAV_WAIT;
+    // Die letzte Spiel-Rate stünde sonst in InputState und drehte jeden Frame weiter (Review A1).
+    this.stopMotion();
   }
 
   get menuContext(): boolean {
@@ -210,6 +223,8 @@ export class PadInput {
     this.captureB = -1;
     this.suppressed = this.down;
     this.releaseSent();
+    // Während der Aufnahme liest read() keine Sticks: eine stehengebliebene Rate drehte sonst weiter (Review A1).
+    this.stopMotion();
     return () => {
       if (this.captureCb === cb) this.endCapture();
     };
@@ -234,8 +249,8 @@ export class PadInput {
     cb(code);
   }
 
+  /** Belegungs-Aufnahme mit Pad (die Frist zählt poll() herunter, auch ohne Pad). */
   private readCapture(live: number, pressed: number, dt: number): void {
-    this.captureLeft -= dt;
     if (this.captureB >= 0) {
       if ((live >> I_B) & 1) {
         this.captureB += dt;
@@ -268,11 +283,20 @@ export class PadInput {
     return this.activeIndex >= 0;
   }
 
-  /** Gab es seit dem letzten Aufruf Pad-Eingaben (Knopf, Stick über Drift)? Setzt zurück. */
+  /**
+   * Gab es seit dem letzten Aufruf Pad-Eingaben? Setzt zurück. Zählt nur Flanken: Knopfdruck oder ein Stick, der
+   * STICK_ACTIVE überschreitet — ein gehaltener Stick meldet nicht jeden Frame (Review A4: Stick + Maus im Lock
+   * schaltete sonst zweimal je Frame das Gerät um).
+   */
   consumeActivity(): boolean {
     const a = this.activity;
     this.activity = false;
     return a;
+  }
+
+  /** Sekunden seit der letzten Pad-Eingabe (Knopfdruck, Stick über STICK_ACTIVE); Infinity = keine seit dem Verbinden. */
+  get idleSeconds(): number {
+    return this.idle;
   }
 
   /** Knopf-Drücke seit dem letzten Aufruf? Setzt zurück. */
@@ -288,25 +312,32 @@ export class PadInput {
     this.releaseSent();
     this.suppressed = this.down;
     this.restartHeld = 0;
-    this.sink.setPadMove(0, 0);
-    this.sink.setLookRate(0, 0);
+    this.stopMotion();
   }
 
   /** Ein Frame: Pads lesen, Flanken und Stellgrößen an die Senke. frameDt = echte Framezeit (s). */
   poll(frameDt: number): void {
-    const pads = this.source();
     const dt = frameDt > 0 && Number.isFinite(frameDt) ? frameDt : 0;
+    // Aufnahme-Frist zählt auch ohne Pad (Review A5): per Maus geöffnet und kein Pad da → sonst nie Abbruch.
+    if (this.captureCb !== null) this.captureLeft -= dt;
+    const pads = this.source();
     let pad: GamepadLike | null = null;
     let other: GamepadLike | null = null;
     let first: GamepadLike | null = null;
     if (pads !== null) {
       for (let i = 0; i < pads.length; i++) {
         const p = pads[i];
-        if (p === null || p === undefined || !p.connected) continue;
+        if (p === null || p === undefined || !p.connected || p.mapping !== 'standard') continue;
         if (first === null) first = p;
         if (p.index === this.activeIndex) pad = p;
         else if (other === null && padBusy(p)) other = p;
       }
+    }
+    if (pad === null && this.activeIndex >= 0) {
+      // Aktives Pad weg → immer loslassen und (im Spiel, benutzt) pausieren, auch wenn ein zweites verbunden ist
+      // (Review A8: Steam-Input-Pad + HID-Pad). Ein anderes übernimmt frühestens im nächsten Poll.
+      this.lost(first !== null);
+      return;
     }
     // Ein anderes Pad, das gerade benutzt wird, übernimmt — nicht, solange das aktive selbst bedient wird.
     if (other !== null && (pad === null || !padBusy(pad))) {
@@ -318,7 +349,10 @@ export class PadInput {
       pad = first;
     }
     if (pad === null) {
-      if (this.activeIndex >= 0) this.lost();
+      // Gar kein Pad mehr da: kein Spiegel möglich — kommt eines (auch dasselbe) zurück, zählt sein weckender Druck.
+      this.afterLoss = false;
+      this.idle += dt;
+      if (this.captureCb !== null && this.captureLeft <= 0) this.finishCapture(null);
       return;
     }
     if (pad.id !== this.activeId) this.switchTo(pad, padBusy(pad));
@@ -327,31 +361,50 @@ export class PadInput {
 
   // ------------------------------------------------------------------ intern
 
+  /** Laufrichtung, Drehrate und Boost auf 0 — Kontextwechsel, Aufnahme, Fokus- und Pad-Verlust. */
+  private stopMotion(): void {
+    this.sink.setPadMove(0, 0);
+    this.sink.setLookRate(0, 0);
+    this.edgeTime = 0;
+    this.move.fwd = this.move.side = 0;
+    const o = this.output;
+    o.fwd = o.side = o.yawRate = o.pitchRate = 0;
+  }
+
   private switchTo(p: GamepadLike, busy: boolean): void {
     if (this.activeIndex >= 0) this.releaseSent();
     this.activeIndex = p.index;
     this.activeId = p.id;
     this.padKind = padKindFromId(p.id);
     // Der Druck, der das Pad übernimmt, zählt (Chrome zeigt ein Pad erst nach dem ersten Druck):
-    // ab "nichts gedrückt", read() sieht ihn als Flanke.
-    this.down = 0;
-    this.suppressed = 0;
+    // ab "nichts gedrückt", read() sieht ihn als Flanke. Nach dem Verlust des aktiven Pads nicht: dasselbe
+    // Drücken erscheint dort oft auf beiden (Steam-Input-Spiegel) und bestätigte sonst gleich die Pause.
+    this.down = this.afterLoss ? buttonBits(p, 0) : 0;
+    this.suppressed = this.down;
+    this.afterLoss = false;
     this.used = false;
+    this.stickHot = false;
     // read() meldet die Aktivität des übernehmenden Drucks selbst.
-    if (busy) this.activity = true;
+    if (busy) {
+      this.activity = true;
+      this.idle = 0;
+    }
   }
 
-  private lost(): void {
+  /** mirror = beim Verlust war schon ein anderes Standard-Pad verbunden (möglicher Steam-Input-Spiegel). */
+  private lost(mirror: boolean): void {
     this.releaseSent();
-    this.sink.setPadMove(0, 0);
-    this.sink.setLookRate(0, 0);
-    this.output.fwd = this.output.side = this.output.yawRate = this.output.pitchRate = 0;
+    this.stopMotion();
     const wasUsed = this.used;
     this.activeIndex = -1;
     this.activeId = '';
     this.down = 0;
     this.suppressed = 0;
     this.used = false;
+    this.stickHot = false;
+    // Nur dann den schon gehaltenen Druck sperren (Review N2): sonst schluckte das den Druck, der dasselbe Pad
+    // nach Akku-Leer/Kabel wieder aufweckt — "Weiter" bräuchte zwei Drücke.
+    this.afterLoss = mirror;
     // Pad im Spiel getrennt → Pause (Plan 011 §1.3); im Menü nichts.
     if (wasUsed && !this.menu) this.sink.pushAction('pause');
     this.finishCapture(null);
@@ -387,9 +440,14 @@ export class PadInput {
     st.ly = ly;
     st.rx = rx;
     st.ry = ry;
-    if (lx * lx + ly * ly > STICK_ACTIVE * STICK_ACTIVE || rx * rx + ry * ry > STICK_ACTIVE * STICK_ACTIVE) {
-      this.activity = this.used = true;
+    const hot = lx * lx + ly * ly > STICK_ACTIVE * STICK_ACTIVE || rx * rx + ry * ry > STICK_ACTIVE * STICK_ACTIVE;
+    if (hot) {
+      this.used = true;
+      // Gerätewechsel nur auf der Flanke (Review A4) — gehalten zählt er weiter als "Pad in Benutzung" (idle).
+      if (!this.stickHot) this.activity = true;
     }
+    this.stickHot = hot;
+    this.idle = hot || pressed !== 0 ? 0 : this.idle + dt;
 
     if (this.captureCb !== null) {
       this.readCapture(live, pressed, dt);
@@ -418,7 +476,8 @@ export class PadInput {
     }
 
     const s = this.settings;
-    const mv = digitizeMove(lx, ly, s.moveDeadzone, s.diagonalBand, this.move);
+    // Voriges Ergebnis als Hysterese-Zustand (Review A3): Bandkante und Deadzone flattern nicht.
+    const mv = digitizeMove(lx, ly, s.moveDeadzone, s.diagonalBand, this.move, this.move);
     let fwd = mv.fwd;
     let side = mv.side;
     // Steuerkreuz bewegt auch (digital wie WASD), ODER mit dem Stick.
@@ -431,18 +490,18 @@ export class PadInput {
     this.sink.setPadMove(fwd, side);
 
     const c = this.curve;
-    let k = 1;
-    if (stickMagnitude(rx, ry, c.inner, c.outer) >= STICK_EDGE) {
-      // Boost als Mittel über GENAU dieses Frame-Intervall: die Drehung hängt dann nicht davon ab, wie die
-      // Zeit in Frames zerfällt (60/144/240 Hz drehen gleich weit, Muster fallen.md #45).
-      const t0 = this.edgeTime;
-      this.edgeTime = t0 + dt;
-      k = meanBoost(c, t0, this.edgeTime);
-    } else this.edgeTime = 0;
+    // Boost-Uhr mit Hysterese (Review A3): läuft am Rand, steht im Band 0.85…0.95, fällt erst darunter auf 0.
+    const t0 = this.edgeTime;
+    const t1 = edgeClock(t0, stickMagnitude(rx, ry, c.inner, c.outer), dt);
+    this.edgeTime = t1;
+    // Läuft sie: Boost als Mittel über GENAU dieses Frame-Intervall — die Drehung hängt dann nicht davon ab, wie
+    // die Zeit in Frames zerfällt (60/144/240 Hz drehen gleich weit, Muster fallen.md #45). Steht sie: der Wert.
+    const k = t1 > t0 ? meanBoost(c, t0, t1) : boostFactor(c, t1);
     const r = lookRate(rx, ry, this.flat, 0, this.rate);
     // Stick rechts → Yaw kleiner (wie Maus rechts); Stick hoch (y < 0) → Pitch größer, außer invertiert.
+    // Boost nur auf Yaw (Review A2): am Rand gekippt sollte der Blick nicht auch noch 1.5× schneller nicken.
     const yawRate = -r.yaw * k;
-    const pitchRate = (s.invertY ? r.pitch : -r.pitch) * k;
+    const pitchRate = s.invertY ? r.pitch : -r.pitch;
     this.sink.setLookRate(yawRate, pitchRate);
     const o = this.output;
     o.fwd = fwd;
@@ -460,9 +519,7 @@ export class PadInput {
     // Lektions-Pause: X/Y wie im Spiel (Vorführung / Stufe neu).
     if (pressed & (1 << I_X)) sink.pushAction('demo');
     if (pressed & (1 << I_Y)) sink.pushAction('respawn');
-    this.edgeTime = 0;
-    const o = this.output;
-    o.fwd = o.side = o.yawRate = o.pitchRate = 0;
+    // Laufrichtung/Drehrate hat setMenuContext auf 0 gesetzt; im Menü stellt sie niemand.
 
     let dir = NAV_NONE;
     if (live & (1 << I_UP)) dir = NAV_UP;

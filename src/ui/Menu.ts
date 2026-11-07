@@ -18,10 +18,10 @@ import { BIND_ACTIONS, GLOVE_IDS, HELD_ITEM_IDS } from '../engine/settingsTypes'
 import type { InputAction } from '../engine/InputState';
 import { MOUSE_CODES, isBindableCode, keyLabel } from '../engine/InputState';
 import type { GlyphStyle, InputDevice, PadBindAction, PadButtonCode, PadSettings } from '../engine/pad/types';
-import { PAD_LIMITS, PAD_PRESETS, isBindablePadCode } from '../engine/pad/types';
+import { PAD_CAPTURE_TIMEOUT, PAD_LIMITS, PAD_PRESETS, isBindablePadCode } from '../engine/pad/types';
 import type { PadSettingsPatch, PadSettingsStore } from '../engine/pad/padSettings';
 import { padPresetOf } from '../engine/pad/padSettings';
-import type { DisplayMode, PlatformApi } from '../platform';
+import { devToolsAllowed, type DisplayMode, type PlatformApi } from '../platform';
 import { WEB_PLATFORM } from '../platform/web';
 import { PadNav, hoverSync } from './padNav';
 import { fillGlyphs, glyphFamily, glyphNode, padCodeGlyph, promptGlyphs, refreshGlyphs, stickGlyph } from './padGlyphs';
@@ -137,6 +137,19 @@ const LESSON_GROUPS: readonly FrontDoorLessonGroup[] = [
 /** Nach einer Maustasten-Belegung Kontextmenü und Zurück/Vor-Navigation noch kurz schlucken. */
 const CAPTURE_SUPPRESS_MS = 800;
 
+/** Kurzer Hinweis über allen Screens (showNotice), so lange sichtbar. */
+const NOTICE_MS = 2600;
+/** Web: requestFullscreen braucht eine Nutzeraktivierung — ein Pad-Druck ist laut HTML-Spec keine (Review B2). */
+const FULLSCREEN_NEEDS_GESTURE = 'Vollbild braucht einen Klick oder eine Taste';
+/** fullscreenerror zählt nur so lange nach einer Anfrage aus dem Menü (sonst gehört er "Vollbild beim Start"). */
+const FULLSCREEN_ERROR_WINDOW_MS = 1500;
+/**
+ * Tasten, die während eines wartenden Logins weiterlaufen: Esc (= Abbrechen über die Engine), Enter/Leertaste/Tab auf den
+ * Knöpfen des Hinweises, F-Tasten, Modifikatoren, M (Ton). Alles andere würde die Front Door darunter steuern — die
+ * Stile lauschen selbst am window (Pfeile, WASD, Ziffern, Arcade: jede Taste = Münze).
+ */
+const LOGIN_WAIT_KEYS = /^(Escape|Enter|NumpadEnter|Tab|Space|F\d+|Shift|Control|Alt|Meta|CapsLock|KeyM)/;
+
 /** Laufende Tastenbelegung: welche Aktion, welcher Platz, welcher Knopf zeigt "Taste …". */
 interface BindCapture {
   readonly action: BindAction;
@@ -178,7 +191,11 @@ export interface MenuOnline {
   myAvatar(): string | null;
   /** Ich bin Entwickler (profiles.role = 'dev') → Namens-Effekt + DEV-Abzeichen. */
   myDev(): boolean;
-  /** Discord-Login (verlässt die Seite; Game sichert vorher einen nicht eingereichten Lauf). */
+  /**
+   * Discord-Login (Game sichert vorher einen nicht eingereichten Lauf). Web: verlässt die Seite. Desktop (platform.auth):
+   * wartet auf den System-Browser — das Menü zeigt solange "Login läuft" mit Abbrechen; das Ende (Erfolg, Fehler, Abbruch)
+   * meldet refreshOnline() (OnlineService.onIdentityChange feuert auch ohne neue Identität).
+   */
   signIn(): void;
   signOut(): void;
   /** Top 10 und der Ausschnitt um mich herum. Wirft bei Netzfehlern. */
@@ -340,6 +357,18 @@ export class Menu {
   private platform: PlatformApi = WEB_PLATFORM;
   /** Zuletzt bekannter Anzeigemodus am Desktop (Einstellungen zeigen ihn ohne await). */
   private displayMode: DisplayMode = 'windowed';
+  /** Abo auf Moduswechsel von außen (Alt+Enter/F11 im Hauptprozess, Review N1 desktop). */
+  private modeUnsub: (() => void) | null = null;
+  /**
+   * Desktop-Login wartet auf den System-Browser (bis zu 5 min): Hinweis "Login läuft" mit Abbrechen über dem Screen
+   * (Review B4), null = keiner. Überlebt Neuaufbauten des Screens (render hängt ihn wieder an).
+   */
+  private loginWait: HTMLElement | null = null;
+  /** Kurzer Hinweis über dem Screen (z. B. Vollbild ohne Geste), null = keiner. */
+  private notice: HTMLElement | null = null;
+  private noticeTimer = 0;
+  /** Zeitpunkt der letzten Vollbild-Anfrage aus dem Menü (für fullscreenerror). */
+  private fullscreenAskedAt = -Infinity;
 
   constructor(root: HTMLElement, settings: SettingsStore, best: BestTimes, unlocks: UnlockStore) {
     const menu = this;
@@ -370,6 +399,7 @@ export class Menu {
     window.addEventListener('mouseup', this.onSuppressMouse, true);
     window.addEventListener('auxclick', this.onSuppressMouse, true);
     window.addEventListener('contextmenu', this.onSuppressMouse, true);
+    document.addEventListener('fullscreenerror', this.onFullscreenError);
     root.appendChild(this.el);
     // Änderungen von außen (Tuning-Panel, Reset) sofort in offenen Reglern zeigen.
     this.unsubscribe = settings.subscribe((s, prev) => {
@@ -389,6 +419,12 @@ export class Menu {
     this.platform = p;
     this.doorCalls = null;
     this.el.dataset.platform = p.kind;
+    this.modeUnsub?.();
+    this.modeUnsub =
+      p.window?.onModeChange((m) => {
+        this.displayMode = m;
+        for (const r of this.refreshers) r(this.settings.get());
+      }) ?? null;
     p.window
       ?.getMode()
       .then((m) => {
@@ -439,6 +475,163 @@ export class Menu {
     });
     const text = b.firstElementChild ?? b;
     return b;
+  }
+
+  /**
+   * Vollbild aus dem Menü (classic "Vollbild", ctx.fullscreen aller Stile). Web: requestFullscreen braucht eine
+   * Nutzeraktivierung, ein Pad-Druck ist laut HTML-Spec keine — der Versuch scheiterte still (Review B2). Ohne Aktivierung
+   * darum gleich der Hinweis (die Anfrage brächte nur eine Konsolen-Warnung); fullscreenerror fängt Browser ohne
+   * navigator.userActivation. Verlassen geht ohne Geste. Desktop: Anzeigemodus des Fensters, keine Geste nötig.
+   */
+  private requestFullscreen(): void {
+    if (this.platform.window === null && document.fullscreenElement === null) {
+      const ua: UserActivation | undefined = navigator.userActivation;
+      if (ua !== undefined && !ua.isActive) {
+        this.showNotice(FULLSCREEN_NEEDS_GESTURE);
+        return;
+      }
+      this.fullscreenAskedAt = performance.now();
+    }
+    this.emit('fullscreen', undefined);
+  }
+
+  private readonly onFullscreenError = (): void => {
+    if (!this.visible || performance.now() - this.fullscreenAskedAt > FULLSCREEN_ERROR_WINDOW_MS) return;
+    this.showNotice(FULLSCREEN_NEEDS_GESTURE);
+  };
+
+  /** Kurzer Hinweis über dem aktuellen Screen (role=status, nicht klickbar); ein neuer ersetzt den laufenden. */
+  private showNotice(text: string): void {
+    window.clearTimeout(this.noticeTimer);
+    const n = this.notice ?? h('div', 'vel-menu-notice');
+    n.setAttribute('role', 'status');
+    n.textContent = text;
+    this.notice = n;
+    if (!this.el.hidden) this.el.append(n);
+    this.noticeTimer = window.setTimeout(() => this.dropNotice(), NOTICE_MS);
+  }
+
+  private dropNotice(): void {
+    window.clearTimeout(this.noticeTimer);
+    this.notice?.remove();
+    this.notice = null;
+  }
+
+  // ------------------------------------------------------------------ Desktop-Login (Plan 011 §3.1, Review B4)
+
+  /**
+   * "Mit Discord anmelden" (alle Knöpfe, auch die der Front Doors). Desktop (platform.auth): der Login läuft im
+   * System-Browser und die Seite bleibt stehen — bis zum Rücksprung "Login läuft" mit Abbrechen zeigen. Web: Redirect,
+   * die Seite geht weg — unverändert ohne Hinweis.
+   */
+  private startSignIn(): void {
+    const on = this.online;
+    if (!on) return;
+    const waits = this.platform.auth !== null && on.loginRequired && on.myUid() === null;
+    on.signIn();
+    if (waits) this.showLoginWait();
+  }
+
+  /** Modaler Hinweis über dem Screen: Pad-Fokus darin, Screen darunter inert (Maus, Tab, Pad-Fokus der Stile). */
+  private showLoginWait(): void {
+    if (this.loginWait) return;
+    // Erneut öffnen: SupabaseService öffnet dieselbe Auth-URL noch einmal (gleicher Versuch, gleicher state).
+    const again = this.btn('Browser erneut öffnen', 'vel-login-again', () => this.online?.signIn());
+    again.title = 'Dieselbe Anmeldeseite noch einmal öffnen (Tab geschlossen?)';
+    // Startfokus auf dem harmlosen Knopf: ein doppeltes A soll den Login nicht abbrechen.
+    again.dataset.padInitial = '';
+    const cancel = this.btn('Abbrechen', 'vel-login-cancel', () => this.cancelLogin(), 'Esc');
+    const box = h(
+      'section',
+      'vel-panel vel-login-box',
+      h('h2', 'vel-h2', 'Login läuft', h('span', 'vel-login-dots')),
+      h('p', 'vel-text', 'Im Browser bei Discord fortfahren — danach geht es hier von selbst weiter.'),
+      // Keine Frist im Text: die steht im Hauptprozess (electron/auth.ts) und meldet sich beim Ablauf selbst.
+      h('p', 'vel-hint', 'Kein Browser aufgegangen oder Tab zu? Erneut öffnen. Spielen geht auch ohne Konto.'),
+      h('div', 'vel-row vel-login-actions', again, cancel),
+    );
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-label', 'Login läuft');
+    const wrap = h('div', 'vel-login-wait', box);
+    this.loginWait = wrap;
+    this.attachLayers();
+    this.nav.setRoot(wrap);
+    if (this.padMode) this.nav.ensure();
+  }
+
+  /** Hinweis weg, Screen wieder bedienbar, Pad-Fokus zurück an Screen bzw. Front Door. */
+  private endLoginWait(): void {
+    const w = this.loginWait;
+    if (!w) return;
+    this.loginWait = null;
+    w.remove();
+    const screen = this.el.firstElementChild;
+    if (!(screen instanceof HTMLElement)) {
+      this.nav.setRoot(null);
+      return;
+    }
+    screen.inert = false;
+    const isDoor = screen.classList.contains('vel-frontdoor');
+    this.nav.setRoot(isDoor ? null : screen);
+    if (!this.padMode) return;
+    if (!isDoor) this.nav.ensure();
+    else if (this.door && !this.door.inst.onNavigate) this.doorNav.ensure();
+  }
+
+  /**
+   * Abbrechen (Knopf, Esc, Pad-B): Empfänger im Hauptprozess zu — derselbe Weg wie SupabaseService externalLogin.cancel
+   * (platform.auth ist genau das Objekt), signIn() löst dann ohne Fehler auf. Der Hinweis geht sofort, nicht erst mit
+   * der Antwort des Hauptprozesses.
+   */
+  private cancelLogin(): void {
+    if (!this.loginWait) return;
+    try {
+      this.platform.auth?.cancel();
+    } catch {
+      // Bridge weg: der Empfänger schließt spätestens nach seiner Frist von selbst.
+    }
+    this.endLoginWait();
+  }
+
+  /** Während des Wartens: Steuerkreuz/A im Hinweis, B/Esc bricht ab, alles andere ist geschluckt. */
+  private loginWaitAction(a: InputAction): boolean {
+    switch (a) {
+      case 'navUp':
+        this.nav.move(0, -1);
+        break;
+      case 'navDown':
+        this.nav.move(0, 1);
+        break;
+      case 'navLeft':
+        this.nav.move(-1, 0);
+        break;
+      case 'navRight':
+        this.nav.move(1, 0);
+        break;
+      case 'pause':
+        this.cancelLogin();
+        break;
+      case 'confirm':
+        // Tastatur-Enter ohne Fokus tut nichts (Enter auf einem fokussierten Knopf löst ihn nativ aus).
+        if (this.padMode && this.nav.ensure() !== null) this.nav.activate();
+        break;
+      default:
+        break;
+    }
+    return true;
+  }
+
+  /** Hinweise über dem Screen nach jedem Aufbau wieder anhängen; der wartende Login macht den Screen darunter inert. */
+  private attachLayers(): void {
+    const w = this.loginWait;
+    if (w) {
+      const screen = this.el.firstElementChild;
+      if (screen instanceof HTMLElement && screen !== w) screen.inert = true;
+      this.el.append(w);
+      refreshGlyphs(w, (p) => this.glyphs(p));
+    }
+    if (this.notice) this.el.append(this.notice);
   }
 
   // ------------------------------------------------------------------ Eingabegerät / Controller (Plan 011)
@@ -496,11 +689,17 @@ export class Menu {
     this.el.dataset.glyphs = fam;
     if (!famChanged && !modeChanged) return;
     for (const r of this.padRefreshers) r();
+    const wait = this.loginWait;
+    if (wait) {
+      // Wartender Login ist modal: Symbole und Fokus im Hinweis (der Screen darunter ist inert).
+      refreshGlyphs(wait, (p) => this.glyphs(p));
+      if (this.padMode) this.nav.ensure();
+    }
     const d = this.door;
     if (d !== null && this.current === 'title') {
       if (d.inst.onInput) d.inst.onInput();
       else this.updateDoor();
-      if (this.padMode && !d.inst.onNavigate) this.doorNav.ensure();
+      if (this.padMode && !d.inst.onNavigate && !wait) this.doorNav.ensure();
       return;
     }
     refreshGlyphs(this.el, (p) => this.glyphs(p));
@@ -628,8 +827,12 @@ export class Menu {
     if (el && this.current === 'finish') el.replaceWith(this.onlineLine(st));
   }
 
-  /** Anmeldestand geändert (Login/Logout/Name): offene Screens mit Konto-Anzeige neu bauen. */
+  /**
+   * Anmeldestand geändert (Login/Logout/Name): offene Screens mit Konto-Anzeige neu bauen. Ein wartender Desktop-Login
+   * ist damit vorbei — angemeldet, gescheitert oder abgebrochen (SupabaseService meldet auch das Ende ohne Login).
+   */
   refreshOnline(): void {
+    this.endLoginWait();
     switch (this.current) {
       case 'title':
         this.showTitle();
@@ -906,9 +1109,9 @@ export class Menu {
       openProfile: (uid) => this.showProfile(uid),
       openAdmin: () => this.showAdmin(),
       openLab: () => this.showLab(),
-      signIn: () => this.online?.signIn(),
+      signIn: () => this.startSignIn(),
       signOut: () => this.online?.signOut(),
-      fullscreen: () => this.emit('fullscreen', undefined),
+      fullscreen: () => this.requestFullscreen(),
       quit: this.platform.caps.quit ? () => this.emit('quit', undefined) : null,
       startMusic: () => {
         this.beatClock.audio?.unlock().catch(() => undefined);
@@ -1049,7 +1252,7 @@ export class Menu {
 
   /** Discord-Blurple-Knopf (ohne Logo, Text reicht). Kein data-lock: der Login verlässt die Seite, kein Pointer Lock. */
   private discordButton(label = 'Mit Discord anmelden'): HTMLButtonElement {
-    const b = this.btn(label, 'vel-discord-btn', () => this.online?.signIn());
+    const b = this.btn(label, 'vel-discord-btn', () => this.startSignIn());
     b.title = 'Anmeldung über Discord — du kommst danach hierher zurück';
     return b;
   }
@@ -1192,6 +1395,8 @@ export class Menu {
     this.stopPreview();
     this.endCapture();
     this.endPadCapture();
+    this.dropNotice();
+    // Ein wartender Login bleibt gemerkt (render hängt den Hinweis beim nächsten Screen wieder an).
     for (const c of this.screenCleanups) c();
     this.screenCleanups = [];
     this.padRefreshers = [];
@@ -1210,6 +1415,7 @@ export class Menu {
   handleAction(a: InputAction): boolean {
     if (!this.visible || this.current === null) return false;
     if (a === 'toggleTuning' || a === 'toggleMute') return false;
+    if (this.loginWait) return this.loginWaitAction(a);
     // Pad-Richtungen (PadInput im Menü-Kontext, mit Wiederholung) gehören immer dem Menü, auch während der
     // Ergebnis-Sperre (nur Fokus, kein Auslösen).
     switch (a) {
@@ -1335,6 +1541,10 @@ export class Menu {
     window.removeEventListener('mouseup', this.onSuppressMouse, true);
     window.removeEventListener('auxclick', this.onSuppressMouse, true);
     window.removeEventListener('contextmenu', this.onSuppressMouse, true);
+    document.removeEventListener('fullscreenerror', this.onFullscreenError);
+    this.modeUnsub?.();
+    this.modeUnsub = null;
+    window.clearTimeout(this.noticeTimer);
     this.el.remove();
     for (const k of Object.keys(this.listeners)) {
       if (isMenuEvent(k)) this.listeners[k].clear();
@@ -1374,13 +1584,14 @@ export class Menu {
     // Fokus nicht automatisch auf Buttons: eine Leertaste aus dem Spiel würde sie sonst auslösen.
     const active = document.activeElement;
     if (active instanceof HTMLElement && !this.el.contains(active) && active !== document.body) active.blur();
-    // Pad-Fokus: Front Door bekommt ihren eigenen Bereich (renderDoor), Bestands-Screens den Screen.
+    // Pad-Fokus: Front Door bekommt ihren eigenen Bereich (renderDoor), Bestands-Screens den Screen — außer während eines
+    // wartenden Logins: dann bleibt er im Hinweis (der Screen darunter ist inert).
     const isDoor = screen.classList.contains('vel-frontdoor');
-    this.nav.setRoot(isDoor ? null : screen, same);
-    if (!isDoor) {
-      refreshGlyphs(screen, (p) => this.glyphs(p));
-      if (this.padMode) this.nav.ensure();
-    }
+    const wait = this.loginWait;
+    this.nav.setRoot(wait ?? (isDoor ? null : screen), wait !== null || same);
+    if (!isDoor) refreshGlyphs(screen, (p) => this.glyphs(p));
+    this.attachLayers();
+    if (this.padMode && (wait !== null || !isDoor)) this.nav.ensure();
   }
 
   private back(): void {
@@ -1471,6 +1682,17 @@ export class Menu {
   }
 
   private readonly onCaptureKey = (e: KeyboardEvent): void => {
+    if (this.loginWait !== null && this.visible) {
+      // Wartender Login ist modal: Pfeile/Buchstaben/Ziffern nicht an Front Door, Titel-Liste oder Engine.
+      // Leertaste/Enter nur auf Knöpfen IM Hinweis: arcade löst sie sonst selbst aus (click() wirkt auch auf inert).
+      const t = e.target;
+      const activates = e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter';
+      if (!LOGIN_WAIT_KEYS.test(e.code) || (activates && !(t instanceof Node && this.loginWait.contains(t)))) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+      return;
+    }
     if (this.padCapture && !this.capture && e.code === 'Escape') {
       // Pad-Belegung per Tastatur abbrechen — Esc darf dann nicht noch "Zurück" auslösen.
       e.preventDefault();
@@ -1556,7 +1778,9 @@ export class Menu {
     this.endCapture();
     if (same) return; // zweiter Druck auf dasselbe Feld = abbrechen
     const dev = this.padDevice;
-    if (!dev) return;
+    // Ohne Pad wartete das Feld auf einen Knopf, den es nicht gibt (Review B1) — die Felder sind dann gesperrt
+    // (padTest), das hier fängt einen Klick vor dem nächsten Frame ab.
+    if (!dev || !dev.connected) return;
     b.textContent = 'Knopf …';
     b.setAttribute('aria-pressed', 'true');
     let stop: () => void = () => undefined;
@@ -1694,9 +1918,10 @@ export class Menu {
 
   /**
    * Stick-Test (Plan 011 §1.7): beide Sticks als 24×24-Pixel-Raster (ganzzahlig ×2 hoch), Ringe = Deadzone innen/außen,
-   * Punkt = Rohwert, cyan sobald er die Deadzone verlässt. Läuft nur, solange Einstellungen offen sind.
+   * Punkt = Rohwert, cyan sobald er die Deadzone verlässt. Läuft nur, solange Einstellungen offen sind; meldet dabei
+   * jeden Wechsel "Pad verbunden" ⇄ "keins" an onConnected (auch einmal zu Beginn).
    */
-  private padTest(): HTMLElement {
+  private padTest(onConnected: (connected: boolean) => void): HTMLElement {
     const S = 24;
     const canvas = h('canvas', 'vel-pad-test');
     canvas.width = S * 2 + 4;
@@ -1730,10 +1955,16 @@ export class Menu {
     };
     let raf = 0;
     let lastState = '';
+    let lastConn: boolean | null = null;
     const frame = (): void => {
       raf = requestAnimationFrame(frame);
       const p = this.pad?.get();
       const dev = this.padDevice;
+      const conn = dev?.connected === true;
+      if (conn !== lastConn) {
+        lastConn = conn;
+        onConnected(conn);
+      }
       if (!g || !p) return;
       const sig = `${p.deadzoneInner}/${p.deadzoneOuter}`;
       if (sig !== bgSig) {
@@ -1773,8 +2004,19 @@ export class Menu {
     const deg = (v: number): string => `${Math.round(v)}°/s`;
     const yaw = this.padRange('Kamera X', 'yawRate', 10, deg);
     yaw.querySelector('input')?.setAttribute('data-pad-initial', '');
+    // Belegen geht nur mit verbundenem Pad (Review B1): Felder sperren und sagen, warum. Chrome zeigt ein Pad erst nach
+    // dem ersten Druck — darum "eine Taste drücken".
+    const noPad = h('p', 'vel-setting-hint vel-pad-bind-state', 'Kein Controller verbunden — einstecken und eine Taste am Pad drücken, dann lässt sich belegen.');
+    noPad.setAttribute('role', 'status');
+    const onConnected = (conn: boolean): void => {
+      noPad.hidden = conn;
+      for (const b of panel.querySelectorAll<HTMLButtonElement>('button[data-pad-bind]')) {
+        b.disabled = !conn;
+        if (!conn && this.padCapture?.button === b) this.endPadCapture();
+      }
+    };
     panel.append(
-      this.padTest(),
+      this.padTest(onConnected),
       yaw,
       this.padRange('Kamera Y', 'pitchRate', 10, deg),
       h('div', 'vel-setting-hint', 'Drehrate (links/rechts, hoch/runter) bei vollem Ausschlag. Zum Strafen hoch lassen — langsames Drehen kostet in der Luft Tempo.'),
@@ -1799,6 +2041,7 @@ export class Menu {
       ),
       h('div', 'vel-setting-hint', 'Auto erkennt das Pad. Unter Steam Input meldet sich oft jedes Pad als Xbox — dann hier festlegen.'),
       h('h3', 'vel-h3', 'Belegung'),
+      noPad,
       this.padSegmented<'bumper' | 'classic'>(
         'Vorlage',
         [
@@ -1817,11 +2060,14 @@ export class Menu {
       h(
         'div',
         'vel-setting-hint',
-        'Feld wählen, dann Knopf drücken (5 s; B halten, Start oder Esc bricht ab). ',
+        // Frist aus dem Pad-Kern (PadInput zählt sie herunter) — nie als Zahl hier, sonst läuft der Text davon.
+        `Feld wählen, dann Knopf drücken (${PAD_CAPTURE_TIMEOUT} s; B halten, Start oder Esc bricht ab). `,
         'Neustart: Knopf kurz halten. Bumper-Sprung: Sprung auf der Schulter, der Daumen bleibt am Kamera-Stick. Start = Pause.',
       ),
       h('div', 'vel-row', this.btn('Controller-Standard', 'vel-btn--small', () => store.reset())),
     );
+    // Sofort richtig (nicht erst im ersten Frame des Stick-Tests): sonst ginge ein Klick in dieses Fenster durch.
+    onConnected(this.padDevice?.connected === true);
     return panel;
   }
 
@@ -2038,7 +2284,7 @@ export class Menu {
       this.btn('Einstellungen', '', () => this.showSettings()),
       this.btn('Kosmetik', 'vel-cosmetics-btn', () => this.showCosmetics()),
       this.btn('Steuerung', '', () => this.showControls()),
-      this.btn('Vollbild', '', () => this.emit('fullscreen', undefined)),
+      this.btn('Vollbild', '', () => this.requestFullscreen()),
       h(
         'p',
         'vel-tip',
@@ -2938,9 +3184,10 @@ export class Menu {
       [['F'], ['Zurück zum letzten ', mono('CP'), ' (Timer läuft weiter; im Training: Start der Stufe)']],
       [labels(b.demo), 'Training: Vorführung der Stufe — jede Taste übernimmt wieder'],
       [['Esc'], 'Pause'],
-      [['F1'], 'Tuning-Panel (Movement live einstellen)'],
       [['M'], 'Ton an/aus'],
     ];
+    // F1 wirkt nur mit Dev-Werkzeugen (Web immer, Desktop nur --dev) — die Hilfe soll nichts Totes anbieten.
+    if (devToolsAllowed(this.platform)) keys.splice(keys.length - 1, 0, [['F1'], 'Tuning-Panel (Movement live einstellen)']);
     const dl = h('dl', 'vel-keys');
     for (const [ks, what] of keys) {
       dl.append(h('dt', '', ...ks.map((k) => h('span', 'vel-kbd', k))), h('dd', 'vel-text', ...(Array.isArray(what) ? what : [what])));

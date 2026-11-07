@@ -67,8 +67,10 @@ function rig(argv: string[], opts: { load?: () => unknown; env?: Record<string, 
       return fake;
     },
   });
-  const ctx = new FakeCtx(opts.dev ?? argv.includes('--dev'));
-  mod.beforeReady?.();
+  // Wie die Hülle: derselbe Dev-Modus für beforeReady (Steam-Modus) und setup (Achievements).
+  const dev = opts.dev ?? argv.includes('--dev');
+  const ctx = new FakeCtx(dev);
+  mod.beforeReady?.({ dev });
   mod.setup(ctx);
   if (opts.window !== false) mod.windowReady();
   return {
@@ -95,6 +97,12 @@ describe('electron/steam — Flag, Laden, init', () => {
     expect(steamMode(['x', '--steam', '--steam-fake'], {})).toBe('blocked');
     expect(steamMode(['x', '--steam', '--steam-fake', '--dev'], {})).toBe('fake');
     expect(steamMode(['x', '--steam', '--steam-fake=fail', '--dev'], {})).toBe('fake-fail');
+  });
+
+  it('--dev im Paket wirkungslos: der Fake bleibt gesperrt (Review C1)', () => {
+    // dev = !app.isPackaged && --dev (electron/policy isDevRun) — im Paket ist --dev nur eine Steam-Startoption.
+    expect(steamMode(['x', '--steam', '--steam-fake', '--dev'], {}, false)).toBe('blocked');
+    expect(steamMode(['x', '--steam', '--steam-fake'], {}, true)).toBe('fake');
   });
 
   it('Debug-Zugang erkannt (Playwright/CDP/Inspector)', () => {

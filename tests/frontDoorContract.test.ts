@@ -161,7 +161,7 @@ describe('PS2-Ansichten gegen den Mock (Profil + Moderation)', () => {
 // ------------------------------------------------------------------ Plan 011 §1.5/§1.6: Glyphen + Pad-Navigation
 
 import { glyphFamily, padCodeGlyph, promptGlyphs } from '../src/ui/padGlyphs';
-import { pickInDirection } from '../src/ui/padNav';
+import { pickInDirection, refocusIndex } from '../src/ui/padNav';
 import { FRONT_DOOR_PROMPTS } from '../src/ui/menuLab/types';
 import type { FrontDoorGlyphFamily } from '../src/ui/menuLab/types';
 import { PAD_BUTTONS, PAD_PRESETS } from '../src/engine/pad/types';
@@ -250,5 +250,28 @@ describe('Pad-Navigation: Richtungswahl (Plan 011 §1.5)', () => {
     const aligned = r(0, 200);
     const offset = r(300, 50);
     expect(pickInDirection(from, [offset, aligned], 0, 1)).toBe(1);
+  });
+});
+
+describe('Pad-Navigation: Fokus nach Teil-Neuaufbau (Review B3)', () => {
+  it('gleiche Signatur wird wiedergefunden (auch verschoben), am nächsten zur alten Position', () => {
+    expect(refocusIndex(['a', 'b', 'c'], 'b', 1)).toEqual({ index: 1, lost: false });
+    // Zeile davor kam hinzu: "b" rutscht auf 2 — derselbe Knopf, kein Verlust.
+    expect(refocusIndex(['x', 'a', 'b', 'c'], 'b', 1)).toEqual({ index: 2, lost: false });
+    // Zweimal dieselbe Signatur (zwei "Ghost"-Knöpfe): der nähere gewinnt.
+    expect(refocusIndex(['g', 'n', 'g', 'n'], 'g', 3)).toEqual({ index: 2, lost: false });
+  });
+
+  it('ersetztes Element (Online-Zeile, anderer Text): Rückfall auf den nächstliegenden Index statt null, als Verlust markiert', () => {
+    // Vorher: kein Treffer → Fokus null → das nächste A klickte blind das Startelement (Primärknopf).
+    expect(refocusIndex(['prim', 'neu', 'menu'], 'login', 1)).toEqual({ index: 1, lost: true });
+    // Letztes Element verschwunden → geklemmt auf das neue letzte.
+    expect(refocusIndex(['a', 'b'], 'c', 2)).toEqual({ index: 1, lost: true });
+    expect(refocusIndex(['a', 'b'], 'c', -1)).toEqual({ index: 0, lost: true });
+  });
+
+  it('nichts bedienbar oder nie fokussiert → -1 (dann gilt das Startelement, kein Verlust)', () => {
+    expect(refocusIndex([], 'a', 0)).toEqual({ index: -1, lost: false });
+    expect(refocusIndex(['a', 'b'], '', -1)).toEqual({ index: -1, lost: false });
   });
 });

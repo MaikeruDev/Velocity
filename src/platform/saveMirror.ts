@@ -101,11 +101,27 @@ const DEFAULT_TIMERS: MirrorTimers = {
   clear: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
 };
 
+/** Nach einem gescheiterten Schreiben: neuer Versuch nach delay × 2^n, höchstens so lange warten. */
+export const SAVE_RETRY_MAX_MS = 60000;
+
+interface MirrorSnapshot {
+  /** Stand ohne Zeitstempel (Vergleich "unverändert"). */
+  readonly key: string;
+  readonly json: string;
+}
+
 /** Entprelltes Schreiben: `markDirty()` nach jeder Änderung, `flush()` synchron beim Beenden. */
 export class SaveMirror {
   private timer: unknown = null;
   private dirty = false;
+  /** Zuletzt ERFOLGREICH geschriebener Stand (ohne Zeitstempel) — erst nach dem Schreiben gesetzt (Review C5). */
   private last: string | null = null;
+  private failures = 0;
+  /** Laufende Nummer der async-Schreibvorgänge: ein später fertiges älteres Ergebnis überschreibt nichts. */
+  private seq = 0;
+  private doneSeq = 0;
+  /** Stand, der gerade asynchron geschrieben wird — derselbe Stand wird nicht doppelt angestoßen. */
+  private inflight: string | null = null;
 
   constructor(
     private readonly storage: MirrorStorage,
@@ -120,46 +136,79 @@ export class SaveMirror {
 
   markDirty(): void {
     this.dirty = true;
-    if (this.timer !== null) this.timers.clear(this.timer);
-    this.timer = this.timers.set(() => {
-      this.timer = null;
-      void this.writeAsync();
-    }, this.delayMs);
+    this.schedule(this.delayMs);
   }
 
-  /** Synchron schreiben, falls etwas offen ist (pagehide/Beenden). */
+  /** Synchron schreiben, falls etwas offen ist (pagehide/Beenden/Abmelden). false = nicht geschrieben, bleibt offen. */
   flush(): boolean {
-    if (this.timer !== null) {
-      this.timers.clear(this.timer);
-      this.timer = null;
-    }
+    this.cancelTimer();
     if (!this.dirty) return true;
-    const json = this.snapshot();
-    if (json === null) return true;
-    this.dirty = false;
-    return this.mirror.writeSync(json);
+    // Gegen den bestätigten Stand vergleichen (nicht gegen einen noch laufenden): beim Beenden lieber doppelt schreiben.
+    const snap = this.snapshot(false);
+    if (snap === null) {
+      this.dirty = false;
+      return true;
+    }
+    const ok = this.mirror.writeSync(snap.json);
+    if (ok) this.succeeded(snap.key);
+    return ok;
   }
 
   dispose(): void {
+    this.cancelTimer();
+  }
+
+  private schedule(ms: number): void {
+    this.cancelTimer();
+    this.timer = this.timers.set(() => {
+      this.timer = null;
+      void this.writeAsync();
+    }, ms);
+  }
+
+  private cancelTimer(): void {
     if (this.timer !== null) this.timers.clear(this.timer);
     this.timer = null;
   }
 
-  private async writeAsync(): Promise<void> {
-    if (!this.dirty) return;
-    const json = this.snapshot();
+  private succeeded(key: string): void {
+    this.last = key;
     this.dirty = false;
-    if (json === null) return;
-    const ok = await this.mirror.write(json).catch(() => false);
-    if (!ok) this.dirty = true; // beim nächsten Anlass erneut
+    this.failures = 0;
   }
 
-  /** Spiegel-JSON ohne Zeitstempel vergleichen: unveränderter Stand → kein Schreiben (null). */
-  private snapshot(): string | null {
-    const json = serializeSave(this.storage, 0);
-    if (json === this.last) return null;
-    this.last = json;
-    return serializeSave(this.storage);
+  private async writeAsync(): Promise<void> {
+    if (!this.dirty) return;
+    const snap = this.snapshot(true);
+    if (snap === null) {
+      this.dirty = false;
+      return;
+    }
+    // Während des Schreibens gilt der Stand als gesichert; eine neue Änderung setzt dirty wieder.
+    this.dirty = false;
+    this.inflight = snap.key;
+    const seq = ++this.seq;
+    const ok = await this.mirror.write(snap.json).catch(() => false);
+    if (this.inflight === snap.key) this.inflight = null;
+    if (seq < this.doneSeq) return;
+    this.doneSeq = seq;
+    if (ok) {
+      this.last = snap.key;
+      this.failures = 0;
+      return;
+    }
+    // Gescheitert (Datei gesperrt, Hauptprozess gab auf): offen lassen und selbst neu planen — sonst ginge der Stand
+    // erst mit der nächsten Änderung (oder nie) auf die Platte.
+    this.dirty = true;
+    this.failures++;
+    this.schedule(Math.min(SAVE_RETRY_MAX_MS, this.delayMs * 2 ** this.failures));
+  }
+
+  /** Spiegel-JSON ohne Zeitstempel mit dem zuletzt geschriebenen (und ggf. dem laufenden) vergleichen: gleich → null. */
+  private snapshot(skipInflight: boolean): MirrorSnapshot | null {
+    const key = serializeSave(this.storage, 0);
+    if (key === this.last || (skipInflight && key === this.inflight)) return null;
+    return { key, json: serializeSave(this.storage) };
   }
 }
 
@@ -197,7 +246,10 @@ export function hookStorageWrites(proto: StorageProtoLike, target: object, onWri
   };
 }
 
-/** Komplettpaket für main.ts (S2b): einspielen, Schreibzugriffe beobachten, beim Verlassen synchron sichern. */
+/**
+ * Komplettpaket für main.ts (S2b): einspielen, Schreibzugriffe beobachten, beim Verlassen synchron sichern — auch
+ * auf Bitten des Hauptprozesses (Windows-Abmeldung/Herunterfahren: dort kommt kein pagehide, Review C5).
+ */
 export function installSaveMirror(
   mirror: DesktopSaveMirror | null,
   storage: MirrorStorage & object,
@@ -209,5 +261,8 @@ export function installSaveMirror(
   const proto = Object.getPrototypeOf(storage) as StorageProtoLike;
   hookStorageWrites(proto, storage, () => sm.markDirty());
   win.addEventListener('pagehide', () => sm.flush());
+  mirror.onFlushRequest?.(() => {
+    if (!sm.flush()) console.warn('[velocity] Spielstand-Spiegel nicht geschrieben — der Hauptprozess versucht es beim Beenden erneut');
+  });
   return sm;
 }

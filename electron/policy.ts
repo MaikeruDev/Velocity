@@ -124,6 +124,50 @@ export function isExternalAllowed(url: string, supabaseOrigin: string | null): b
   return supabaseOrigin !== null && u.origin === supabaseOrigin;
 }
 
+/**
+ * Dev-Modus (DevTools, Admin, F8, `__vel`, --query/--dev-url/--window-mode, Fehler-Injektion) nur UNVERPACKT
+ * (`electron .`): im Paket ist `--dev` bloß eine Steam-Startoption, die jeder Spieler setzen kann (Review C1).
+ */
+export function isDevRun(argv: readonly string[], packaged: boolean): boolean {
+  return !packaged && argv.includes('--dev');
+}
+
+/** Was der Hauptprozess von einer Taste wissen muss (Electron `Input` aus before-input-event erfüllt es). */
+export interface KeyInputLike {
+  readonly type: string;
+  readonly key: string;
+  readonly alt: boolean;
+  readonly control: boolean;
+  readonly meta: boolean;
+  readonly shift: boolean;
+  readonly isAutoRepeat: boolean;
+}
+
+/**
+ * Alt+Enter und F11 schalten den Anzeigemodus — das App-Menü, das solche Kürzel sonst trüge, gibt es nicht
+ * (Strg+W/Strg+R/F5/Strg+Shift+I bleiben deshalb wirkungslos). Gehaltene Tasten zählen einmal (Review C7).
+ */
+export function isDisplayModeToggle(i: KeyInputLike): boolean {
+  if (i.type !== 'keyDown' || i.isAutoRepeat || i.control || i.meta || i.shift) return false;
+  return i.key === 'F11' ? !i.alt : i.key === 'Enter' && i.alt;
+}
+
+/**
+ * Fehler-Injektion für den Desktop-Smoke (Review C4/C6), nur mit Dev-Modus (unverpackt + --dev):
+ * start = start() wirft · setup = jedes Modul-setup wirft vor seinen Kanälen · crash-once / crash = Renderer stürzt
+ * nach dem Laden ab (einmal / jedes Mal) · load-once / load = Laden scheitert (einmal / jedes Mal) · noshow =
+ * ready-to-show wird ignoriert · hang = Renderer hängt einmal (Endlosschleife) bis 'unresponsive'.
+ */
+export const FAULTS = ['start', 'setup', 'crash-once', 'crash', 'load-once', 'load', 'noshow', 'hang'] as const;
+export type Fault = (typeof FAULTS)[number];
+
+export function faultArg(argv: readonly string[], dev: boolean): Fault | null {
+  if (!dev) return null;
+  const hit = argv.find((a) => a.startsWith('--fault='));
+  const name = hit ? hit.slice('--fault='.length) : null;
+  return FAULTS.find((f) => f === name) ?? null;
+}
+
 /** IPC-Kanäle (gespiegelt in preload.cts, das als Sandbox-Preload nichts importieren darf). */
 export const IPC = {
   info: 'vel:info',
@@ -134,4 +178,8 @@ export const IPC = {
   saveRead: 'vel:save:read',
   saveWrite: 'vel:save:write',
   saveWriteSync: 'vel:save:write-sync',
+  /** Hauptprozess → Renderer: jetzt synchron sichern (Windows-Abmeldung: kein pagehide, Review C5). */
+  saveFlush: 'vel:save:flush',
+  /** Hauptprozess → Renderer: Modus hat gewechselt (Alt+Enter/F11 ohne Umweg über das Menü). */
+  windowMode: 'vel:window:mode',
 } as const;

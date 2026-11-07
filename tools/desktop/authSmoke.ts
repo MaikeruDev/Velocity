@@ -160,13 +160,19 @@ try {
         /^http:\/\/127\.0\.0\.1:4782[345]\/auth\/callback\?state=[0-9a-f]{32}$/.test(rt),
       au ? `${au.origin}${au.pathname} provider=${au.searchParams.get('provider')} method=${au.searchParams.get('code_challenge_method')} redirect_to=${rt}` : 'keine URL',
     );
-    // Zweiter Klick während des Wartens: derselbe Versuch, dieselbe URL erneut.
-    await page.click('.vel-account .vel-discord-btn');
+    // Erneut öffnen während des Wartens: derselbe Versuch, dieselbe URL erneut. Der Warte-Dialog ("Login läuft",
+    // src/ui/Menu.ts) deckt den Login-Knopf ab und bietet dafür "Browser erneut öffnen"; ohne Dialog der Knopf selbst.
+    const waitDialog = await page.waitForSelector('.vel-login-wait .vel-login-again', { timeout: 2000 }).then(() => true, () => false);
+    await page.click(waitDialog ? '.vel-login-wait .vel-login-again' : '.vel-account .vel-discord-btn');
     for (let i = 0; i < 30 && urls.length < 2; i++) {
       await sleep(100);
       urls = await app.evaluate(() => [...((globalThis as { __velAuthOpened?: string[] }).__velAuthOpened ?? [])]);
     }
-    check('zweiter Klick: dieselbe Auth-URL erneut', urls.length === 2 && urls[1] === urls[0], `${urls.length} geöffnet${urls.length === 2 ? (urls[1] === urls[0] ? ', gleich' : ', VERSCHIEDEN') : ''}`);
+    check(
+      `erneut öffnen (${waitDialog ? 'Warte-Dialog' : 'Login-Knopf'}): dieselbe Auth-URL erneut`,
+      urls.length === 2 && urls[1] === urls[0],
+      `${urls.length} geöffnet${urls.length === 2 ? (urls[1] === urls[0] ? ', gleich' : ', VERSCHIEDEN') : ''}`,
+    );
 
     if (authUrl && rt) {
       // Browser spielen: Authorize → Discord-Adresse mit state (UUID des Flows) → Abbruch an Supabase melden.
@@ -192,13 +198,14 @@ try {
         const keys = Object.keys(localStorage);
         return {
           toast: t && !t.hidden ? (t.textContent ?? '') : null,
+          wait: document.querySelector('.vel-login-wait') !== null,
           state: window.__vel?.state().gameState ?? null,
           verifier: keys.some((k) => /^sb-.+-auth-token(-flow-.+)?-code-verifier$/.test(k)),
           session: keys.filter((k) => /^sb-.+-auth-token$/.test(k)),
         };
       });
       await page.screenshot({ path: `${OUT}/auth-denied.png` });
-      check('lesbarer Fehler im Menü (Toast), Spiel läuft weiter', st.toast !== null && /Anmeldung fehlgeschlagen: Anmeldung abgebrochen/.test(st.toast) && st.state === 'title', `Toast "${st.toast}", gameState ${st.state}`);
+      check('lesbarer Fehler im Menü (Toast), Spiel läuft weiter', st.toast !== null && /Anmeldung fehlgeschlagen: Anmeldung abgebrochen/.test(st.toast) && st.state === 'title', `Toast "${st.toast}", gameState ${st.state}, Warte-Dialog noch offen ${st.wait}`);
       check('PKCE-Verifier im Renderer-Storage, Sitzung nicht in localStorage', st.verifier && st.session.length === 0 && !existsSync(file), `Verifier ${st.verifier}, Sitzungsschlüssel ${st.session.length}, session.bin ${existsSync(file)}`);
     }
   }

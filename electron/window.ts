@@ -1,11 +1,15 @@
 /**
  * Hauptfenster + Anzeigemodus (Plan 011 Schritt 2.3, Hauptprozess-Seite). Modus und Fenstergröße liegen in
  * `userData/desktop.json`. Vollbild macht der Hauptprozess — keine Geste, kein Keyboard Lock nötig.
+ * Dazu: Drosselung nur minimiert/versteckt (C2), Bildschirm wach halten im Vordergrund (C3), Alt+Enter/F11 (C7).
+ * Gezeigt wird das Fenster von main.ts (erstes Bild oder Rückfall nach Zeitlimit, C4).
  */
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { BrowserWindow, screen, type Rectangle } from 'electron';
+import { BrowserWindow, powerSaveBlocker, screen, type Rectangle } from 'electron';
 import type { DisplayMode } from '../src/platform/bridgeTypes.js';
+import { IPC, isDisplayModeToggle } from './policy.js';
+import { DisplaySleepGuard, isForeground } from './power.js';
 
 export const MIN_WIDTH = 1280;
 export const MIN_HEIGHT = 720;
@@ -74,7 +78,13 @@ export interface MainWindowOptions {
   readonly modeOverride: DisplayMode | null;
 }
 
-export function createMainWindow(o: MainWindowOptions): BrowserWindow {
+export interface MainWindow {
+  readonly win: BrowserWindow;
+  /** Bildschirm-wach-Blocker (Smoke prüft `powerSaveBlocker.isStarted(blockerId)`). */
+  readonly displaySleep: DisplaySleepGuard;
+}
+
+export function createMainWindow(o: MainWindowOptions): MainWindow {
   const area = screen.getPrimaryDisplay().workArea;
   // Kleine Monitore (unter 1280×720 Arbeitsfläche) dürfen das Minimum nicht unerfüllbar machen.
   const minW = Math.min(MIN_WIDTH, area.width);
@@ -103,17 +113,56 @@ export function createMainWindow(o: MainWindowOptions): BrowserWindow {
       webviewTag: false,
       spellcheck: false,
       devTools: o.dev,
-      // Spiel läuft weiter, wenn das Fenster kurz verdeckt ist (Pause regelt das Spiel selbst über Blur).
+      // Spiel läuft weiter, wenn das Fenster kurz verdeckt ist (Pause regelt das Spiel selbst über Blur). Schaltet
+      // laut Electron auch die Page Visibility ab — deshalb minimiert/versteckt wieder an (followWindow unten).
       backgroundThrottling: false,
     },
   });
-  win.once('ready-to-show', () => win.show());
   // Bounds nur im Fenstermodus merken (getNormalBounds liefert auch aus dem Vollbild die Fenstergröße).
   win.on('close', () => {
     o.state.state.bounds = win.getNormalBounds();
     o.state.save();
   });
-  return win;
+
+  const displaySleep = new DisplaySleepGuard(powerSaveBlocker);
+  // Ein Abgleich für alle Fenster-Ereignisse (sie kommen teils doppelt oder in wechselnder Reihenfolge).
+  const followWindow = (): void => {
+    if (win.isDestroyed()) return;
+    // C2: minimiert/versteckt Drosselung AN → Chromium meldet die Seite als verborgen: visibilitychange (Game
+    // pausiert, Loop holt nichts nach), rAF ≈ 0 statt voller Bildrate hinter dem Pause-Menü. Gemessen ohne
+    // Playwright: aus = 'visible' + 143 rAF/s minimiert, so = 'hidden' + 0 (Playwright hält Seiten selbst sichtbar).
+    win.webContents.setBackgroundThrottling(win.isMinimized() || !win.isVisible());
+    // C3: Bildschirm wach nur, solange das Spiel vorn ist.
+    displaySleep.set(isForeground(win));
+  };
+  win.on('minimize', followWindow);
+  win.on('restore', followWindow);
+  win.on('hide', followWindow);
+  win.on('show', followWindow);
+  win.on('focus', followWindow);
+  win.on('blur', followWindow);
+  win.on('closed', () => displaySleep.dispose());
+  // Jeder Wechsel (Kürzel, Menü, OS) geht an den Renderer — sonst zeigt die offene Einstellung den alten Modus.
+  const tellMode = (): void => {
+    if (!win.isDestroyed()) win.webContents.send(IPC.windowMode, win.isFullScreen() ? 'fullscreen' : 'windowed');
+  };
+  win.on('enter-full-screen', tellMode);
+  win.on('leave-full-screen', tellMode);
+
+  // C7: Alt+Enter / F11 schalten den Anzeigemodus wie die Einstellungen (gespeichert in desktop.json). Die Seite
+  // bekommt die Taste nicht (Enter bestätigte sonst im Menü) — auch nicht das zugehörige keyUp.
+  const swallowUp = new Set<string>();
+  win.webContents.on('before-input-event', (e, input) => {
+    if (input.type === 'keyUp' && swallowUp.delete(input.code)) {
+      e.preventDefault();
+      return;
+    }
+    if (!isDisplayModeToggle(input)) return;
+    e.preventDefault();
+    swallowUp.add(input.code);
+    void setDisplayMode(win, o.state, win.isFullScreen() ? 'windowed' : 'fullscreen');
+  });
+  return { win, displaySleep };
 }
 
 /** Modus anwenden und speichern; löst auf, sobald das Fenster den Wechsel gemeldet hat (max. 1.5 s). */

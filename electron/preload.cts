@@ -19,6 +19,14 @@ const bridge: DesktopBridge = {
   window: {
     getMode: () => ipcRenderer.invoke('vel:window:get') as Promise<DisplayMode>,
     setMode: (mode) => ipcRenderer.invoke('vel:window:set', mode === 'windowed' ? 'windowed' : 'fullscreen') as Promise<DisplayMode>,
+    // Alt+Enter/F11 schaltet im Hauptprozess (C7) — der Renderer erfährt es nur hierüber.
+    onModeChange: (cb) => {
+      const fn = (_e: unknown, mode: unknown): void => cb(mode === 'windowed' ? 'windowed' : 'fullscreen');
+      ipcRenderer.on('vel:window:mode', fn);
+      return () => {
+        ipcRenderer.removeListener('vel:window:mode', fn);
+      };
+    },
   },
   openExternal: (url) => ipcRenderer.invoke('vel:open-external', String(url)) as Promise<boolean>,
   saveMirror: {
@@ -28,6 +36,14 @@ const bridge: DesktopBridge = {
     },
     write: (json) => ipcRenderer.invoke('vel:save:write', String(json)) as Promise<boolean>,
     writeSync: (json) => ipcRenderer.sendSync('vel:save:write-sync', String(json)) === true,
+    // Windows-Abmeldung (query-session-end): kein pagehide — der Hauptprozess bittet ausdrücklich ums Sichern.
+    onFlushRequest: (cb) => {
+      const fn = (): void => cb();
+      ipcRenderer.on('vel:save:flush', fn);
+      return () => {
+        ipcRenderer.removeListener('vel:save:flush', fn);
+      };
+    },
   },
   // S3 Desktop-Login (Plan 011 §3.1); Kanäle = AUTH_IPC in electron/auth.ts. Ohne Login-Modul lehnt invoke ab → Renderer meldet es.
   auth: {

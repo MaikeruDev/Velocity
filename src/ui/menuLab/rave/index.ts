@@ -328,11 +328,15 @@ function createRaveDoor(): FrontDoor {
     versionEl = el('span', 'rv-fine-ver');
     fineText.append(versionEl);
     const keys = el('span', 'rv-fine-keys', 'PFEILE WÄHLEN · ENTER STARTET · 1–4 AKT');
-    const admin = button('rv-fine-btn rv-fine-admin', () => ctx?.openAdmin());
-    admin.append('ADMIN ', el('span', 'rv-key rv-key--s', 'F8'));
     const lab = button('rv-fine-btn rv-fine-lab', () => ctx?.openLab());
     lab.textContent = 'MENÜ-LABOR';
-    fine.append(fineText, keys, lab, admin);
+    fine.append(fineText, keys, lab);
+    // Admin nur, wo er etwas tut (Desktop ohne --dev: nein — er entwertete Achievements, Plan 011 §2.2.13).
+    if (c.adminMenu) {
+      const admin = button('rv-fine-btn rv-fine-admin', () => ctx?.openAdmin());
+      admin.append('ADMIN ', el('span', 'rv-key rv-key--s', 'F8'));
+      fine.append(admin);
+    }
 
     safe.append(head, left, right, fine);
 

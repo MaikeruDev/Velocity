@@ -2767,3 +2767,188 @@ Sobald main.ts `platform()` importiert, landet `platform/desktop.ts` im Web-Bund
 Der Adapter schrieb `versions: { electron: bridge.versions.electron, … }` — der Minifier lässt Eigenschaftsnamen
 stehen, der Grep aus Plan 011 §2.2 fand "electron" zweimal. Kein Electron-Code, aber die Messung soll 0 sein.
 **Richtig:** das Bridge-Objekt durchreichen (`versions: bridge.versions`), Typen bleiben in bridgeTypes.
+
+## 296. Supabase Auth nimmt Loopback-Rücksprünge ohne Allow-List an (Plan 011 S3, Desktop-Login)
+
+GoTrue `IsRedirectURLValid`: Ist der Host eine IP, zählt nur `ip.IsLoopback()` — `http://127.0.0.1:<jeder Port>/<jeder
+Pfad>?<jede Query>` ist ohne Eintrag in den Redirect URLs gültig (RFC 8252). Alles andere muss in der Allow-List stehen,
+sonst fällt GoTrue STILL auf die Site-URL zurück (kein Fehler beim Authorize). **Prüfen ohne Login:** `GET
+/auth/v1/authorize?provider=discord&redirect_to=…` mit `redirect: 'manual'` → `state` aus der Discord-Location →
+`GET /auth/v1/callback?state=<uuid>&error=access_denied&error_description=probe` → die Location ist der gespeicherte,
+geprüfte Rücksprung (live 06.11.: 127.0.0.1 samt eigenem `?state` kam an, fremde Domain → Site-URL).
+
+## 297. GoTrue-OAuth-`state` ist eine UUID, kein JWT mehr (Plan 011 S3, Desktop-Login)
+
+Früher stand der geprüfte `referrer` im JWT-`state`; heute ist `state` die ID der `flow_state`-Zeile (serverseitig).
+Das `redirect_to` in der Discord-URL ist nur das durchgereichte Roh-Argument, nicht der geprüfte Wert. Ein "Redirect
+nicht erlaubt" lässt sich vor dem Login also nicht erkennen — am Desktop meldet ihn nur die Zeitüberschreitung (der
+Text nennt den Grund).
+
+## 298. Allow-List vergleicht MIT Query — eigener `?state=` braucht `/**`-Einträge (Plan 011 S3, Desktop-Login)
+
+`IsRedirectURLValid` matcht die URL ohne Fragment, aber mit Query. Ein exakter Eintrag
+`http://127.0.0.1:47823/auth/callback` passt auf `…/auth/callback?state=…` NICHT. Falls je nötig:
+`http://127.0.0.1:47823/**` usw. GoTrue erhält die eigene Query beim Anhängen von `code`/`error`.
+
+## 299. supabase-js 2.119: PKCE-Verifier unter mehreren Schlüsseln — eigener Storage nur per EXAKTEM Schlüssel (Plan 011 S3)
+
+Seit dem "slot ring" schreibt auth-js `<storageKey>-code-verifier`, `<storageKey>-flow-<id>-code-verifier` und
+`<storageKey>-flows-code-verifier`; die Sitzung steht unter `<storageKey>` (= `sb-<ref>-auth-token`). Ein Adapter, der
+die Sitzung verschlüsselt, darf nur `key === storageKey` umleiten — ein Präfix-Vergleich finge die Verifier mit ein.
+`signInWithOAuth` liefert `flowId`; `exchangeCodeForSession(code, { flowId })` nimmt genau diesen Verifier.
+`skipBrowserRedirect` hängt bei `signInWithOAuth` KEIN `skip_http_redirect` an — die URL ist im System-Browser öffnbar.
+
+## 300. Electron 45: `safeStorage` synchron ist veraltet — async und Schreiben in Reihe (Plan 011 S3)
+
+`encryptString`/`decryptString`/`isEncryptionAvailable` sind deprecated; `encryptStringAsync`,
+`decryptStringAsync()` (→ `{ result, shouldReEncrypt }`), `isAsyncEncryptionAvailable()`. Weil supabase-js
+Refresh/Abmelden schnell hintereinander schreibt: im Hauptprozess eine Promise-Kette (sonst überholt ein älterer Stand
+den neueren).
+
+## 301. Ein Callback, dann zu: die zweite Verbindung stirbt vor dem Lesen (Plan 011 S3)
+
+Nach der ersten gültigen Antwort `server.close()` + `closeAllConnections()` (auf `res 'close'`). Gemessen 60/60: eine
+zweite, VORHER verbundene Anfrage wird getrennt, bevor der Handler sie sieht. Tests auf "zweiter Callback ignoriert"
+müssen Verbindungsabbruch ODER 410 erlauben. Gegenproben für state/Host/`redirect_to` sind dagegen deterministisch.
+
+## 302. Electron-Logik testbar halten: kein `import … from 'electron'` in Dateien, die Vitest lädt (Plan 011 S3)
+
+`require('electron')` liefert in Node nur den Binary-Pfad — benannte Importe scheitern. Reine Logik
+(`electron/auth.ts`, `session.ts`, injizierte Verschlüsselung/`openExternal`) getrennt von der Verdrahtung
+(`authModule.ts` mit `shell`, `safeStorage`); `import type` aus `modules.ts` ist unkritisch. Ohne Browser am echten
+Electron testbar: ein `--dev`-only-Schalter (`--auth-no-browser`) legt die geprüfte URL in den Hauptprozess.
+
+## 303. steamworks.js 0.4.0 kennt GameOverlayActivated nicht (Plan 011 S4, Steam)
+
+Das `callback.SteamCallback`-Enum hat nur 10 Callbacks, auch das native Binding nicht (String-Suche im `.node`: nur
+`ActivateGameOverlay*`, `SetRichPresence`, `SetAchievement`, `StoreStats`); `IsOverlayEnabled` fehlt ebenfalls.
+**Richtig:** Callback nur registrieren, wenn `SteamCallback.GameOverlayActivated` eine Zahl ist, Pfad Ereignis → Pause
+mit dem Fake testen, offen melden: mit 0.4.0 pausiert Shift+Tab nicht. Vor dem Planen einer Steam-API `client.d.ts` lesen.
+
+## 304. SteamAPI_Init ist synchron — ein Zeitlimit hilft im Hauptprozess nicht (Plan 011 S4, Steam)
+
+Ein hängendes `init()` hält den ganzen Hauptprozess an; `Promise.race` mit Timeout feuert dann nie. Was geht: init erst
+nach dem ersten Bild (`ready-to-show` → `setImmediate`), Renderer wartet asynchron (`ready()` mit Zeitlimit),
+`caps.steam` erst mit aktiver Sitzung true. Ein echter Abbruch bräuchte einen Worker-Thread im selben Prozess (Overlay
+und "Spielt …" hängen am Prozess, der init ruft).
+
+## 305. "Achievements nicht aus Admin" heißt: nicht aus UnlockStore/BestTimes ableiten (Plan 011 S4)
+
+Münze/Katzenpfote/Messer brauchen Medaillen aus mehreren Leveln. Hat das Admin-Menü L1–L3 gesetzt, schaltet ein echter
+L4-Lauf die Münze frei — halb aus Admin-Daten. **Richtig:** eigenes Buch (`velocity.achv.v1`) nur aus dem, was ein
+Live-Ereignis selbst beweist, dieselben `UNLOCKS`-Bedingungen darauf. Test: Admin-Aktionen, danach ein L2-Bronze-Lauf →
+nur `L2_BRONZE`.
+
+## 306. Playwright-Electron hat immer Debug-Zugang (Plan 011 S4)
+
+`_electron.launch` hängt selbst `--inspect=0 --remote-debugging-port=0` an. Mit "Achievements aus bei Debug-Zugang"
+lässt sich die Zustellung nie über Playwright prüfen — das deckt Vitest mit Fake-Kontext ab, die Hülle prüft nur "aus".
+Der eingebaute Fake verlangt außerdem `--dev`.
+
+## 307. LocalMockService baut Rivalen erst beim Bestenlisten-Abruf (Plan 011 S4)
+
+`__vel.raceGhost('level1', 'rival-level1-11')` ohne vorherigen `leaderboard('level1')` → notFound, Game verwirft den
+Race still. **Richtig:** erst die Tafel holen, dann einen `runId` daraus nehmen.
+
+## 308. electron-builder: Whitelist nach `!node_modules/**/*` greift, entpackt aber das ganze Modul (Plan 011 S4)
+
+`files` mit `"!node_modules/**/*"` und danach einzelnen `node_modules/steamworks.js/...`-Pfaden nimmt genau diese
+Dateien auf (ohne die transitive `@types/node`). Mit `asarUnpack` für `.node`/`.dll` legt electron-builder auch
+`index.js`/`package.json` nach app.asar.unpacked — harmlos. Den asar-Kopf liest man ohne Zusatzpaket: UInt32LE an
+Offset 12 = Länge, JSON ab Offset 16 (tools/desktop/check-build.mjs).
+
+## 309. Hänger-Erholung: forcefullyCrashRenderer + sofort loadURL/reload geht verloren (Plan 011 Review C4, Electron)
+
+Die Doku sagt "reload() direkt nach forcefullyCrashRenderer lädt in neuem Prozess". Gemessen (Electron 45,
+`--fault=hang`): weder `loadURL` noch `reload()` direkt danach kommen an — kein `did-finish-load`, Spiel tot, Prozess
+hält den Single-Instance-Lock. **Richtig:** beenden, auf das `render-process-gone` (reason `crashed`) des eigenen
+Beendens warten, DANN `loadURL` (Rückfall-Timer 3 s). `unresponsive` selbst kommt erst nach 17–50 s und nur, wenn
+Eingaben unbeantwortet bleiben.
+
+## 310. Playwright hält Seiten künstlich sichtbar (Plan 011 Review C2, Electron)
+
+Unter `_electron.launch` (und connectOverCDP) bleibt `document.visibilityState` beim Minimieren `'visible'`, kein
+`visibilitychange`. Die Drosselung selbst sieht man trotzdem (rAF über `webContents.executeJavaScript`: 144 → 1/s).
+Echte Page Visibility nur ohne Playwright: Hülle per spawn mit `--remote-debugging-port`, rohes CDP (Node 22 hat
+`WebSocket`), Minimieren per `ShowWindow((Get-Process -Id <pid>).MainWindowHandle, 6)` — per PID, nie per Titel.
+Mit `setBackgroundThrottling(true)` bei minimize/hide: `'hidden'` + Ereignis, Spiel pausiert, 0 rAF/s.
+
+## 311. Fake-Pad ohne __vel (Paket / ohne --dev) (Plan 011 Review C1, Desktop-Smoke)
+
+`navigator.getGamepads` per `Object.defineProperty(navigator, …)` ersetzen genügt: Input fragt ohne connected-Ereignis
+höchstens sekündlich ab, ein schlichtes `new Event('gamepadconnected')` schaltet sofort auf Abfrage je Frame. Damit
+laufen B und das exe ohne Debug-Handle bis "Beenden". Werkzeuge für den Nicht-Dev-Fall warten auf
+`.vel-menu[data-screen="title"]` bzw. `data-door="ready"` statt auf `__vel.ready`, und `?online=mock` zählt dort nicht.
+
+## 312. Smoke "Spiegel beim Schließen" hing an Zufall (Plan 011 Review C5, Desktop-Smoke)
+
+Der Bridge-Test schreibt save.json direkt — der Renderer-Spiegel weiß davon nichts und schreibt beim pagehide nur, wenn
+noch etwas im Debounce (2 s) steht. Grün nur, weil zufällig ein Timer offen war; mit ~10 s mehr Prüfungen davor rot.
+**Richtig:** direkt vor dem Schließen eine frische Änderung — dann prüft der Test wirklich das synchrone Schreiben.
+
+## 313. Aufräumen nach abgeschossener Hülle: EBUSY/EPERM (Plan 011 Review, Desktop-Smoke)
+
+`proc.kill()` beendet nur den Hauptprozess; Renderer/GPU halten userData-Dateien (DawnGraphiteCache,
+`declarative_performance_observer.db`) noch kurz → `rmSync` wirft und reißt das Werkzeug ab. **Richtig:**
+`taskkill /PID <pid> /T /F` + `rmSync(…, { maxRetries, retryDelay })` in try/catch.
+
+## 314. Electron-Kleinkram aus der Review-Runde (Plan 011 Review C7)
+
+- `sendInputEvent` läuft durch `before-input-event` — Alt+Enter/F11 lassen sich ohne OS-Tasten prüfen.
+- Ohne Fuse-Freigabe startet `ELECTRON_RUN_AS_NODE=1 VELOCITY.exe -e "process.exit(42)"` einfach das Spiel.
+- dist-Grep: `velocityDesktop` steht zwangsläufig im Bundle (`detectPlatform` liest die Bridge) — der Plan-Grep
+  (`electron|ipcRenderer|contextBridge|steamworks|require\(`) enthält es nicht und ist 0.
+- Ein Kürzel im Hauptprozess (Alt+Enter/F11) muss den Renderer benachrichtigen (`vel:window:mode`), sonst zeigt die
+  offene Einstellung den alten Modus.
+
+## 315. Playwright `page.evaluate` ist eine Nutzergeste (Plan 011 Review A7/B2, Werkzeuge)
+
+`page.evaluate` läuft per CDP mit `userGesture: true` — jede Auswertung schenkt der Seite ~5 s Nutzeraktivierung
+(`navigator.userActivation.isActive` true, auch nach jedem `__vel.pad(...)`). Ein Fake-Pad-Druck über `evaluate`
+öffnete darum Vollbild, und eine Autoplay-Emulation über `userActivation` schaltete den Ton frei — beides sah "behoben"
+oder "kaputt" aus, ohne dass der Code es war. **Richtig:** für Gesten-Proben >5 s warten und über `newCDPSession` +
+`Runtime.evaluate { userGesture: false }` drücken (menu-check `pressNoGesture`); Autoplay emulieren, indem nur echte
+Eingaben (`isTrusted` keydown/mousedown/pointerdown/click im Capture) zählen (pad-check `AUTOPLAY_GATE`). Ton ist je
+Seite nur einmal freischaltbar: jede Geste-Prüfung (Taste vs. Klick) braucht eine eigene Seite.
+
+## 316. PadNav: Fokus nach Teil-Neuaufbau nie auf null fallen lassen (Plan 011 Review B3, Menü)
+
+Sonst klickt das nächste A blind das Startelement. Rückfall auf den nächsten Index + "unseen": erstes A zeigt nur den
+Fokus. Reine Logik in `refocusIndex` (Vitest ohne DOM).
+
+## 317. Login-Ende ohne Anmeldung muss gemeldet werden (Plan 011 Review B4, Online/Menü)
+
+Sonst hängt jeder "läuft"-Zustand: SupabaseService feuert für Abbruch/Frist/Fehler `onIdentityChange(null)`;
+'cancelled' löst `signIn()` ohne Fehler auf (kein Fehler-Toast). Ein Abbruch, der ankommt, während der Hauptprozess noch
+den Port bindet, muss ebenfalls zählen (Zähler in `LoopbackLogin`, sonst lebt der Versuch bis zur Frist). Und `inert`
+schützt nicht vor `HTMLElement.click()`: Stile, die die Leertaste selbst auslösen (arcade), brauchen das Schlucken der
+Taste im Capture-Listener des Modals.
+
+## 318. Pad-Drift hinter der Pause zeigt sich nicht am Spieler-Yaw (Plan 011 Review A1, Werkzeuge)
+
+In der Pause tickt nichts, `state().yawDeg` steht immer. Die Rate läuft in `InputState.beginFrame` in den Blick und
+springt erst nach "Weiter" — also nach Weiter + 1 Tick messen. Und nur im Pad-Modus OHNE Lock: mit Lock nullt der
+Lock-Verlust beim Pausieren (`releaseAll`) alles, der Fehler bleibt unsichtbar.
+
+## 319. `'\n'` in Template-Strings für Init-Skripte (Plan 011 Review, Werkzeuge)
+
+In einem TS-Template wird `\n` zum echten Zeilenumbruch → das Init-Skript hat einen Syntaxfehler, Playwright verwirft
+es STILL (kein pageerror). **Richtig:** `String.fromCharCode(10)`.
+
+## 320. VOR/NACH-Vergleich ohne Stash (Plan 011 Review, Werkzeuge)
+
+Bei parallelen Strängen: `git archive HEAD | tar -x -C <scratch>/base` + `New-Item -ItemType Junction` für
+node_modules (`cmd //c mklink /J` scheitert in Git Bash an den Pfaden). Dort laufen `npm run sim`, neue
+Vitest-Dateien und Werkzeuge gegen den alten Stand ("war vorher rot").
+
+## 321. "Zustand bis zum nächsten Ereignis" muss auch ohne Ereignis enden (Plan 011 Review N2, Pad)
+
+Ein Merker, der beim Pad-Verlust gesetzt und erst beim Übernehmen gelöscht wird, wirkt auf DASSELBE Pad nach dem
+Wiederkommen (Akku leer → der weckende A-Druck wurde verschluckt). Merker nur setzen, wenn der Grund (zweites Pad =
+Steam-Input-Spiegel) wirklich vorliegt, und in jedem Poll ohne Pad löschen.
+
+## 322. `replayRec.invalid` ≠ Manipulation (Plan 011 Review N3, Game)
+
+`invalid` zählt auch "zu lang", "zu viele Respawns" und ehrliches Umschalten von Auto-Hop. Für die lokale
+Desktop-Sperre ein eigener Merker (`Game.runTampered`: F1-Config, Debug-Teleport/-Tempo, Config ≠
+`movementConfigFor(settings)`, reine Funktion `configTampered`).

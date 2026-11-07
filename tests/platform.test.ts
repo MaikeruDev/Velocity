@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DesktopBridge, DesktopSaveMirror } from '../src/platform/bridgeTypes';
-import { detectPlatform, isDesktopBridge } from '../src/platform/index';
-import { hookStorageWrites, parseSave, restoreSave, SaveMirror, serializeSave, type MirrorStorage, type MirrorTimers } from '../src/platform/saveMirror';
+import { detectPlatform, devToolsAllowed, isDesktopBridge } from '../src/platform/index';
+import { hookStorageWrites, installSaveMirror, parseSave, restoreSave, SaveMirror, serializeSave, type MirrorStorage, type MirrorTimers } from '../src/platform/saveMirror';
 
 /** Plan 011 §2.2/§2.7: Plattform-Erkennung und Speicher-Spiegel (DOM-frei). */
 
@@ -31,20 +31,41 @@ class FakeMirror implements DesktopSaveMirror {
   file: string | null = null;
   asyncWrites = 0;
   syncWrites = 0;
+  /** So viele der nächsten Schreibvorgänge scheitern (Datei gesperrt, Hauptprozess gab auf). */
+  failAsync = 0;
+  failSync = 0;
+  flushRequest: (() => void) | null = null;
   readSync(): string | null {
     return this.file;
   }
   write(json: string): Promise<boolean> {
     this.asyncWrites++;
+    if (this.failAsync > 0) {
+      this.failAsync--;
+      return Promise.resolve(false);
+    }
     this.file = json;
     return Promise.resolve(true);
   }
   writeSync(json: string): boolean {
     this.syncWrites++;
+    if (this.failSync > 0) {
+      this.failSync--;
+      return false;
+    }
     this.file = json;
     return true;
   }
+  onFlushRequest(cb: () => void): () => void {
+    this.flushRequest = cb;
+    return () => {
+      this.flushRequest = null;
+    };
+  }
 }
+
+/** Echte Makro-Runde: das async-Schreiben des Spiegels hat danach sein Ergebnis verarbeitet. */
+const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 /** Manuelle Timer: run() feuert alles Ausstehende. */
 class FakeTimers implements MirrorTimers {
@@ -92,6 +113,42 @@ describe('platform()', () => {
     expect(p.versions?.electron).toBe('45.2.3');
     expect(isDesktopBridge({ version: 2, quit: () => {} })).toBe(false);
     expect(detectPlatform({ velocityDesktop: { foo: 1 } }).kind).toBe('web');
+  });
+
+  it('Moduswechsel von außen (Alt+Enter/F11) kommt beim Renderer an; alte Bridge ohne Ereignis bleibt gültig (Review N1)', () => {
+    // Halter statt let: TS verengt ein let auf null und kennt den Rückruf-Schreibzugriff nicht.
+    const hub: { emit: ((m: 'fullscreen' | 'windowed') => void) | null } = { emit: null };
+    const b = fakeBridge();
+    const p = detectPlatform({
+      velocityDesktop: {
+        ...b,
+        window: {
+          ...b.window,
+          onModeChange: (cb: (m: 'fullscreen' | 'windowed') => void) => {
+            hub.emit = cb;
+            return () => {
+              hub.emit = null;
+            };
+          },
+        },
+      },
+    });
+    const got: string[] = [];
+    const off = p.window?.onModeChange((m) => got.push(m));
+    hub.emit?.('windowed');
+    hub.emit?.('fullscreen');
+    expect(got).toEqual(['windowed', 'fullscreen']);
+    off?.();
+    expect(hub.emit).toBeNull();
+    // Ohne onModeChange in der Bridge: Abo ist ein No-op, kein Wurf.
+    const old = detectPlatform({ velocityDesktop: fakeBridge() });
+    expect(() => old.window?.onModeChange(() => {})()).not.toThrow();
+  });
+
+  it('Dev-Werkzeuge (__vel, Dev-Parameter): Web immer, Desktop nur im Dev-Modus (Review C1)', () => {
+    expect(devToolsAllowed(detectPlatform(undefined))).toBe(true);
+    expect(devToolsAllowed(detectPlatform({ velocityDesktop: fakeBridge() }))).toBe(false);
+    expect(devToolsAllowed(detectPlatform({ velocityDesktop: { ...fakeBridge(), dev: true } }))).toBe(true);
   });
 });
 
@@ -148,12 +205,79 @@ describe('Speicher-Spiegel', () => {
     expect(parseSave(m.file)?.get('velocity.a')).toBe('2');
   });
 
+  it('Schreibfehler im Hintergrund: neuer Versuch ohne neue Änderung (Review C5)', async () => {
+    const s = new MemStorage();
+    const m = new FakeMirror();
+    const t = new FakeTimers();
+    const sm = new SaveMirror(s, m, 2000, t);
+    s.setItem('velocity.a', '1');
+    m.failAsync = 1;
+    sm.markDirty();
+    t.run();
+    await settle();
+    expect(m.asyncWrites).toBe(1);
+    expect(m.file).toBeNull();
+    expect(sm.pending).toBe(true);
+    // Ohne weitere Änderung muss ein neuer Versuch geplant sein (früher erst beim nächsten setItem).
+    expect(t.pending.size).toBe(1);
+    t.run();
+    await settle();
+    expect(m.asyncWrites).toBe(2);
+    expect(parseSave(m.file)?.get('velocity.a')).toBe('1');
+    expect(sm.pending).toBe(false);
+  });
+
+  it('flush nach gescheitertem Hintergrund-Schreiben schreibt synchron (sonst Verlust beim Beenden)', async () => {
+    const s = new MemStorage();
+    const m = new FakeMirror();
+    const t = new FakeTimers();
+    const sm = new SaveMirror(s, m, 2000, t);
+    s.setItem('velocity.a', '1');
+    m.failAsync = 1;
+    sm.markDirty();
+    t.run();
+    await settle();
+    expect(sm.flush()).toBe(true);
+    expect(m.syncWrites).toBe(1);
+    expect(parseSave(m.file)?.get('velocity.a')).toBe('1');
+  });
+
+  it('flush gescheitert → Stand bleibt offen, der nächste flush versucht es erneut', () => {
+    const s = new MemStorage();
+    const m = new FakeMirror();
+    const sm = new SaveMirror(s, m, 2000, new FakeTimers());
+    s.setItem('velocity.a', '1');
+    sm.markDirty();
+    m.failSync = 1;
+    expect(sm.flush()).toBe(false);
+    expect(sm.pending).toBe(true);
+    expect(sm.flush()).toBe(true);
+    expect(m.syncWrites).toBe(2);
+    expect(parseSave(m.file)?.get('velocity.a')).toBe('1');
+  });
+
+  it('Hauptprozess bittet um Sichern (Windows-Abmeldung, kein pagehide) → sofort synchron', () => {
+    class Local extends MemStorage {}
+    const s = new Local();
+    const m = new FakeMirror();
+    const pagehide: (() => void)[] = [];
+    const sm = installSaveMirror(m, s, { addEventListener: (_t, fn) => pagehide.push(fn) });
+    expect(sm).not.toBeNull();
+    expect(m.flushRequest).not.toBeNull();
+    s.setItem('velocity.a', '1'); // über den Prototyp-Hook → entprellt (2 s), noch nichts geschrieben
+    expect(m.file).toBeNull();
+    m.flushRequest?.();
+    expect(m.syncWrites).toBe(1);
+    expect(parseSave(m.file)?.get('velocity.a')).toBe('1');
+    sm?.dispose();
+  });
+
   it('Prototyp-Hook meldet nur velocity.* auf dem Ziel-Speicher', () => {
     class P extends MemStorage {}
     const local = new P();
     const session = new P();
     let n = 0;
-    const off = hookStorageWrites(P.prototype as unknown as Parameters<typeof hookStorageWrites>[0], local, () => n++);
+    const off = hookStorageWrites(P.prototype, local, () => n++);
     local.setItem('velocity.a', '1');
     local.setItem('fremd', '1');
     session.setItem('velocity.a', '1');

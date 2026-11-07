@@ -18,6 +18,8 @@ import { OnlineError, displayName, sanitizeName } from './types';
  *   signIn()      Web: signInWithOAuth('discord', redirectTo = Origin + Pfad) — VERLÄSST DIE SEITE.
  *                 Desktop (externalLogin, Plan 011 §3.1): System-Browser + Rücksprung auf 127.0.0.1, Code-Tausch hier
  *                 im Renderer (PKCE-Verifier aus dem eigenen Storage); löst erst mit stehender Identität auf.
+ *                 Abbruch (externalLogin.cancel, z. B. Menü "Abbrechen") löst ohne Fehler auf; endet der Versuch ohne
+ *                 Anmeldung, meldet onIdentityChange(null) das Ende (das Menü zeigt solange "Login läuft").
  *   submitRun     Edge Function submit-run (verifiziert serverseitig mit demselben Verifier, rankt).
  *   getLeaderboard  RPC get_leaderboard / get_rank_around je Tafel (Level-ID + Level-Hash + PHYSICS_VERSION).
  *   getGhost      runs.replay_path → öffentliche Storage-URL. Das Spiel verifiziert das Replay danach selbst.
@@ -251,6 +253,9 @@ export class SupabaseService implements OnlineService {
     const run = this.runExternalLogin(ext).finally(() => {
       this.loginRun = null;
       this.loginUrl = null;
+      // Ende ohne Anmeldung (Fehler, Frist, Abbruch) auch melden: das Menü beendet damit "Login läuft" (Review B4).
+      // Mit Anmeldung hat setMe schon gemeldet.
+      if (this.me === null) for (const cb of this.listeners) cb(null);
     });
     this.loginRun = run;
     return run;
@@ -258,6 +263,8 @@ export class SupabaseService implements OnlineService {
 
   private async runExternalLogin(ext: ExternalLogin): Promise<void> {
     const begin = await bridgeCall(() => ext.begin(), isLoginBegin);
+    // Schon beim Binden abgebrochen (Esc in den ersten Millisekunden): wie ein späterer Abbruch, kein Fehler.
+    if (!begin.ok && begin.error === 'cancelled') return;
     if (!begin.ok) throw loginError(begin);
     let auth: { readonly url: string; readonly flowId: string | null };
     try {
@@ -273,6 +280,8 @@ export class SupabaseService implements OnlineService {
     }
     this.loginUrl = auth.url;
     const res = await bridgeCall(() => ext.openExternal(auth.url), isLoginResult);
+    // Abgebrochen (Menü "Abbrechen" über platform.auth.cancel, Versuch ersetzt): kein Fehler, nur nicht angemeldet.
+    if (!res.ok && res.error === 'cancelled') return;
     if (!res.ok) throw loginError(res);
     // supabase-js holt den Verifier dieses Flows aus dem eigenen Storage, speichert die Sitzung und meldet SIGNED_IN.
     const s = await this.api.exchangeCode(res.code, auth.flowId);

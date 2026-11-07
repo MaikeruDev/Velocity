@@ -1,7 +1,7 @@
 # Plan 011 — Steam-Vorbereitung: Controller, Electron-Hülle, Desktop-Login, Steamworks-Gerüst
 
-**Stand:** 2026-11-06 · **Status:** in Arbeit — Phase 0–2 integriert (S0, S1a, S1b, S1c, S2a, S2b; siehe §9), offen: Bundle-Upload,
-Spieler-Abnahme, Phasen 3–5. Ursprünglich geplant (Planner). Kern dieser Iteration: **Phase 1 (Controller)** und **Phase 2
+**Stand:** 2026-11-07 · **Status:** in Arbeit — Phase 0–4 umgesetzt (S0–S4) und Review-Fix-Runde abgeschlossen (A1–A10,
+B1–B5, C1–C8 + Nachbefunde; siehe §9), offen: Bundle-Upload, Spieler-Abnahme, echter Discord-Login/Steam-Client, Phase 5. Ursprünglich geplant (Planner). Kern dieser Iteration: **Phase 1 (Controller)** und **Phase 2
 (Electron-Hülle Windows)**. Phasen 3–5 sind kürzer und dürfen in eine Folge-Iteration rutschen. Der Spieler war beim
 Planen nicht erreichbar: Entscheidungen unten sind begründet getroffen, echte Spieler-Entscheidungen stehen in §8 und
 blockieren nichts.
@@ -155,7 +155,8 @@ kompatibel.
   `e02d9814f19ac2a22dce8f0aa38252252c277958da370c316358988391dd0e51`).
 - `index.ts` pinnt bewusst noch den alten SHA → `tests/submitFunction` ("index.ts pinnt genau dieses Bundle") ist bis
   zum Upload rot; alles andere grün.
-- Schritte: 1) `SUPABASE_SECRET_KEY=sb_secret_… node tools/online/upload-bundle.mjs` (lädt
+- Schritte (PowerShell, Windows-Terminal): 1) `$env:SUPABASE_SECRET_KEY="sb_secret_…"; node tools/online/upload-bundle.mjs;
+  Remove-Item Env:SUPABASE_SECRET_KEY` (lädt
   `function-assets/submit-run/verifier-f2d04931….js` hoch und setzt `BUNDLE_SHA256` in `index.ts`). 2) `index.ts`
   deployen (`npx supabase functions deploy submit-run` oder MCP `deploy_edge_function`). 3) GET der Function: `bundle`
   = `f2d049319…`, `PHYSICS_VERSION`/Level-Hashes wie vorher. 4) `npx vitest run tests/submitFunction.test.ts` grün.
@@ -208,7 +209,8 @@ StrafeBot sync 1 mit hartem `maxTurnRate` (= linearer Stick ohne Rauschen):
   +100 % Boost bringt bei 3 % Rauschen nichts mehr (360 statt 420) und kippt ohne Rauschen in einen Zickzack-Grenzzyklus
   (H20 545–591 u/s) → verworfen.
 - **Bei den Defaults** (420 °/s, ^2.4, +50 %): H20 99.4 / 99.0 / 97.7 %, t→500 1.10× / 1.12× / 1.21× (Rauschen 0/3/6 %).
-  6 % Rauschen verfehlt nur die Zeit-Hürde knapp.
+  6 % Rauschen verfehlt nur die Zeit-Hürde knapp. **Nach Review A3 (07.11., Boost-Uhr mit Hysterese):** H20 98.4 / 98.2 /
+  97.3 %, t→500 1.10× / 1.10× / 1.13× — Kriterium hält bei allen drei Rauschstufen (research/movement-tuning.md).
 
 **Defaults für S1b (`DEFAULT_LOOK_CURVE` in `stickCurve.ts`, in `PadSettings` übernehmen):**
 `maxYawRate` **420 °/s** · Kurve `exponent` **2.4** · Boost **+50 %** nach **0.15 s** am Rand (Betrag ≥ 0.95 nach
@@ -604,22 +606,29 @@ beide erst an, wenn sie gemergt sind. Gemeinsame Ports: pad-check 5730, desktop-
 1. **Steam-Partner-Konto + App-ID (100 $ Steam Direct Fee, Steuer-/Bankdaten).** Bis dahin nur App-ID 480. Davon hängen
    ab: echte Achievements, Rich-Presence-Texte, Store-Seite, Steam-Auth (3.2), Steam Cloud.
 2. **Supabase-Redirect-URLs für den Desktop-Login** — **derzeit NICHT nötig** (S3, live geprüft 06.11.): Supabase Auth
-   nimmt Loopback-IPs (`127.0.0.1`, jeder Port/Pfad) nach RFC 8252 ohne Eintrag an. **Offene Aktion (Vorsorge, 1 min):**
+   nimmt Loopback-IPs (`127.0.0.1`, jeder Port/Pfad) nach RFC 8252 ohne Eintrag an. **Nötig erst, wenn die Site-URL nicht
+   mehr auf 127.0.0.1/localhost zeigt** (z. B. auf die öffentliche Web-Adresse umgestellt) oder Supabase die
+   Loopback-Regel ändert:
    Dashboard → Authentication → URL Configuration → *Redirect URLs* → *Add URL*, genau diese drei (der Rücksprung trägt
    `?state=…`, Supabase vergleicht inklusive Query — daher `/**`, eine exakte `/auth/callback`-Adresse würde NICHT passen):
    `http://127.0.0.1:47823/**` · `http://127.0.0.1:47824/**` · `http://127.0.0.1:47825/**`.
-   Nötig wird das nur, falls Supabase die Loopback-Regel ändert: dann landet der Browser nach dem Login auf der Site-URL
-   statt auf "Login fertig", und das Spiel meldet nach 5 min "Keine Rückmeldung aus dem Browser …".
+   Fehlen sie dann, landet der Browser nach dem Login auf der Site-URL statt auf "Login fertig"; im Spiel bleibt "Login
+   läuft" stehen (Abbrechen geht jederzeit), nach 5 min kommt "Keine Rückmeldung aus dem Browser …".
    **Abnahme (Betreiber):** `npm run desktop:build` → `release/win-unpacked/VELOCITY.exe` → Titel/System "Mit Discord
    anmelden" → Browser → Discord freigeben → Seite "LOGIN FERTIG" → im Spiel Avatar + Name; danach einen Lauf einreichen
    (Toast "Geprüft · Rang …"); Spiel beenden, neu starten → weiter angemeldet (Sitzung aus `userData/auth/session.bin`).
-3. **`SUPABASE_SECRET_KEY`** für den Bundle-Upload in Phase 0 (falls der Integrator ihn nicht hat).
+3. **Bundle-Upload (Betreiber, braucht `SUPABASE_SECRET_KEY`)** — in PowerShell im Projektordner:
+   `$env:SUPABASE_SECRET_KEY="sb_secret_…"; node tools/online/upload-bundle.mjs; Remove-Item Env:SUPABASE_SECRET_KEY`
+   (lädt `verifier-f2d04931….js` hoch und pinnt den SHA in `supabase/functions/submit-run/index.ts`), danach
+   `npx supabase functions deploy submit-run` (oder MCP `deploy_edge_function`), GET der Function zeigt `bundle` =
+   `f2d049319…`, dann `npx vitest run tests/submitFunction.test.ts` grün. Bis dahin ist genau dieser eine Test rot.
 4. **Code-Signing-Zertifikat** (Geld, ~200–400 $/Jahr) nur nötig für Verteilung außerhalb von Steam (itch.io,
    Direktdownload, SmartScreen). Für Steam nicht nötig, vorerst nein.
 5. **macOS-Build** braucht ein Apple-Developer-Konto (99 $/Jahr) + Notarisierung. Vorerst nur Windows (+ Linux später).
 6. **Steam-Deck-Ziel:** "Verified" anstreben (heißt u. a. On-Screen-Keyboard, Glyphen, 1280×800-Lesbarkeit) oder
    "Playable" reichen lassen? Der Plan baut auf Verified-Niveau hin.
-7. **Pad-Default-Belegung** (Bumper-Sprung) und Stick-Werte: Abnahme durch Spielgefühl (1.9).
+7. **Pad-Default-Belegung** (Bumper-Sprung, seit Review A9 Sprint/"Langsamer" auf **LT** statt L3) und Stick-Werte
+   (Pitch-Snap 0.2, Boost-Hysterese 0.85/0.95): Abnahme durch Spielgefühl (1.9).
 8. Preis / kostenlos und ob die Web-Version neben Steam weiter frei spielbar bleibt. Technisch geht beides, betrifft
    aber Store-Positionierung und Bestenliste (eine gemeinsame Tafel für Web und Steam ist der aktuelle Stand).
 
@@ -627,9 +636,57 @@ beide erst an, wenn sie gemergt sind. Gemeinsame Ports: pad-check 5730, desktop-
 
 | Phase | Stand |
 |---|---|
-| 0 Bundle entkoppeln | umgesetzt (06.11.); **Upload offen** (Secret-Key, Spieler) → `tests/submitFunction` "pinnt genau dieses Bundle" bis dahin rot |
-| 1 Controller | 1.1–1.7 umgesetzt (S1a/S1b/S1c, Integration 06.11.: Menü verdrahtet, Belegungs-Aufnahme); offen 1.8 (Texte), 1.9 (Abnahme) |
-| 2 Electron Windows | umgesetzt (S2a + S2b 06.11.): 2.1–2.7; `tools/desktop/smoke.ts` 53/53 |
-| 3 Desktop-Login | 3.1 umgesetzt (S3 06.11.): Loopback-Login + verschlüsselte Sitzung, `tools/desktop/authSmoke.ts` 15/15; offen: echter Discord-Login aus `win-unpacked` (§8.2); 3.2 nur Skizze |
+| 0 Bundle entkoppeln | umgesetzt (06.11.); **Upload offen** (Secret-Key, Betreiber, §8.3) → `tests/submitFunction` "pinnt genau dieses Bundle" bis dahin rot |
+| 1 Controller | 1.1–1.7 umgesetzt (S1a/S1b/S1c, Integration 06.11.), Review A1–A10 + N1–N3 behoben (07.11.); offen 1.8 (Texte), 1.9 (Abnahme) |
+| 2 Electron Windows | umgesetzt (S2a + S2b 06.11.): 2.1–2.7; Review C1–C8 + N1 behoben (07.11.); `tools/desktop/smoke.ts` 83/83 |
+| 3 Desktop-Login | 3.1 umgesetzt (S3 06.11.): Loopback-Login + verschlüsselte Sitzung; Review B4 ("Login läuft" + Abbrechen) + Nachbefunde (07.11.); `tools/desktop/authSmoke.ts` 15/15; offen: echter Discord-Login aus `win-unpacked` (§8.2); 3.2 nur Skizze |
 | 4 Steamworks-Gerüst | umgesetzt S4 (06.11.): 4.1–4.4 hinter `--steam`, nur mit Fake geprüft (steam-check 24/24); offen: Betreiber-Prüfung mit echtem Client (Spacewar, Presence, Frametime 4.2), GameOverlayActivated fehlt in steamworks.js 0.4.0 |
 | 5 Polish | offen |
+
+### Review-Fix-Runde (2026-11-07)
+
+Adversariales Review von e6ec5ee in drei Strängen (pad-core, menu-ui, desktop: Fix → Review → ggf. Reparatur), danach
+serieller Abschluss. Replay-Format, `PHYSICS_VERSION`, `GameSettings`, Bundle (`f2d04931…`) unverändert; `npm run sim`
+bitgleich zum Stand vor Plan 011 (c1de206). Verträge: AGENTS.md §3.4 "Plan 011 Review-Fix-Runde".
+
+**Umgesetzt pad-core (A1–A10, Nachbefunde N1–N3):**
+- A1 Kein Blick-Drift hinter Pause/Laden: PadInput hält im Menü-Kontext Bewegung + Blickrate an; Game synchronisiert den
+  Kontext vor dem Poll (pad-check: 0.00° nach 1 s Pause, vorher 85°).
+- A2 Pitch-Snap 0.2 (axiale Deadzone nur für Pitch), Boost nur auf Yaw: Strafe mit 5–8° Schräglage nickt nicht mehr.
+- A3 Hysterese: Boost-Uhr `edgeClock` (0.95 an / 0.85 aus), `digitizeMove` ±3.5° und Betrag 0.3/0.2. Stick-Sim bei den
+  Defaults jetzt H20 98.4 / 98.2 / 97.3 %, t→500 1.10× / 1.10× / 1.13× (Kriterium hält auch bei 6 % Rauschen).
+- A4 Pad-Aktivität nur auf der Flanke, Maus im Lock übernimmt erst nach 0.25 s Pad-Ruhe (kein Geräte-Flattern).
+- A5 Aufnahme-Frist läuft ohne Pad. A6 Fake-Pad-Läufe sind assistiert. A7/N1 Pad-Modus: der Ton-Klick beendet den
+  Pad-Modus nicht, danach bringt ein Klick Maus + Lock zurück; Taste schaltet Ton frei.
+- A8/N2 Pad-Verlust pausiert immer; Steam-Input-Spiegel bestätigt nicht von selbst; dasselbe Pad zurück zählt sofort;
+  Nicht-Standard-Mapping ignoriert. A9 Sprint/"Langsamer" auf LT, L3 frei.
+- A10/N3 F1-Tuning nur mit Dev-Werkzeugen; am Desktop wertet `finishRun` manipulierte Läufe (`runTampered`) lokal nicht.
+
+**Umgesetzt menu-ui (B1–B5) + Abschluss:**
+- B1 Pad-Belegung ohne Pad gesperrt + Hinweis. B2 Vollbild ohne Geste → Hinweis statt stillem Fehlschlag.
+- B3 Pad-Fokus nach Teil-Neuaufbau auf den nächsten Index, erstes A zeigt nur.
+- B4 Desktop-Login: modaler Hinweis "Login läuft" (Browser erneut öffnen / Abbrechen per Esc, Pad B, Maus);
+  SupabaseService löst Abbruch ohne Fehler auf, meldet jedes Login-Ende ohne Anmeldung.
+- B5 rave/arcade/hub/stubDoor zeigen Admin nur mit `adminMenu`.
+- Abschluss: Leertaste/Enter unter "Login läuft" wirken nur auf Knöpfe im Hinweis (arcade klickte sonst das inerte LOGIN
+  darunter, desktop-check rot→grün); Abbruch während `begin()` noch bindet geht nicht mehr verloren (Vitest rot→grün);
+  Tastenhilfe nennt F1 nur mit Dev-Werkzeugen.
+
+**Umgesetzt desktop (C1–C8) + Abschluss:**
+- C1 `--dev` nur unverpackt (`isDevRun`); `window.__vel` am Desktop nur im Dev-Modus; exe ignoriert `--dev/--query/--fault`.
+- C2 Drosselung minimiert/versteckt → Page Visibility wirkt (Spiel pausiert, 0 rAF/s). C3 Bildschirm wach nur im Vordergrund.
+- C4 Start-/Renderer-Fehler: einmal neu laden, sonst Dialog + Exit 1; Hänger-Erholung wartet auf das eigene
+  `render-process-gone`; Fenster spätestens nach 10 s sichtbar.
+- C5 Speicher-Spiegel: Generationen, fsync + rename, Retry, `flushPendingSync` bei Beenden/session-end, Renderer plant neu.
+- C6 Modul-setups parallel unter einem Zeitlimit; C7 Alt+Enter/F11 im Hauptprozess; C8 kein `as unknown as`.
+- Abschluss (Review N1): Moduswechsel per Kürzel erreicht den Renderer (`vel:window:mode` → `PlatformWindow.onModeChange`),
+  die offene Einstellung "Anzeigemodus" zeigt sofort den richtigen Modus (Smoke + Vitest).
+
+**Verifikation Abschluss (07.11.):** siehe Bericht des Abschluss-Laufs; Kurzfassung: tsc 0/0, Vitest 931/932 (nur
+submitFunction-Pin rot), sim bitgleich zu c1de206, stick-Kriterium hält, shot 41/41, Menü-Labor OK, pad-check 26/26,
+menu-check 1280×800 + 1920×1080 OK, online-check OK, dist-Grep 0 (Plan-Muster), Bundle `f2d04931…`, desktop:build ok,
+smoke 83/83, authSmoke 15/15, steam-check 24/24 (nur Fake).
+
+**Offen nach der Runde:** Bundle-Upload (§8.3); echter Discord-Login und echter Steam-Client (Betreiber); 1.8/1.9;
+`finishRun`-Desktop-Zweig ohne End-to-End-Test (nur `configTampered` + Recorder-Semantik getestet); gespeicherte
+Pad-Belegungen mit L3 werden nicht migriert (unkritisch, solange Plan 011 nicht ausgeliefert ist).

@@ -68,6 +68,7 @@ export function desktopPlatform(bridge: DesktopBridge): PlatformApi {
     window: {
       getMode: () => bridge.window.getMode(),
       setMode: (mode) => bridge.window.setMode(mode),
+      onModeChange: (cb) => bridge.window.onModeChange?.(cb) ?? (() => undefined),
     },
     openExternal: (url) => bridge.openExternal(url),
     saveMirror: bridge.saveMirror,

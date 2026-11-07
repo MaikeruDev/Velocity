@@ -2490,3 +2490,136 @@
 .vel-pad-keys .vel-pg + .vel-pg {
   margin-left: 0;
 }
+
+/* Belegung ohne Pad (Review B1): Felder gesperrt, der Grund steht gut sichtbar über ihnen. */
+.vel-pad-bind-state {
+  margin: 0 0 8px;
+  padding: 4px 8px;
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--gold);
+  background: rgba(0, 0, 0, 0.35);
+  border-left: 3px solid var(--gold);
+}
+
+/* ------------------------------------------------------------------ Hinweise über dem Screen (Plan 011 Review B2/B4)
+ * Über den Front Doors: deren Teile tragen eigene z-index (bis 7) im Stapel des Menü-Roots — darum feste Ebenen darüber.
+ * Harte Kanten, harte Schatten, Einblenden in Stufen; kein Blur.
+ */
+
+/* Desktop-Login wartet auf den System-Browser: modal (Screen darunter inert), Abbrechen per Knopf, Esc oder B. */
+.vel-login-wait {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(7, 4, 18, 0.8);
+}
+
+/* Die CRT-Scanlines des Roots liegen unter dieser Ebene — hier dieselben noch einmal. */
+.vel-login-wait::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px);
+  mix-blend-mode: multiply;
+}
+
+.vel-login-box {
+  /* Breit genug für beide Knöpfe in einer Zeile (Steuerkreuz links/rechts). */
+  width: min(680px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-left-color: #5865f2;
+  animation: vel-in 160ms steps(4, end);
+}
+
+.vel-login-box .vel-h2 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: 24px;
+}
+
+.vel-login-box .vel-text,
+.vel-login-box .vel-hint {
+  margin: 0;
+}
+
+.vel-login-actions {
+  margin-top: 8px;
+}
+
+/* "läuft": drei 8-px-Quadrate leuchten nacheinander auf — harte Schritte statt Pulsieren. */
+.vel-login-dots {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-right: 24px;
+  background: var(--cyan);
+  box-shadow: 12px 0 0 rgba(51, 240, 255, 0.25), 24px 0 0 rgba(51, 240, 255, 0.25);
+  animation: vel-login-dots 1.2s steps(1, end) infinite;
+}
+
+@keyframes vel-login-dots {
+  0% {
+    background: var(--cyan);
+    box-shadow: 12px 0 0 rgba(51, 240, 255, 0.25), 24px 0 0 rgba(51, 240, 255, 0.25);
+  }
+  33% {
+    background: rgba(51, 240, 255, 0.25);
+    box-shadow: 12px 0 0 var(--cyan), 24px 0 0 rgba(51, 240, 255, 0.25);
+  }
+  66% {
+    background: rgba(51, 240, 255, 0.25);
+    box-shadow: 12px 0 0 rgba(51, 240, 255, 0.25), 24px 0 0 var(--cyan);
+  }
+}
+
+/* Kurzer Hinweis (z. B. "Vollbild braucht einen Klick oder eine Taste"): Kappe wie .vel-kbd, nicht klickbar. */
+.vel-menu-notice {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  z-index: 31;
+  max-width: min(720px, calc(100% - 32px));
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  font-family: var(--font-head);
+  font-size: 16px;
+  line-height: 24px;
+  letter-spacing: 1px;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--text);
+  box-shadow: 4px 4px 0 var(--magenta);
+  pointer-events: none;
+  animation: vel-notice-in 160ms steps(4, end);
+}
+
+@keyframes vel-notice-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vel-login-box,
+  .vel-login-dots,
+  .vel-menu-notice {
+    animation: none;
+  }
+}

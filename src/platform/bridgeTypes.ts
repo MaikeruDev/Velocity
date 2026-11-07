@@ -20,14 +20,24 @@ export interface DesktopSaveMirror {
   readSync(): string | null;
   /** Entprellt aus dem Spiel. false = abgelehnt (zu groß, kein JSON) oder Schreibfehler. */
   write(json: string): Promise<boolean>;
-  /** Synchron beim Beenden (pagehide), damit der letzte Stand nicht im Debounce hängen bleibt. */
+  /**
+   * Synchron beim Beenden (pagehide), damit der letzte Stand nicht im Debounce hängen bleibt. false = noch nicht
+   * geschrieben (Datei gesperrt) — der Hauptprozess behält den Stand und versucht es beim Beenden erneut.
+   */
   writeSync(json: string): boolean;
+  /**
+   * Hauptprozess bittet um sofortiges Sichern (Windows-Abmeldung/Herunterfahren: dort kommt kein pagehide).
+   * Rückgabe: abmelden. Optional, damit ältere Bridges gültig bleiben.
+   */
+  onFlushRequest?(cb: () => void): () => void;
 }
 
 export interface DesktopWindowBridge {
   getMode(): Promise<DisplayMode>;
   /** Setzt und speichert den Modus; Rückgabe = tatsächlich angewandter Modus (nach dem Fenster-Ereignis). */
   setMode(mode: DisplayMode): Promise<DisplayMode>;
+  /** Modus hat gewechselt (auch per Alt+Enter/F11 im Hauptprozess). Rückgabe: abmelden. Optional (ältere Bridges). */
+  onModeChange?(cb: (mode: DisplayMode) => void): () => void;
 }
 
 /**

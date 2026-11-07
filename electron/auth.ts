@@ -126,6 +126,8 @@ function listenOn(server: Server, port: number): Promise<boolean> {
 
 export class LoopbackLogin {
   private attempt: Attempt | null = null;
+  /** Zählt begin() und cancel(): ein Abbruch, der vor dem Ende von begin() ankommt, darf nicht verloren gehen. */
+  private seq = 0;
 
   constructor(private readonly opts: LoopbackLoginOptions) {}
 
@@ -136,6 +138,7 @@ export class LoopbackLogin {
   }
 
   async begin(): Promise<DesktopAuthBegin> {
+    const my = ++this.seq;
     // Ein neuer Versuch ersetzt den alten (z. B. Seite neu geladen): dessen Wartende bekommen 'cancelled', der Port wird frei.
     await this.finish(this.attempt, authFailure('cancelled', 'Ein neuer Login-Versuch wurde gestartet.'));
     const ports = this.opts.ports ?? AUTH_PORTS;
@@ -147,6 +150,11 @@ export class LoopbackLogin {
       server.keepAliveTimeout = 1_000;
       server.maxConnections = 16;
       if (!(await listenOn(server, port))) continue;
+      // Abbruch (oder neuerer Versuch) kam während des Bindens: sonst lebte dieser Versuch bis zur Frist weiter (Review N2).
+      if (this.seq !== my) {
+        server.close();
+        return authFailure('cancelled', 'Login abgebrochen.');
+      }
       const stateHex = randomBytes(16).toString('hex');
       let resolve: (r: DesktopAuthResult) => void = () => {};
       const result = new Promise<DesktopAuthResult>((r) => {
@@ -195,6 +203,7 @@ export class LoopbackLogin {
 
   /** Laufenden Versuch abbrechen (Spiel beendet, Anmelde-URL nicht erzeugbar). */
   cancel(): Promise<void> {
+    this.seq++;
     return this.finish(this.attempt, authFailure('cancelled', 'Login abgebrochen.'));
   }
 

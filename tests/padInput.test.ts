@@ -458,7 +458,7 @@ describe('Pad-Replay bitgleich (Plan 011 §1.3)', () => {
       r.p.axes[1] = -want.forward;
       press(r.p, 'PadLB', want.jumpHeld || want.jumpPressed);
       press(r.p, 'PadRB', want.crouch);
-      press(r.p, 'PadL3', want.sprint); // ohne Auto-Sprint: L3 = Sprint
+      press(r.p, 'PadLT', want.sprint); // ohne Auto-Sprint: LT = Sprint (Review A9)
       r.pad.poll(dt);
       r.s.setLookRate((want.yaw - r.s.yaw) / dt, (want.pitch - r.s.pitch) / dt);
       r.s.beginFrame(dt);
@@ -628,5 +628,263 @@ describe('Pad: Belegungs-Aufnahme (InputManager.capturePadButton)', () => {
     r.p.connected = false;
     r.frame(1 / 60);
     expect(got).toEqual([null]);
+  });
+
+  it('ohne Pad (Feld per Maus geöffnet): die Frist läuft trotzdem ab (Review A5)', () => {
+    const s = new InputState();
+    const pad = new PadInput(s, () => null);
+    pad.setMenuContext(true);
+    const got: (PadButtonCode | null)[] = [];
+    pad.capture((c) => got.push(c), 0.5);
+    for (let i = 0; i < 25; i++) pad.poll(1 / 60);
+    expect(got).toEqual([]); // 0.42 s: läuft noch
+    for (let i = 0; i < 10; i++) pad.poll(1 / 60);
+    expect(got).toEqual([null]);
+    expect(pad.capturing).toBe(false);
+  });
+});
+
+// ------------------------------------------------------------------ Review-Fixes (Strang pad-core)
+
+describe('Pad: Kontextwechsel nullt Stellgrößen (Review A1)', () => {
+  it('Kamera-Stick rechts → Pause → Stick los: Blick steht hinter dem Menü (vorher 630 °/s weiter)', () => {
+    const r = rig();
+    r.p.axes[0] = -1;
+    r.p.axes[2] = 1;
+    for (let i = 0; i < 30; i++) r.frame(1 / 60);
+    expect(r.s.tickInput(0, 1).side).toBe(-1);
+    r.pad.setMenuContext(true);
+    r.p.axes[0] = 0;
+    r.p.axes[2] = 0;
+    const y0 = r.s.yaw;
+    for (let i = 0; i < 60; i++) r.frame(1 / 60);
+    expect(r.s.yaw).toBe(y0);
+    expect(r.s.tickInput(0, 1).side).toBe(0);
+    // Auch gehalten dreht der Stick im Menü nicht.
+    r.p.axes[2] = 1;
+    for (let i = 0; i < 60; i++) r.frame(1 / 60);
+    expect(r.s.yaw).toBe(y0);
+    expect(r.pad.output.yawRate).toBe(0);
+    // Zurück im Spiel: die Boost-Uhr beginnt neu — erster Frame mit der Grundrate, nicht mit der Spitze.
+    r.pad.setMenuContext(false);
+    r.frame(1 / 60);
+    expect((-(r.s.yaw - y0) / DEG) * 60).toBeCloseTo(DEFAULT_PAD_SETTINGS.yawRate, 6);
+  });
+
+  it('Belegungs-Aufnahme im Spiel-Kontext: Rate und Richtung auf 0', () => {
+    const r = rig();
+    r.p.axes[1] = -1;
+    r.p.axes[2] = 1;
+    for (let i = 0; i < 30; i++) r.frame(1 / 60);
+    r.pad.capture(() => undefined);
+    const y0 = r.s.yaw;
+    for (let i = 0; i < 30; i++) r.frame(1 / 60);
+    expect(r.s.yaw).toBe(y0);
+    expect(r.s.tickInput(0, 1).forward).toBe(0);
+  });
+});
+
+describe('Pad: Pitch beim Strafen (Review A2)', () => {
+  /** Voller Ausschlag `deg` über der Waagerechten nach rechts, `seconds` lang bei 60 Hz (mit Boost). */
+  function strafe(deg: number, seconds: number): number {
+    const r = rig();
+    r.p.axes[2] = Math.cos(deg * DEG);
+    r.p.axes[3] = -Math.sin(deg * DEG);
+    for (let i = 0; i < Math.round(seconds * 60); i++) r.frame(1 / 60);
+    return r.s.pitch / DEG;
+  }
+
+  it('Strafe 0.6 s voll seitlich: 5°/8° daneben → kein Pitch (vorher 15°/24.5°), 12° → unter 2° (vorher 37°)', () => {
+    expect(strafe(5, 0.6)).toBe(0);
+    expect(strafe(8, 0.6)).toBe(0);
+    expect(Math.abs(strafe(12, 0.6))).toBeLessThan(2);
+  });
+
+  it('Boost nur auf Yaw: senkrecht am Rand 1 s → Pitch-Rate bleibt 220 °/s (vorher bis 330)', () => {
+    const r = rig();
+    r.p.axes[3] = -1;
+    for (let i = 0; i < 60; i++) r.frame(1 / 60);
+    expect(r.pad.output.pitchRate / DEG).toBeCloseTo(DEFAULT_PAD_SETTINGS.pitchRate, 9);
+  });
+
+  it('Strafe-Rhythmus mit zitternder Hand (Vertikalfehler σ 4°, 10 s): Pitch-Drift unter 3°', () => {
+    const r = rig();
+    let seed = 11;
+    const rnd = (): number => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32) - 0.5;
+    let err = 0;
+    let max = 0;
+    for (let f = 0; f < 600; f++) {
+      // AR(1), τ ≈ 0.1 s: Daumen wackelt beim Seitwärtsdrücken; Seite wechselt alle 0.6 s.
+      err = err * 0.85 + rnd() * 4 * Math.sqrt(12) * Math.sqrt(1 - 0.85 * 0.85);
+      const side = Math.floor(f / 36) % 2 === 0 ? 1 : -1;
+      r.p.axes[2] = side * Math.cos(err * DEG);
+      r.p.axes[3] = -Math.sin(err * DEG);
+      r.frame(1 / 60);
+      max = Math.max(max, Math.abs(r.s.pitch / DEG));
+    }
+    expect(max).toBeLessThan(3);
+  });
+});
+
+describe('Pad: Boost-Rand mit Hysterese (Review A3)', () => {
+  /** Mittlere Yaw-Rate (°/s) über 2 s nach 1 s Anlauf; stick(f) liefert die Auslenkung je Frame. */
+  function meanRate(stick: (f: number) => number): number {
+    const r = rig();
+    for (let f = 0; f < 60; f++) {
+      r.p.axes[2] = stick(f);
+      r.frame(1 / 60);
+    }
+    const y0 = r.s.yaw;
+    for (let f = 60; f < 180; f++) {
+      r.p.axes[2] = stick(f);
+      r.frame(1 / 60);
+    }
+    return -(r.s.yaw - y0) / DEG / 2;
+  }
+
+  it('Zittern am Rand (0.93 ± 0.03) hält den Boost (vorher ~400 °/s, jetzt nahe der Spitze)', () => {
+    let seed = 3;
+    const rnd = (): number => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32) * 2 - 1;
+    const jitter = meanRate(() => 0.93 + rnd() * 0.03);
+    expect(jitter).toBeGreaterThan(520);
+  });
+
+  it('0.90 von unten = Grundkurve; vom Rand auf 0.90 zurückgenommen = Boost bleibt; unter 0.85 aus', () => {
+    const below = meanRate(() => 0.9);
+    expect(below).toBeCloseTo(362, -1);
+    const fromRim = meanRate((f) => (f < 30 ? 1 : 0.9));
+    expect(fromRim).toBeCloseTo(below * (1 + DEFAULT_PAD_SETTINGS.boost), 0);
+    // Betrag 0.84 nach Deadzone = roh 0.12 + 0.84 · 0.83 → Uhr fällt auf 0, nur die Kurve.
+    const raw = 0.12 + 0.84 * 0.83;
+    const dropped = meanRate((f) => (f < 30 ? 1 : raw));
+    expect(dropped).toBeCloseTo(DEFAULT_PAD_SETTINGS.yawRate * Math.pow(0.84, DEFAULT_PAD_SETTINGS.curve), 0);
+  });
+
+  it('8 Richtungen am Bewegungs-Stick: an der Bandkante W+A ↔ A kein Flattern mehr (vorher jeder Poll)', () => {
+    const r = rig();
+    const flips: string[] = [];
+    let last = '';
+    for (let i = 0; i < 600; i++) {
+      // Links-vorn knapp an der Bandkante (150° ± 1°), wie ein Daumen beim W+A-Anlauf.
+      const a = (150 + (i % 2 === 0 ? 1 : -1)) * DEG;
+      r.p.axes[0] = Math.cos(a);
+      r.p.axes[1] = -Math.sin(a);
+      r.frame(1 / 128);
+      const t = r.s.tickInput(0, 1);
+      const k = `${t.forward},${t.side}`;
+      if (k !== last) flips.push(k);
+      last = k;
+    }
+    expect(flips.length).toBe(1);
+  });
+});
+
+describe('Pad-Auswahl (Review A8)', () => {
+  function twoPads(): { s: InputState; pad: PadInput; a: FakePad; b: FakePad; frame(dt?: number): void } {
+    const s = new InputState();
+    const a = fakePad();
+    const b = { ...fakePad('Steam Virtual Gamepad (STANDARD GAMEPAD Vendor: 28de Product: 11ff)'), index: 1 };
+    const pads: (GamepadLike | null)[] = [a, b];
+    const pad = new PadInput(s, () => pads);
+    pad.configure(DEFAULT_PAD_SETTINGS);
+    s.setPadBindings(DEFAULT_PAD_SETTINGS.binds);
+    pad.setMenuContext(false);
+    return { s, pad, a, b, frame: (dt = 1 / 60) => { pad.poll(dt); s.beginFrame(dt); } };
+  }
+
+  it('aktives Pad weg, zweites verbunden → Pause und alles los (vorher: still weiter mit dem zweiten)', () => {
+    const r = twoPads();
+    press(r.a, 'PadLB', true);
+    r.a.axes[0] = 1;
+    r.frame();
+    expect(r.s.tickInput(0, 1).jumpHeld).toBe(true);
+    r.s.consumeActions();
+    r.a.connected = false;
+    r.frame();
+    expect(r.s.consumeActions()).toEqual(['pause']);
+    const t = r.s.tickInput(0, 1);
+    expect([t.side, t.jumpHeld]).toEqual([0, false]);
+  });
+
+  it('nach dem Verlust zählt ein auf dem zweiten Pad schon gehaltener Knopf erst nach dem Loslassen', () => {
+    const r = twoPads();
+    press(r.a, 'PadA', true);
+    r.frame();
+    r.s.consumeActions();
+    // Steam-Input-Spiegel: dasselbe A liegt auf beiden; das aktive verschwindet, das Spiel pausiert.
+    press(r.b, 'PadA', true);
+    r.a.connected = false;
+    r.frame();
+    expect(r.s.consumeActions()).toEqual(['pause']);
+    r.pad.setMenuContext(true);
+    for (let i = 0; i < 5; i++) r.frame();
+    expect(r.s.consumeActions()).toEqual([]); // kein confirm aus dem gehaltenen A (würde die Pause sofort beenden)
+    press(r.b, 'PadA', false);
+    r.frame();
+    press(r.b, 'PadA', true);
+    r.frame();
+    expect(r.s.consumeActions()).toEqual(['confirm']);
+  });
+
+  it('einziges Pad weg (Akku), kommt mit gehaltenem A wieder → dieser Druck zählt (Review N2)', () => {
+    const r = rig();
+    press(r.p, 'PadA', true);
+    r.frame();
+    press(r.p, 'PadA', false);
+    r.frame();
+    r.s.consumeActions();
+    r.p.connected = false;
+    r.frame();
+    expect(r.s.consumeActions()).toEqual(['pause']);
+    r.pad.setMenuContext(true);
+    for (let i = 0; i < 60; i++) r.frame();
+    // Chrome meldet das Pad erst mit dem weckenden Druck: erster Snapshot hat A schon gehalten.
+    press(r.p, 'PadA', true);
+    r.p.connected = true;
+    r.frame();
+    expect(r.s.consumeActions()).toEqual(['confirm']);
+  });
+
+  it('Pads ohne Standard-Mapping werden ignoriert (DirectInput: Trigger auf axes[2] ruht bei −1)', () => {
+    const s = new InputState();
+    const di: FakePad = { ...fakePad('USB Gamepad (Vendor: 0079 Product: 0006)'), mapping: '' };
+    di.axes[2] = -1;
+    const pad = new PadInput(s, () => [di]);
+    pad.configure(DEFAULT_PAD_SETTINGS);
+    pad.setMenuContext(false);
+    for (let i = 0; i < 60; i++) {
+      pad.poll(1 / 60);
+      s.beginFrame(1 / 60);
+    }
+    expect(s.yaw).toBe(0); // vorher 588° in 1 s
+    expect(pad.connected).toBe(false);
+    expect(pad.consumeActivity()).toBe(false);
+  });
+});
+
+describe('Pad-Belegung: Sprint/Langsamer auf LT, L3 frei (Review A9)', () => {
+  it('beide Presets: sprint = LT, L3 nirgends belegt, LT sonst frei', () => {
+    for (const id of ['bumper', 'classic'] as const) {
+      const b = PAD_PRESETS[id];
+      expect(b.sprint, id).toEqual(['PadLT']);
+      for (const [action, codes] of Object.entries(b)) {
+        expect(codes.includes('PadL3'), `${id}.${action}`).toBe(false);
+        if (action !== 'sprint') expect(codes.includes('PadLT'), `${id}.${action}`).toBe(false);
+      }
+    }
+    expect(DEFAULT_PAD_SETTINGS.binds).toBe(PAD_PRESETS.bumper);
+  });
+
+  it('Auto-Sprint: L3 hart gedrückt bremst nicht mehr, LT = langsamer', () => {
+    const r = rig();
+    r.s.setAutoSprint(true);
+    r.p.axes[1] = -1;
+    press(r.p, 'PadL3', true);
+    r.frame();
+    expect(r.s.tickInput(0, 1).sprint).toBe(true);
+    press(r.p, 'PadL3', false);
+    press(r.p, 'PadLT', 0.8);
+    r.frame();
+    expect(r.s.tickInput(0, 1).sprint).toBe(false);
   });
 });

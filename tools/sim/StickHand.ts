@@ -2,7 +2,7 @@ import type { MovementConfig } from '../../src/player/MovementConfig';
 import type { PlayerInput, PlayerSnapshot } from '../../src/player/types';
 import { makeBotInput, mulberry32, StrafeController, wrapAngle, type Bot } from '../../src/player/bots';
 import { gaussian } from '../../src/player/bots/Bot';
-import { lookRate, stickMagnitude, STICK_EDGE, type LookCurveParams, type LookRateOut } from '../../src/engine/pad/stickCurve';
+import { edgeClock, lookRate, stickMagnitude, type LookCurveParams, type LookRateOut } from '../../src/engine/pad/stickCurve';
 
 /**
  * Stick-Hand (Plan 011 §1.2): perfekter Strafer (StrafeController sync 1), der
@@ -79,9 +79,9 @@ export class StickHand implements Bot {
     }
     // Rohwert so legen, dass nach der Deadzone genau `s` herauskommt.
     const raw = (c.inner + s * (c.outer - c.inner)) * (err >= 0 ? 1 : -1);
-    const edge = stickMagnitude(raw, 0, c.inner, c.outer) >= STICK_EDGE;
     lookRate(raw, 0, c, this.edgeTime, this.rate);
-    this.edgeTime = edge ? this.edgeTime + this.dt : 0;
+    // Boost-Uhr wie im Spiel (PadInput, Review A3): läuft am Rand, steht im Band 0.85…0.95, fällt darunter auf 0.
+    this.edgeTime = edgeClock(this.edgeTime, stickMagnitude(raw, 0, c.inner, c.outer), this.dt);
     let step = this.rate.yaw * this.dt;
     if (ride && Math.abs(step) > Math.abs(err)) step = err;
     this.yaw += step;

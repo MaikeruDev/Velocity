@@ -1,25 +1,33 @@
 /**
- * Desktop-Smoke (Plan 011 Schritte 2.1, 2.3 Hauptprozess, 2.4 Kürzel/Schließen Hauptprozess, 2.6, 2.7 Bridge).
- * Startet die ECHTE Electron-Hülle mit der gebauten dist/ über app://velocity (kein Dev-Server).
+ * Desktop-Smoke (Plan 011 Schritte 2.1, 2.3 Hauptprozess, 2.4 Kürzel/Schließen Hauptprozess, 2.6, 2.7 Bridge;
+ * Review-Befunde C1–C7). Startet die ECHTE Electron-Hülle mit der gebauten dist/ über app://velocity (kein Dev-Server).
+ * Alles, was das Debug-Handle window.__vel braucht, läuft gegen das UNVERPACKTE Dev-Binary (`electron . --dev`); am
+ * Paket gibt es kein __vel (Review C1) — dort nur Prüfungen über DOM, Bridge und OS.
  *
- *  A  --dev, ?online=mock, Fenster: Origin, kein require/process, Bridge, CSP, Levelliste, Pfad-Ausbruch,
+ *  A  --dev (unverpackt), ?online=mock, Fenster: Origin, kein require/process, Bridge, CSP, Levelliste, Pfad-Ausbruch,
  *     Navigation/window.open gesperrt, Strg+W/Strg+R/F5/Strg+Shift+I/Alt (sendInputEvent), Determinismus L1–L4
- *     (Electron → Node und Node → Electron, bitgleich) + detMath-Hash, Anzeigemodus, Speicher-Spiegel,
- *     Fenster-X trotz beforeunload → Exit 0 in < 1 s.
- *     S2b (Renderer verdrahtet): Plattform im Menü, Strg duckt im Fenster, Pointer Lock roh, Esc im Lock (echte
- *     OS-Taste, nur nach PID-Prüfung des Vordergrundfensters) → genau eine Pause, Anzeigemodus springt beim
- *     Levelstart nicht um, Spiegel beim Schließen geschrieben.
- *  B  ohne --dev, gleiches userData, Local Storage GELÖSCHT: Spiegel eingespielt (Bestzeit/Schlüssel wie in A),
- *     Modus übernommen, DevTools gesperrt, kein Admin/F8, echtes Supabase unter der CSP, Beenden per Fake-Pad über
- *     das ps2-System-Panel (zweistufig) → Exit 0.
- *  C  release/win-unpacked/VELOCITY.exe (falls gebaut, `npm run desktop:build`): startet ohne Dev-Server,
- *     per CDP geprüft (Fuses sperren --inspect, daher kein _electron.launch).
+ *     (Electron → Node und Node → Electron, bitgleich) + detMath-Hash, Alt+Enter/F11 (C7), Anzeigemodus, Bildschirm
+ *     wach nur im Vordergrund + Drosselung minimiert (C2/C3), Speicher-Spiegel, Fenster-X trotz beforeunload → Exit 0.
+ *     S2b: Plattform im Menü, Strg duckt im Fenster, Pointer Lock roh, Esc im Lock (echte OS-Taste, nur nach
+ *     PID-Prüfung des Vordergrundfensters) → genau eine Pause, Modus springt beim Levelstart nicht um.
+ *  B  unverpackt OHNE --dev, gleiches userData, Local Storage GELÖSCHT: Spiegel eingespielt, Modus übernommen,
+ *     DevTools gesperrt, kein __vel, kein Admin/F8, echtes Supabase unter der CSP, Beenden per Fake-Pad
+ *     (navigator.getGamepads ersetzt — __vel.pad gibt es ohne Dev-Modus nicht) über das ps2-System-Panel → Exit 0.
+ *  D  --dev ohne Playwright (rohes CDP; Playwright hält Seiten selbst sichtbar): echtes Minimieren (ShowWindow am
+ *     eigenen Fenster per PID) → visibilityState 'hidden', visibilitychange, Pause, rAF ≈ 0; Wiederherstellen → normal (C2).
+ *  E  Fehler-Injektion (--dev --fault=…, nur unverpackt): Startfehler/Dauerabsturz/Ladefehler → Dialog + Exit 1;
+ *     einmaliger Absturz/Ladefehler/Hänger → neu geladen, spielbar; setup wirft → Fenster kommt trotzdem;
+ *     ready-to-show kommt nie → Fenster nach Zeitlimit sichtbar (C4/C6).
+ *  C  release/win-unpacked/VELOCITY.exe (falls gebaut, `npm run desktop:build`), per CDP (Fuses sperren --inspect):
+ *     --dev/--query/--fault im Paket wirkungslos, kein __vel, kein Admin/F8, CSP, Kürzel (OS-Tasten, PID-geprüft),
+ *     Alt+Enter, Speicher, Beenden per Fake-Pad → Exit 0; Fuses (--inspect, ELECTRON_RUN_AS_NODE) gesperrt.
  *
- *   npm run build && npx tsx tools/desktop/smoke.ts [--no-exe]   → shots/desktop/report.json, Exit 1 bei Fehler
+ *   npm run build && npx tsx tools/desktop/smoke.ts [--no-exe] [--no-faults]   → shots/desktop/report.json, Exit 1 bei Fehler
  *
- * Achtung: öffnet echte Fenster (B startet im Vollbild, weil A den Modus so gespeichert hat).
+ * Achtung: öffnet echte Fenster (B startet im Vollbild, weil A den Modus so gespeichert hat). Echte OS-Tasten gehen
+ * nur an ein Fenster, dessen Prozess-ID geprüft vorn ist (fallen.md #287). Steam wird nie angefordert (kein --steam).
  */
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -76,7 +84,12 @@ const probeJs = (
 
 const userData = mkdtempSync(join(tmpdir(), 'velocity-smoke-'));
 
-type BridgeWin = Window & { velocityDesktop?: DesktopBridge; __velMarker?: number; __cspViolations?: string[] };
+/** detMath-Probe im Renderer (esbuild-IIFE aus detProbe.ts). */
+interface DetProbe {
+  detHash(n: number): string;
+  mathHash(n: number): string;
+}
+type BridgeWin = Window & { velocityDesktop?: DesktopBridge; __velMarker?: number; __cspViolations?: string[]; __velDet?: DetProbe; __velKeys?: number };
 
 /** Fehler- und CSP-Zähler je Seite. */
 function watch(page: Page, tag: string): { errors: string[]; csp: string[] } {
@@ -145,6 +158,224 @@ function osKey(pid: number, keys: string): string {
   } catch (e) {
     return `fehler ${e instanceof Error ? e.message.slice(0, 80) : String(e)}`;
   }
+}
+
+/** Nur nach vorn holen (keine Tasten) und prüfen, dass das Vordergrundfenster zu `pid` gehört: 'ok' oder Grund. */
+function osActivate(pid: number): string {
+  const ps = [
+    `Add-Type -Namespace VelSmoke -Name A -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);'`,
+    '$w = New-Object -ComObject WScript.Shell',
+    `[void]$w.AppActivate(${pid})`,
+    'Start-Sleep -Milliseconds 300',
+    '$p = 0; [void][VelSmoke.A]::GetWindowThreadProcessId([VelSmoke.A]::GetForegroundWindow(), [ref]$p)',
+    `if ($p -ne ${pid}) { "fg $p" } else { 'ok' }`,
+  ].join('; ');
+  try {
+    return execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8', timeout: 15000 }).trim();
+  } catch (e) {
+    return `fehler ${e instanceof Error ? e.message.slice(0, 80) : String(e)}`;
+  }
+}
+
+/**
+ * Hauptfenster des EIGENEN Testprozesses (per PID, nie per Titel) minimieren (6) / wiederherstellen (9) bzw. nur
+ * abfragen (null). Rückgabe: Fenster-Handle ≠ 0 = ein sichtbares Hauptfenster existiert.
+ */
+function osWindow(pid: number, cmd: 6 | 9 | null): string {
+  const ps = [
+    `Add-Type -Namespace VelSmoke -Name W -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);'`,
+    `$h = (Get-Process -Id ${pid} -ErrorAction Stop).MainWindowHandle`,
+    cmd === null ? '"$h"' : `if ($h -eq 0) { '0' } else { [void][VelSmoke.W]::ShowWindow($h, ${cmd}); "$h" }`,
+  ].join('; ');
+  try {
+    return execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8', timeout: 15000 }).trim();
+  } catch (e) {
+    return `fehler ${e instanceof Error ? e.message.slice(0, 80) : String(e)}`;
+  }
+}
+
+/** Rohes CDP (ohne Playwright, das Sichtbarkeit/Fokus emuliert): Runtime.evaluate auf der app://-Seite. */
+interface RawCdp {
+  ev<T>(expr: string): Promise<T | undefined>;
+  close(): void;
+}
+interface CdpTarget {
+  readonly type: string;
+  readonly url: string;
+  readonly webSocketDebuggerUrl?: string;
+}
+interface CdpReply {
+  readonly id?: number;
+  readonly result?: { readonly result?: { readonly value?: unknown } };
+}
+
+async function cdpTargets(port: number): Promise<CdpTarget[]> {
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/json/list`);
+    const list: unknown = await r.json();
+    return Array.isArray(list) ? list.filter((t): t is CdpTarget => typeof t === 'object' && t !== null && 'url' in t && 'type' in t) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function rawCdp(port: number, ms: number): Promise<RawCdp | null> {
+  const until = Date.now() + ms;
+  let url: string | undefined;
+  while (!url && Date.now() < until) {
+    url = (await cdpTargets(port)).find((t) => t.type === 'page' && t.url.startsWith('app://'))?.webSocketDebuggerUrl;
+    if (!url) await sleep(250);
+  }
+  if (!url) return null;
+  const sock = new WebSocket(url);
+  const ok = await new Promise<boolean>((r) => {
+    sock.addEventListener('open', () => r(true));
+    sock.addEventListener('error', () => r(false));
+  });
+  if (!ok) return null;
+  let next = 0;
+  const waiting = new Map<number, (v: unknown) => void>();
+  sock.addEventListener('message', (m) => {
+    const d = JSON.parse(String(m.data)) as CdpReply;
+    if (d.id === undefined) return;
+    waiting.get(d.id)?.(d.result?.result?.value);
+    waiting.delete(d.id);
+  });
+  // Geschlossen (Prozess weg): Wartende bekommen undefined statt ewig zu hängen.
+  sock.addEventListener('close', () => {
+    for (const fn of waiting.values()) fn(undefined);
+    waiting.clear();
+  });
+  return {
+    ev: <T>(expression: string) =>
+      new Promise<T | undefined>((r) => {
+        const id = ++next;
+        waiting.set(id, (v) => r(v as T | undefined));
+        sock.send(JSON.stringify({ id, method: 'Runtime.evaluate', params: { expression, awaitPromise: true, returnByValue: true } }));
+        setTimeout(() => {
+          if (waiting.delete(id)) r(undefined);
+        }, 15000);
+      }),
+    close: () => sock.close(),
+  };
+}
+
+/** Auf einen Wert warten (rohes CDP), z. B. `window.__vel?.ready === true`. */
+async function cdpUntil(cdp: RawCdp, expr: string, ms: number): Promise<boolean> {
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    if ((await cdp.ev<boolean>(expr)) === true) return true;
+    await sleep(250);
+  }
+  return false;
+}
+
+/** Ende eines selbst gestarteten Prozesses (null = lief nach `ms` noch). */
+function procExit(proc: ChildProcess, ms: number): Promise<number | null> {
+  if (proc.exitCode !== null) return Promise.resolve(proc.exitCode);
+  return Promise.race([new Promise<number | null>((r) => proc.once('exit', (c) => r(c))), sleep(ms).then(() => null)]);
+}
+
+/** Prozessbaum beenden (Renderer/GPU hielten sonst Dateien im userData offen → rmSync EBUSY). */
+function killTree(proc: ChildProcess): void {
+  if (proc.exitCode !== null || proc.pid === undefined) return;
+  try {
+    execFileSync('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore', timeout: 10000 });
+  } catch {
+    proc.kill();
+  }
+}
+
+/** Temp-Verzeichnis löschen; was ein gerade beendeter Prozess noch hält, bleibt notfalls liegen (nur Temp). */
+function rmQuiet(dir: string): void {
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  } catch (e) {
+    console.log(`  - ${dir} nicht gelöscht (${e instanceof Error ? e.message.slice(0, 60) : String(e)})`);
+  }
+}
+
+/** Unverpackte Hülle ohne Playwright (eigene PID = Fenster-Besitzer). */
+function spawnDev(args: string[]): ChildProcess {
+  return spawn(electronPath, ['.', ...args], { cwd: ROOT, stdio: 'ignore' });
+}
+
+// ---- Fake-Pad ohne __vel: navigator.getGamepads ersetzen (Input fragt es jeden Frame bzw. sekündlich ab).
+const XBOX = 'Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)';
+/** Index im "standard"-Mapping (src/engine/pad/types.ts PAD_BUTTONS). */
+const PAD_INDEX = { PadA: 0, PadB: 1, PadUp: 12, PadDown: 13, PadLeft: 14, PadRight: 15 } as const;
+type PadKey = keyof typeof PAD_INDEX;
+// Als Text: tsx (keepNames) setzte in evaluate-Funktionen __name(...) ein, das es im Renderer nicht gibt.
+const PAD_INSTALL = `(() => {
+  const b = [];
+  for (let i = 0; i < 17; i++) b.push({ pressed: false, touched: false, value: 0 });
+  window.__smokePad = { id: ${JSON.stringify(XBOX)}, index: 0, connected: true, mapping: 'standard', timestamp: 0, axes: [0, 0, 0, 0], buttons: b };
+  Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [window.__smokePad] });
+  window.dispatchEvent(new Event('gamepadconnected'));
+  return true;
+})()`;
+const padSet = (k: PadKey, on: boolean): string =>
+  `(() => { const p = window.__smokePad; if (!p) return false; p.buttons[${PAD_INDEX[k]}] = { pressed: ${on}, touched: ${on}, value: ${on ? 1 : 0} }; p.timestamp++; return true; })()`;
+
+interface SystemPanelResult {
+  readonly sys: boolean;
+  readonly items: string[];
+  readonly afterF8: string | null;
+  readonly armed: string | null;
+  readonly nav: string[];
+}
+
+/**
+ * Ohne __vel (Paket bzw. ohne --dev): Fake-Pad einstecken, Boot überspringen, im ps2-Hauptmenü bis "System",
+ * F8 (darf nichts tun), "Beenden" wählen und scharf schalten. Den letzten Druck (= Beenden) macht der Aufrufer.
+ */
+async function padToQuitArmed(page: Page, tag: string): Promise<{ res: SystemPanelResult; tapA: () => Promise<void> }> {
+  const tap = async (k: PadKey): Promise<void> => {
+    await page.evaluate(padSet(k, true));
+    await sleep(80);
+    await page.evaluate(padSet(k, false));
+    await sleep(120);
+  };
+  await page.evaluate(PAD_INSTALL);
+  await sleep(1300); // Input probt ohne connected-Event höchstens sekündlich
+  await tap('PadDown'); // weckt das Pad (der Druck, der ein Pad übernimmt, zählt erst nach dem Loslassen)
+  // Boot per A überspringen, bis die Bühne lebt (is-live, kein .ps2-boot mehr); danach kurze Sperre abwarten.
+  const live = (): Promise<boolean> => page.evaluate(() => document.querySelector('.ps2-ui.is-live') !== null && document.querySelector('.ps2-boot') === null);
+  for (let i = 0; i < 6 && !(await live()); i++) await tap('PadA');
+  await sleep(500);
+  // System = letzter Hauptmenü-Eintrag. Der Pad-Fokus ist räumlich (kein Umlauf): rechts, und wo es nicht weitergeht,
+  // runter — bis System gewählt ist.
+  const nav: string[] = [];
+  const selMain = (): Promise<string> => page.evaluate(() => document.querySelector('.ps2-item.is-selected')?.getAttribute('data-id') ?? '-');
+  for (let i = 0; i < 12; i++) {
+    const sel = await selMain();
+    nav.push(sel);
+    if (sel === 'system') break;
+    await tap('PadRight');
+    if ((await selMain()) === sel) await tap('PadDown');
+  }
+  await tap('PadA');
+  const sys = await page.waitForSelector('.ps2-ui[data-view="system"]', { timeout: 5000 }).then(() => true, () => false);
+  const items = await page.evaluate(() => Array.from(document.querySelectorAll('.ps2-sys-item .ps2-sys-label')).map((e) => e.textContent ?? ''));
+  await page.keyboard.press('F8');
+  await sleep(300);
+  const afterF8 = await page.evaluate(() => document.querySelector('.vel-menu')?.getAttribute('data-screen') ?? null);
+  // Beenden = letzter Eintrag: runter, bis er gewählt ist; A fragt nach, A beendet.
+  for (let i = 0; i < 10; i++) {
+    if ((await page.evaluate(() => document.querySelector('.ps2-sys-item.is-selected .ps2-sys-label')?.textContent ?? null)) === 'Beenden') break;
+    await tap('PadDown');
+  }
+  await page.screenshot({ path: `${OUT}/${tag}-system.png` });
+  await tap('PadA');
+  const armed = await page.evaluate(() => document.querySelector('.ps2-sys-item.is-armed .ps2-sys-label')?.textContent ?? null);
+  return { res: { sys, items, afterF8, armed, nav }, tapA: () => tap('PadA') };
+}
+
+/** Bereit ohne __vel: Menü-Tür offen (Titel steht). */
+async function waitDoor(page: Page): Promise<boolean> {
+  const ok = await page.waitForFunction(() => document.querySelector('.vel-menu[data-door="ready"]') !== null, null, { timeout: 30000 }).then(() => true, () => false);
+  await page.waitForLoadState('networkidle').catch(() => {});
+  return ok;
 }
 
 async function waitExit(app: ElectronApplication, ms: number): Promise<{ code: number | null; ms: number }> {
@@ -339,8 +570,8 @@ let savedA: Record<string, string> = {};
     await page.evaluate(`${probeJs}
 window.__velDet = __velDet;`);
     const det = await page.evaluate((n) => {
-      const d = (window as unknown as { __velDet: { detHash(n: number): string; mathHash(n: number): string } }).__velDet;
-      return { det: d.detHash(n), math: d.mathHash(n) };
+      const d = (window as BridgeWin).__velDet;
+      return d ? { det: d.detHash(n), math: d.mathHash(n) } : { det: 'keine Probe', math: '-' };
     }, DET_N);
     const nodeDet = detHash(DET_N);
     const nodeMath = mathHash(DET_N);
@@ -381,8 +612,91 @@ window.__velDet = __velDet;`);
     }
     await page.screenshot({ path: `${OUT}/a-finish.png` });
 
-    // Anzeigemodus über die Bridge (Hauptprozess setzt Vollbild ohne Geste)
     const isFs = (): Promise<boolean> => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isFullScreen() ?? false);
+    const savedMode = (): string | null => {
+      try {
+        return (JSON.parse(readFileSync(join(userData, 'desktop.json'), 'utf8')) as { mode?: string }).mode ?? null;
+      } catch {
+        return null;
+      }
+    };
+
+    // C7: Alt+Enter / F11 schalten den Modus (gespeichert), die Seite sieht die Taste nicht; Enter allein schon.
+    await page.evaluate('window.__velKeys = 0; window.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === "F11") window.__velKeys++; }, true); 1');
+    // Review N1: der Renderer erfährt den Wechsel (sonst zeigt die offene Einstellung den alten Modus).
+    await page.evaluate('window.__velModes = []; window.velocityDesktop?.window.onModeChange?.((m) => window.__velModes.push(m)); 1');
+    const fs0 = await isFs();
+    await sendKey(app, 'Enter', ['alt']);
+    await sleep(1200);
+    const fsAlt = await isFs();
+    const modeAlt = savedMode();
+    await sendKey(app, 'F11', []);
+    await sleep(1200);
+    const fsF11 = await isFs();
+    const modeF11 = savedMode();
+    const seen = await page.evaluate(() => (window as BridgeWin).__velKeys ?? -1);
+    const modes = await page.evaluate('JSON.stringify(window.__velModes ?? null)');
+    await sendKey(app, 'Enter', []);
+    await sleep(300);
+    const seenPlain = await page.evaluate(() => (window as BridgeWin).__velKeys ?? -1);
+    check(
+      'Alt+Enter / F11 schalten den Anzeigemodus (gespeichert), Seite sieht sie nicht (C7)',
+      !fs0 && fsAlt && modeAlt === 'fullscreen' && !fsF11 && modeF11 === 'windowed' && seen === 0 && seenPlain === 1 && (await isFs()) === false,
+      `Fenster → Alt+Enter ${fsAlt}/${modeAlt} → F11 ${fsF11}/${modeF11}, Seite sah ${seen} (Enter allein ${seenPlain - seen})`,
+    );
+    check('Moduswechsel per Kürzel erreicht den Renderer (onModeChange, Review N1)', modes === '["fullscreen","windowed"]', `Ereignisse ${String(modes)}`);
+    // Dasselbe mit echten OS-Tasten (nur nach PID-Prüfung des Vordergrundfensters).
+    const pidA = await app.evaluate(({ BrowserWindow }) => {
+      const x = BrowserWindow.getAllWindows()[0];
+      x?.show();
+      x?.focus();
+      return process.pid;
+    }).catch(() => -1);
+    const actAlt = osKey(pidA, '%{ENTER}');
+    await sleep(1200);
+    const osAlt = await isFs();
+    const actF11 = osKey(pidA, '{F11}');
+    await sleep(1200);
+    const osF11 = await isFs();
+    if (actAlt !== 'ok' || actF11 !== 'ok') console.log(`  - OS-Tasten Alt+Enter/F11 übersprungen (Vordergrund nicht sicher: ${actAlt} / ${actF11})`);
+    else check('OS-Taste Alt+Enter / F11 → Vollbild / Fenster', osAlt && !osF11, `Alt+Enter ${osAlt}, F11 ${osF11}`);
+    if (await isFs()) await page.evaluate(() => (window as BridgeWin).velocityDesktop?.window.setMode('windowed'));
+
+    // C3: Bildschirm wach nur, solange das Spiel vorn ist. C2: minimiert gedrosselt (rAF ≈ 0). Die Sichtbarkeit selbst
+    // misst D ohne Playwright (das hält Seiten künstlich 'visible').
+    const blocker = (): Promise<{ id: number | null; started: boolean; focused: boolean } | null> =>
+      app.evaluate(({ BrowserWindow, powerSaveBlocker }) => {
+        const g = (globalThis as { __velDisplaySleep?: { readonly blockerId: number | null } }).__velDisplaySleep;
+        const x = BrowserWindow.getAllWindows()[0];
+        if (!g || !x) return null;
+        const id = g.blockerId;
+        return { id, started: id !== null && powerSaveBlocker.isStarted(id), focused: x.isFocused() };
+      });
+    const rafPerSec = (): Promise<number> =>
+      app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]?.webContents.executeJavaScript(
+          'new Promise((r) => { let n = 0; const f = () => { n++; requestAnimationFrame(f); }; requestAnimationFrame(f); setTimeout(() => r(n), 1000); })',
+        ) ?? -1,
+      );
+    const actFg = osActivate(pidA);
+    await sleep(400);
+    const bFg = await blocker();
+    const rafFg = await rafPerSec();
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.minimize());
+    await sleep(800);
+    const bMin = await blocker();
+    const rafMin = await rafPerSec();
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.restore());
+    await sleep(500);
+    const actBack = osActivate(pidA);
+    await sleep(400);
+    const bBack = await blocker();
+    const rafBack = await rafPerSec();
+    if (actFg !== 'ok' || actBack !== 'ok') console.log(`  - Bildschirm-wach im Vordergrund übersprungen (Vordergrund nicht sicher: ${actFg} / ${actBack})`);
+    else check('Bildschirm wach im Vordergrund (powerSaveBlocker.isStarted, C3)', bFg?.started === true && bBack?.started === true, `vorn ${JSON.stringify(bFg)}, wieder vorn ${JSON.stringify(bBack)}`);
+    check('Minimiert: Blocker frei (C3), Bildrate gedrosselt (C2)', bMin !== null && !bMin.started && rafMin <= 5 && rafFg > 20 && rafBack > 20, `Blocker ${JSON.stringify(bMin)}, rAF/s vorn ${rafFg} · minimiert ${rafMin} · zurück ${rafBack}`);
+
+    // Anzeigemodus über die Bridge (Hauptprozess setzt Vollbild ohne Geste)
     const m1 = await page.evaluate(() => (window as BridgeWin).velocityDesktop?.window.setMode('fullscreen') ?? null);
     const fs1 = await isFs();
     const m2 = await page.evaluate(() => (window as BridgeWin).velocityDesktop?.window.setMode('windowed') ?? null);
@@ -421,8 +735,11 @@ window.__velDet = __velDet;`);
         e.returnValue = '';
       });
     });
-    // Spiegel-Stand vor dem Schließen merken (der Spiegel schreibt ihn spätestens bei pagehide synchron).
+    // Spiegel-Stand vor dem Schließen merken (der Spiegel schreibt ihn spätestens bei pagehide synchron). Eine frische
+    // Änderung steht dabei noch im Debounce (2 s) — der Bridge-Test oben hat save.json überschrieben, ohne dass der
+    // Spiegel es weiß: nur das synchrone Schreiben beim Schließen bringt den echten Stand zurück.
     savedA = await page.evaluate(() => {
+      localStorage.setItem('velocity.smoke.close', String(Date.now()));
       const out: Record<string, string> = {};
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
@@ -443,26 +760,28 @@ window.__velDet = __velDet;`);
       fileData = {};
     }
     const bestA = savedA['velocity.best.v1'] ?? null;
+    const lost = Object.keys(savedA).filter((k) => fileData[k] !== savedA[k]);
     check(
-      'Spiegel beim Schließen geschrieben (Bestzeiten, < 200 KB)',
-      bestA !== null && fileData['velocity.best.v1'] === bestA && raw.length < 200 * 1024,
-      `${Object.keys(fileData).length} Schlüssel, ${(raw.length / 1024).toFixed(1)} KB, best ${bestA ? 'gleich' : 'fehlt'}`,
+      'Spiegel beim Schließen geschrieben (offene Änderung, Bestzeiten, alle Schlüssel, < 200 KB)',
+      bestA !== null && lost.length === 0 && raw.length < 200 * 1024,
+      `${Object.keys(fileData).length}/${Object.keys(savedA).length} Schlüssel, ${(raw.length / 1024).toFixed(1)} KB${lost.length ? `, abweichend: ${lost.join(', ')}` : ''}`,
     );
   } finally {
     await app.close().catch(() => {});
   }
 }
 
+
 // =====================================================================================================
-// B — ohne --dev, gleiches userData
+// B — unverpackt OHNE --dev, gleiches userData (kein __vel: Bereitschaft über das DOM, Pad über navigator)
 // =====================================================================================================
 {
   // Local Storage löschen: B muss den Stand aus save.json einspielen, bevor die Stores lesen (Plan 011 §2.7).
   rmSync(join(userData, 'Local Storage'), { recursive: true, force: true });
-  const { app, page } = await launchDev(['--query=online=mock', '--window-mode=windowed']);
+  const { app, page } = await launchDev(['--query=online=mock', '--window-mode=windowed', '--fault=start']);
   const w = watch(page, 'B');
   try {
-    await waitReady(page);
+    const door = await waitDoor(page);
     const st = await app.evaluate(({ BrowserWindow }) => {
       const x = BrowserWindow.getAllWindows()[0];
       if (!x) return null;
@@ -478,10 +797,12 @@ window.__velDet = __velDet;`);
         const k = localStorage.key(i);
         if (k && k.startsWith('velocity.')) keys[k] = localStorage.getItem(k) ?? '';
       }
-      return { dev: b?.dev ?? null, search: location.search, keys };
+      return { dev: b?.dev ?? null, search: location.search, keys, vel: typeof window.__vel };
     });
+    check('B: Titel steht ohne __vel (Menü-Tür offen), --fault ohne --dev wirkungslos', door, `data-door ready ${door}`);
     check('Modus aus desktop.json übernommen (Vollbild)', st?.fs === true, `isFullScreen ${st?.fs}`);
     check('Ohne --dev: Dev-Parameter ignoriert', pg.dev === false && pg.search === '', `dev ${pg.dev}, Query "${pg.search}"`);
+    check('Ohne --dev: kein Debug-Handle window.__vel (C1)', pg.vel === 'undefined', `typeof __vel ${pg.vel}`);
     check('Ohne --dev: DevTools gesperrt', st?.devtools === false && dt2 === false, `openDevTools → ${st?.devtools}/${dt2}`);
     const missing = Object.keys(savedA).filter((k) => !(k in pg.keys));
     check(
@@ -498,53 +819,13 @@ window.__velDet = __velDet;`);
     await page.evaluate(() => (window as BridgeWin).velocityDesktop?.window.setMode('windowed'));
 
     // Ohne --dev: kein Admin (Eintrag, F8), Beenden im ps2-System-Panel — nur mit dem Fake-Pad bedient.
-    const XBOX = 'Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)';
-    const tap = async (b: string): Promise<void> => {
-      await page.evaluate((x) => window.__vel?.pad({ buttons: { [x]: true } }), b);
-      await sleep(80);
-      await page.evaluate((x) => window.__vel?.pad({ buttons: { [x]: false } }), b);
-      await sleep(120);
-    };
-    const view = (): Promise<string | null> => page.evaluate(() => document.querySelector('.ps2-ui')?.getAttribute('data-view') ?? null);
-    await page.evaluate((id) => window.__vel?.pad({ id }), XBOX);
-    await page.waitForSelector('.vel-menu[data-door="ready"]', { timeout: 15000 }).catch(() => {});
-    await tap('PadDown'); // weckt das Pad (der Druck, der ein Pad übernimmt, zählt erst nach dem Loslassen)
-    // Boot per A überspringen, bis die Bühne lebt (is-live, kein .ps2-boot mehr); danach kurze Sperre abwarten.
-    const live = (): Promise<boolean> => page.evaluate(() => document.querySelector('.ps2-ui.is-live') !== null && document.querySelector('.ps2-boot') === null);
-    for (let i = 0; i < 6 && !(await live()); i++) await tap('PadA');
-    await sleep(500);
-    info.bView = await view();
-    // System = letzter Hauptmenü-Eintrag. Der Pad-Fokus ist räumlich (kein Umlauf): rechts, und wo es nicht weitergeht,
-    // runter — bis System gewählt ist.
-    const navLog: string[] = [];
-    const selMain = (): Promise<string> => page.evaluate(() => document.querySelector('.ps2-item.is-selected')?.getAttribute('data-id') ?? '-');
-    for (let i = 0; i < 12; i++) {
-      const sel = await selMain();
-      navLog.push(sel);
-      if (sel === 'system') break;
-      await tap('PadRight');
-      if ((await selMain()) === sel) await tap('PadDown');
-    }
-    info.bNav = navLog;
-    await tap('PadA');
-    const sys = await page.waitForSelector('.ps2-ui[data-view="system"]', { timeout: 5000 }).then(() => true, () => false);
-    const items = await page.evaluate(() => Array.from(document.querySelectorAll('.ps2-sys-item .ps2-sys-label')).map((e) => e.textContent ?? ''));
-    await page.keyboard.press('F8');
-    await sleep(300);
-    const scr = await page.evaluate(() => document.querySelector('.vel-menu')?.getAttribute('data-screen') ?? null);
-    check('Ohne --dev: kein Admin-Eintrag, F8 ohne Wirkung', sys && !items.includes('Admin') && items.includes('Beenden') && scr === 'title', `System ${sys}, Einträge ${items.join('/')}, nach F8 ${scr}`);
-    // Beenden = letzter Eintrag: runter, bis er gewählt ist; A fragt nach, A beendet.
-    for (let i = 0; i < 10; i++) {
-      if ((await page.evaluate(() => document.querySelector('.ps2-sys-item.is-selected .ps2-sys-label')?.textContent ?? null)) === 'Beenden') break;
-      await tap('PadDown');
-    }
-    await page.screenshot({ path: `${OUT}/b-system.png` });
-    await tap('PadA');
-    const armed = await page.evaluate(() => document.querySelector('.ps2-sys-item.is-armed .ps2-sys-label')?.textContent ?? null);
+    const { res, tapA } = await padToQuitArmed(page, 'b');
+    info.bNav = res.nav;
+    check('Ohne --dev: kein Admin-Eintrag, F8 ohne Wirkung', res.sys && !res.items.includes('Admin') && res.items.includes('Beenden') && res.afterF8 === 'title', `System ${res.sys}, Einträge ${res.items.join('/')}, nach F8 ${res.afterF8}`);
     await page.screenshot({ path: `${OUT}/b-quit-armed.png` });
-    check('Beenden zweistufig ("Wirklich beenden?")', armed === 'Wirklich beenden?', String(armed));
+    check('Beenden zweistufig ("Wirklich beenden?")', res.armed === 'Wirklich beenden?', String(res.armed));
     const tq = Date.now();
-    await tap('PadA').catch(() => {});
+    await tapA().catch(() => {});
     const ex = await waitExit(app, 5000);
     check('Beenden per Fake-Pad über das System-Panel → Exit 0', ex.code === 0, `Code ${ex.code}, ${Date.now() - tq} ms`);
     if (ex.code === null) await page.evaluate(() => (window as BridgeWin).velocityDesktop?.quit()).catch(() => {});
@@ -554,7 +835,151 @@ window.__velDet = __velDet;`);
 }
 
 // =====================================================================================================
-// C — gebaute exe (ohne Dev-Server, ohne Node)
+// D — Minimieren ohne Playwright (C2): echte Page Visibility, Pause, Bildrate
+// =====================================================================================================
+{
+  const port = 9352;
+  const dataD = mkdtempSync(join(tmpdir(), 'velocity-smoke-min-'));
+  const proc = spawnDev(['--dev', '--query=online=mock', '--window-mode=windowed', `--remote-debugging-port=${port}`, `--user-data=${dataD}`]);
+  try {
+    const cdp = await rawCdp(port, 30000);
+    if (!cdp || !(await cdpUntil(cdp, 'window.__vel?.ready === true', 30000))) check('D: Dev-Fenster per CDP', false, 'keine Verbindung/kein __vel');
+    else {
+      await cdp.ev(`window.__smokeVis = []; document.addEventListener('visibilitychange', () => window.__smokeVis.push(document.visibilityState)); window.__vel.start('level1', { lockless: true }); true`);
+      await cdpUntil(cdp, `window.__vel.state().gameState === 'playing'`, 20000);
+      await sleep(800);
+      interface VisSample {
+        readonly raf: number;
+        readonly vis: string;
+        readonly events: string[];
+        readonly game: string;
+      }
+      const sample = (): Promise<VisSample | undefined> =>
+        cdp.ev<VisSample>(
+          `new Promise((r) => { let n = 0; const f = () => { n++; requestAnimationFrame(f); }; requestAnimationFrame(f); setTimeout(() => r({ raf: n, vis: document.visibilityState, events: window.__smokeVis.slice(), game: window.__vel.state().gameState }), 1000); })`,
+        );
+      const before = await sample();
+      const hMin = osWindow(proc.pid ?? -1, 6);
+      await sleep(800);
+      const min = await sample();
+      const hBack = osWindow(proc.pid ?? -1, 9);
+      await sleep(800);
+      const back = await sample();
+      info.minimize = { before, min, back, hMin, hBack };
+      check(
+        'Minimiert: visibilityState hidden + visibilitychange, Pause, rAF ≈ 0 (C2)',
+        before?.vis === 'visible' && before.game === 'playing' && min?.vis === 'hidden' && min.events.includes('hidden') && min.game === 'paused' && min.raf <= 2,
+        `vorher ${before?.vis}/${before?.game}/${before?.raf} rAF/s → minimiert ${min?.vis}/${min?.game}/${min?.raf} rAF/s, Ereignisse ${min?.events.join(',')} (Fenster ${hMin})`,
+      );
+      check(
+        'Wiederhergestellt: sichtbar, volle Bildrate (C2)',
+        back?.vis === 'visible' && (back.events.at(-1) ?? '') === 'visible' && back.raf > 20,
+        `${back?.vis}, ${back?.raf} rAF/s, Ereignisse ${back?.events.join(',')} (Fenster ${hBack})`,
+      );
+      await cdp.ev('window.velocityDesktop.quit(); true');
+      cdp.close();
+    }
+    const code = await procExit(proc, 5000);
+    check('D: Beenden → Exit 0', code === 0, `Code ${code}`);
+  } finally {
+    killTree(proc);
+    rmQuiet(dataD);
+  }
+}
+
+// =====================================================================================================
+// E — Fehler-Injektion (C4/C6), nur Dev-Modus
+// =====================================================================================================
+if (process.argv.includes('--no-faults')) console.log('- Fehler-Injektion übersprungen (--no-faults)');
+else {
+  /** Dev-Hülle mit Fehler starten; stderr mitschreiben (dort meldet main.ts Neuladen/Aufgeben). */
+  const faultRun = (fault: string, port: number | null): { proc: ChildProcess; log: () => string; dir: string } => {
+    const dir = mkdtempSync(join(tmpdir(), `velocity-smoke-${fault}-`));
+    const args = ['.', '--dev', `--fault=${fault}`, '--query=online=mock', '--window-mode=windowed', `--user-data=${dir}`];
+    if (port !== null) args.push(`--remote-debugging-port=${port}`);
+    const proc = spawn(electronPath, args, { cwd: ROOT, stdio: ['ignore', 'ignore', 'pipe'] });
+    let err = '';
+    proc.stderr?.on('data', (d: Buffer) => (err += d.toString('utf8')));
+    return { proc, log: () => err, dir };
+  };
+  const lastLine = (log: string, re: RegExp): string => log.split(/\r?\n/).filter((l) => re.test(l)).slice(-1)[0]?.slice(0, 160) ?? '—';
+
+  // Nicht zu retten: Fehlerdialog (im Test-Modus schließt er sich selbst), Exit 1 — kein unsichtbarer Prozess.
+  for (const f of ['start', 'crash', 'load'] as const) {
+    const r = faultRun(f, null);
+    const t0 = Date.now();
+    const code = await procExit(r.proc, 40000);
+    if (code === null) killTree(r.proc);
+    check(`Fehler ${f}: Fehlerdialog + Exit 1 (C4)`, code === 1 && /Fehlerdialog/.test(r.log()), `Code ${code}, ${Date.now() - t0} ms · ${lastLine(r.log(), /Fehlerdialog/)}`);
+    rmQuiet(r.dir);
+  }
+
+  // Einmal-Fehler: neu geladen bzw. ohne Modul weiter — das Spiel steht, das Fenster ist sichtbar.
+  const recover: readonly (readonly [string, RegExp, number])[] = [
+    ['crash-once', /Renderer gone .*neu laden/, 40000],
+    ['load-once', /Renderer load .*neu laden/, 40000],
+    ['setup', /Modul .* nicht geladen/, 40000],
+    ['hang', /Renderer unresponsive .*neu laden/, 120000],
+  ];
+  for (const [i, [f, re, ms]] of recover.entries()) {
+    const port = 9354 + i;
+    const r = faultRun(f, port);
+    const t0 = Date.now();
+    try {
+      // Erst die Meldung im Log abwarten, dann muss die (neu geladene) Seite bereit sein.
+      while (Date.now() - t0 < ms && !re.test(r.log()) && r.proc.exitCode === null) await sleep(250);
+      const logged = re.test(r.log());
+      // Erst nach dem Neuladen verbinden: eine Verbindung zum alten (gleich beendeten) Renderer bliebe stumm.
+      if (logged) await sleep(2500);
+      const cdp = logged ? await rawCdp(port, 15000) : null;
+      const ready = cdp ? await cdpUntil(cdp, 'window.__vel?.ready === true', 30000) : false;
+      const shown = osWindow(r.proc.pid ?? -1, null);
+      await sleep(1500);
+      const alive = r.proc.exitCode === null;
+      check(
+        `Fehler ${f}: weiter spielbar, Fenster sichtbar (C4/C6)`,
+        logged && ready && alive && shown !== '0' && !shown.startsWith('fehler'),
+        `${Date.now() - t0} ms · Log "${lastLine(r.log(), re)}" · bereit ${ready}, Fenster ${shown}, läuft ${alive}`,
+      );
+      await cdp?.ev('window.velocityDesktop.quit(); true');
+      cdp?.close();
+      const code = await procExit(r.proc, 5000);
+      if (code !== 0) console.log(`  - ${f}: Beenden Code ${code}`);
+    } finally {
+      killTree(r.proc);
+      rmQuiet(r.dir);
+    }
+  }
+
+  // ready-to-show kommt nie: Fenster erst versteckt, nach dem Zeitlimit (10 s) trotzdem sichtbar.
+  {
+    const port = 9359;
+    const r = faultRun('noshow', port);
+    try {
+      await sleep(4000);
+      const early = osWindow(r.proc.pid ?? -1, null);
+      const t0 = Date.now();
+      while (Date.now() - t0 < 15000 && !/Kein erstes Bild/.test(r.log())) await sleep(250);
+      await sleep(800);
+      const late = osWindow(r.proc.pid ?? -1, null);
+      check(
+        'ready-to-show bleibt aus → Fenster nach Zeitlimit sichtbar (C4)',
+        early === '0' && late !== '0' && !late.startsWith('fehler') && /Kein erstes Bild/.test(r.log()),
+        `nach 4 s Fenster ${early}, danach ${late} · ${lastLine(r.log(), /Kein erstes Bild/)}`,
+      );
+      const cdp = await rawCdp(port, 5000);
+      await cdp?.ev('window.velocityDesktop.quit(); true');
+      cdp?.close();
+      await procExit(r.proc, 5000);
+    } finally {
+      killTree(r.proc);
+      rmQuiet(r.dir);
+    }
+  }
+}
+
+// =====================================================================================================
+// C — gebaute exe (ohne Dev-Server, ohne Node, ohne __vel)
 // =====================================================================================================
 const exe = resolve(ROOT, 'release', 'win-unpacked', 'VELOCITY.exe');
 if (process.argv.includes('--no-exe')) console.log('- exe übersprungen (--no-exe)');
@@ -562,8 +987,10 @@ else if (!existsSync(exe)) check('win-unpacked/VELOCITY.exe vorhanden', false, `
 else {
   const port = 9351;
   const dataC = mkdtempSync(join(tmpdir(), 'velocity-smoke-exe-'));
-  const proc = spawn(exe, [`--remote-debugging-port=${port}`, `--user-data=${dataC}`], { stdio: 'ignore' });
+  // --dev, --query, --fault: im Paket wirkungslos (Review C1) — jeder Spieler kann sie als Steam-Startoption setzen.
+  const proc = spawn(exe, ['--dev', '--query=online=mock', '--fault=start', `--remote-debugging-port=${port}`, `--user-data=${dataC}`], { stdio: 'ignore' });
   const exited = new Promise<number | null>((r) => proc.once('exit', (c) => r(c)));
+  const pid = proc.pid ?? -1;
   try {
     let browser: Awaited<ReturnType<typeof chromium.connectOverCDP>> | null = null;
     for (let k = 0; k < 40 && !browser; k++) {
@@ -579,30 +1006,115 @@ else {
       }
       if (!page) check('exe: Spielseite', false, 'keine app://-Seite');
       else {
-        const w = watch(page, 'C');
-        await waitReady(page);
-        const r = await page.evaluate(async () => {
-          const idx = (await (await fetch('/levels/index.json')).json()) as unknown[];
+        const pg = page;
+        const w = watch(pg, 'C');
+        const door = await waitDoor(pg);
+        const r = await pg.evaluate(async () => {
+          const res = await fetch('/levels/index.json');
+          const idx = (await res.json()) as unknown[];
           const b = (window as BridgeWin).velocityDesktop;
-          return { origin: location.origin, n: idx.length, dev: b?.dev ?? null, v: b?.versions ?? null, req: typeof (globalThis as { require?: unknown }).require };
+          return {
+            origin: location.origin,
+            n: idx.length,
+            dev: b?.dev ?? null,
+            v: b?.versions ?? null,
+            req: typeof (globalThis as { require?: unknown }).require,
+            proc: typeof (globalThis as { process?: unknown }).process,
+            search: location.search,
+            vel: typeof window.__vel,
+            csp: (await fetch('/')).headers.get('content-security-policy'),
+          };
         });
-        check('exe: startet, app://velocity, Levelliste', r.origin === 'app://velocity' && r.n >= 4 && r.dev === false && r.req === 'undefined', `${r.origin}, ${r.n} Level, dev ${r.dev}, Electron ${r.v?.electron}`);
-        await page.screenshot({ path: `${OUT}/c-exe.png` });
+        check(
+          'exe: startet (trotz --fault=start), app://velocity, Levelliste',
+          door && r.origin === 'app://velocity' && r.n >= 4 && r.req === 'undefined' && r.proc === 'undefined',
+          `${r.origin}, ${r.n} Level, require ${r.req}, process ${r.proc}, Electron ${r.v?.electron}`,
+        );
+        check('exe: --dev/--query wirkungslos, kein __vel (C1)', r.dev === false && r.search === '' && r.vel === 'undefined', `dev ${r.dev}, Query "${r.search}", typeof __vel ${r.vel}`);
+        check('exe: CSP-Header gesetzt', (r.csp ?? '').includes("script-src 'self'"), r.csp ?? '—');
+        await pg.screenshot({ path: `${OUT}/c-exe.png` });
+
+        // Kürzel als echte OS-Tasten (nur nach PID-Prüfung des Vordergrundfensters).
+        await pg.evaluate(() => {
+          (window as BridgeWin).__velMarker = 7;
+        });
+        for (const [keys, label] of [['^w', 'Strg+W'], ['^r', 'Strg+R'], ['{F5}', 'F5'], ['^+i', 'Strg+Shift+I']] as const) {
+          const act = osKey(pid, keys);
+          await sleep(800);
+          const marker = await Promise.race([pg.evaluate(() => (window as BridgeWin).__velMarker ?? null).catch(() => null), sleep(3000).then(() => null)]);
+          const devtools = (await cdpTargets(port)).filter((t) => t.url.startsWith('devtools://')).length;
+          if (act !== 'ok') console.log(`  - exe: OS-Taste ${label} übersprungen (Vordergrund nicht sicher: ${act})`);
+          else check(`exe: OS-Taste ${label} ohne Wirkung`, marker === 7 && devtools === 0 && proc.exitCode === null, `Marker ${marker}, DevTools-Ziele ${devtools}, läuft ${proc.exitCode === null}`);
+        }
+        // Alt+Enter / F11 (C7): Modus wechselt und steht in desktop.json.
+        const mode = (): Promise<string | null> => pg.evaluate(() => (window as BridgeWin).velocityDesktop?.window.getMode() ?? null);
+        const fileMode = (): string | null => {
+          try {
+            return (JSON.parse(readFileSync(join(dataC, 'desktop.json'), 'utf8')) as { mode?: string }).mode ?? null;
+          } catch {
+            return null;
+          }
+        };
+        const m0 = await mode();
+        const a1 = osKey(pid, '%{ENTER}');
         await sleep(1500);
+        const m1 = await mode();
+        const f1 = fileMode();
+        const a2 = osKey(pid, '{F11}');
+        await sleep(1500);
+        const m2 = await mode();
+        if (a1 !== 'ok' || a2 !== 'ok') console.log(`  - exe: Alt+Enter/F11 übersprungen (Vordergrund nicht sicher: ${a1} / ${a2})`);
+        else check('exe: Alt+Enter / F11 schalten den Anzeigemodus (gespeichert, C7)', m0 !== null && m1 !== m0 && f1 === m1 && m2 === m0, `${m0} → Alt+Enter ${m1} (Datei ${f1}) → F11 ${m2}`);
+
+        // Speicher-Spiegel am Paket
+        const sv = await pg.evaluate((json) => {
+          const s = (window as BridgeWin).velocityDesktop?.saveMirror;
+          if (!s) return null;
+          return Promise.all([Promise.resolve(s.writeSync(json)), s.write('kein json')]).then(([sync, bad]) => ({ sync, bad }));
+        }, SAVE_JSON);
+        const saveFile = join(dataC, 'save', 'save.json');
+        check('exe: Spiegel schreibt save.json, Müll abgelehnt', sv !== null && sv.sync && !sv.bad && existsSync(saveFile), `${JSON.stringify(sv)}, Datei ${existsSync(saveFile)}`);
+
+        // Kein Admin ohne Dev-Modus, Beenden per Fake-Pad (navigator.getGamepads).
+        if ((await mode()) === 'fullscreen') await pg.evaluate(() => (window as BridgeWin).velocityDesktop?.window.setMode('windowed'));
+        const { res, tapA } = await padToQuitArmed(pg, 'c');
+        check(
+          'exe: kein Admin-Eintrag, F8 ohne Wirkung (--dev im Paket wirkungslos)',
+          res.sys && !res.items.includes('Admin') && res.items.includes('Beenden') && res.afterF8 === 'title',
+          `System ${res.sys}, Einträge ${res.items.join('/')}, nach F8 ${res.afterF8}`,
+        );
         check('exe: 0 CSP-Verstöße / Fehler (ab Verbindung)', w.csp.length === 0 && w.errors.length === 0, [...w.csp, ...w.errors].slice(0, 4).join(' | ') || '0');
-        await page.evaluate(() => (window as BridgeWin).velocityDesktop?.quit()).catch(() => {});
+        check('exe: Beenden zweistufig', res.armed === 'Wirklich beenden?', String(res.armed));
+        await tapA().catch(() => {});
       }
       await browser.close().catch(() => {});
     }
     const code = await Promise.race([exited, sleep(5000).then(() => 'timeout' as const)]);
-    check('exe: Beenden → Exit 0', code === 0, `Code ${code}`);
+    check('exe: Beenden per Fake-Pad → Exit 0', code === 0, `Code ${code}`);
   } finally {
-    if (proc.exitCode === null) proc.kill();
-    rmSync(dataC, { recursive: true, force: true });
+    killTree(proc);
+    rmQuiet(dataC);
+  }
+
+  // Fuses: --inspect und ELECTRON_RUN_AS_NODE sind im Paket gesperrt (electron-builder.yml electronFuses).
+  {
+    const dataF = mkdtempSync(join(tmpdir(), 'velocity-smoke-fuse-'));
+    const inspectPort = 9362;
+    const p1 = spawn(exe, [`--inspect=${inspectPort}`, `--user-data=${join(dataF, 'a')}`], { stdio: 'ignore' });
+    await sleep(4000);
+    const inspector = await fetch(`http://127.0.0.1:${inspectPort}/json/version`).then((x) => x.status, () => -1);
+    killTree(p1);
+    check('exe: --inspect gesperrt (Fuse)', inspector === -1, `Inspector-Port ${inspector === -1 ? 'zu' : `offen (${inspector})`}`);
+    const p2 = spawn(exe, ['-e', 'process.exit(42)', `--user-data=${join(dataF, 'b')}`], { stdio: 'ignore', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } });
+    const c2 = await procExit(p2, 4000);
+    killTree(p2);
+    check('exe: ELECTRON_RUN_AS_NODE wirkungslos (Fuse)', c2 !== 42, `Code ${c2 === null ? 'läuft als Spiel' : c2}`);
+    await sleep(500);
+    rmQuiet(dataF);
   }
 }
 
-rmSync(userData, { recursive: true, force: true });
+rmQuiet(userData);
 writeFileSync(`${OUT}/report.json`, JSON.stringify({ checks, info }, null, 2));
 const bad = checks.filter((c) => !c.ok);
 console.log(`\n${checks.length - bad.length}/${checks.length} grün${bad.length ? ` — rot: ${bad.map((c) => c.name).join('; ')}` : ''}`);

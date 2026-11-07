@@ -556,8 +556,10 @@ class FakeLogin implements ExternalLogin {
     }
     return this.pending;
   }
+  /** Wie der Hauptprozess (electron/auth.ts LoopbackLogin.cancel): wer auf den Rücksprung wartet, bekommt 'cancelled'. */
   cancel(): void {
     this.cancels++;
+    this.callback({ ok: false, error: 'cancelled', detail: 'Login abgebrochen.' });
   }
   callback(r: DesktopAuthResult): void {
     this.settle?.(r);
@@ -663,6 +665,62 @@ describe('SupabaseService Desktop-Login (externalLogin = platform.auth)', () => 
     await expect(svc.signIn()).rejects.toMatchObject({ code: 'unavailable' });
     expect(api.exchanges).toEqual([]);
     expect(svc.identity).toBeNull();
+  });
+
+  it('Abbrechen (Menü → platform.auth.cancel): signIn löst ohne Fehler auf, Ende gemeldet, kein Tausch; neuer Versuch geht', async () => {
+    const api = new FakeApi();
+    const login = new FakeLogin();
+    const svc = desktopService(api, login);
+    const seen: (PlayerIdentity | null)[] = [];
+    svc.onIdentityChange((id) => seen.push(id));
+    const p = svc.signIn();
+    await ticks();
+    // Warten meldet nichts — das Menü zeigt "Login läuft", bis das Ende kommt.
+    expect(seen).toEqual([]);
+    login.cancel();
+    await expect(p).resolves.toBeUndefined();
+    expect(login.cancels).toBe(1);
+    // Ende ohne Anmeldung gemeldet (Review B4): onIdentityChange(null) → Menu.refreshOnline beendet den Hinweis.
+    expect(seen).toEqual([null]);
+    expect(svc.identity).toBeNull();
+    expect(api.exchanges).toEqual([]);
+    const again = svc.signIn();
+    await ticks();
+    expect(login.begins).toBe(2);
+    login.callback({ ok: true, code: 'code-9' });
+    await again;
+    expect(seen.at(-1)?.uid).toBe(ME);
+  });
+
+  it('begin() schon abgebrochen (Esc beim Binden) → kein Fehler, kein Browser, null gemeldet (Review N2 menu-ui)', async () => {
+    const api = new FakeApi();
+    const login = new FakeLogin();
+    login.beginAnswer = { ok: false, error: 'cancelled', detail: 'Login abgebrochen.' };
+    const svc = desktopService(api, login);
+    const seen: (PlayerIdentity | null)[] = [];
+    svc.onIdentityChange((id) => seen.push(id));
+    await expect(svc.signIn()).resolves.toBeUndefined();
+    expect(login.opened).toEqual([]);
+    expect(seen).toEqual([null]);
+  });
+
+  it('Ende ohne Anmeldung (Frist) meldet onIdentityChange(null) genau einmal; Erfolg meldet nur die Identität', async () => {
+    const api = new FakeApi();
+    const login = new FakeLogin();
+    const svc = desktopService(api, login);
+    const seen: (PlayerIdentity | null)[] = [];
+    svc.onIdentityChange((id) => seen.push(id));
+    const p = svc.signIn();
+    await ticks();
+    login.callback({ ok: false, error: 'timeout', detail: 'Keine Rückmeldung aus dem Browser (5 min).' });
+    await expect(p).rejects.toMatchObject({ code: 'timeout' });
+    expect(seen).toEqual([null]);
+    const ok = svc.signIn();
+    await ticks();
+    login.callback({ ok: true, code: 'code-1' });
+    await ok;
+    expect(seen.filter((id) => id === null)).toHaveLength(1);
+    expect(seen.at(-1)?.uid).toBe(ME);
   });
 
   it('Auth-URL nicht erzeugbar → Empfänger sofort zu (cancel); Tausch scheitert → auth, nicht angemeldet', async () => {

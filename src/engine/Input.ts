@@ -85,6 +85,12 @@ type DeviceListener = (d: InputDevice) => void;
 
 /** Ohne gamepadconnected-Event trotzdem gelegentlich nachsehen (Pads, die schon vor dem Laden da waren). */
 const PAD_PROBE_SECONDS = 1;
+/**
+ * Mausbewegung im Lock schaltet erst auf Tastatur, wenn das Pad so lange still war (s) — Review A4: linker Stick +
+ * Maus (Deck-Trackpad) wechselte sonst zweimal je Frame das Gerät (Prompts, Menü, Allokation im Frame-Pfad).
+ * Tasten und Klicks schalten sofort.
+ */
+const MOUSE_DEVICE_DEBOUNCE = 0.25;
 
 export class InputManager {
   /** DOM-freier Kern (für Tools/Tests zugänglich). */
@@ -234,6 +240,11 @@ export class InputManager {
     this.fakePads = pad ? [pad] : null;
   }
 
+  /** Ein Fake-Pad stellt die Eingabe (Skript) — Game markiert Läufe dann als assistiert (Review A6). */
+  get fakePadActive(): boolean {
+    return this.fakePads !== null;
+  }
+
   private readonly padSource: GamepadSource = () => {
     if (this.fakePads !== null) return this.fakePads;
     if (this.padCount <= 0 && this.padProbe > 0) return null;
@@ -328,6 +339,14 @@ export class InputManager {
   /** Desktop-Hülle: Vollbild/Kürzel regelt der Hauptprozess. */
   get desktop(): boolean {
     return this.platform.kind === 'desktop';
+  }
+
+  /**
+   * Entwickler-Werkzeuge (F1-Tuning) erlaubt: Web immer, Desktop nur mit `--dev` — dieselbe Regel wie
+   * Menu.adminAllowed für F8 (Review A10: sonst Physik-Cheats für Medaillen/Kosmetik in der Release-exe).
+   */
+  get devTools(): boolean {
+    return this.platform.kind === 'web' || this.platform.dev;
   }
 
   /** Vollbild ist ein Anzeigemodus der Plattform (Desktop) statt Browser-Vollbild mit Geste. */
@@ -659,8 +678,9 @@ export class InputManager {
     const dx = e.movementX;
     const dy = e.movementY;
     if (dx === 0 && dy === 0) return;
-    // Maus im Lock = Spielen mit der Maus (ohne Lock zählt Bewegung nicht: Zittern neben dem Pad).
-    if (this.rawDevice !== 'keyboard') this.setRawDevice('keyboard');
+    // Maus im Lock = Spielen mit der Maus (ohne Lock zählt Bewegung nicht: Zittern neben dem Pad) — aber erst, wenn
+    // das Pad kurz still war: Stick + Maus zugleich (Deck-Trackpad) flatterte sonst je Frame (Review A4).
+    if (this.rawDevice !== 'keyboard' && this.pad.idleSeconds >= MOUSE_DEVICE_DEBOUNCE) this.setRawDevice('keyboard');
     if (this.graceEvents > 0) {
       this.graceEvents--;
       if (

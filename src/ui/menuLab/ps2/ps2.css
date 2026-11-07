@@ -2983,3 +2983,30 @@
   border: 0;
   box-shadow: none;
 }
+
+/* ---- Hinweise über dem Screen (Plan 011 Review B2/B4): Glasplatte wie die Bestands-Screens, Größe mit --k
+ * (16/24/32 px — Silkscreen bleibt im 8-px-Raster). */
+.vel-menu.vel-style--ps2 .vel-login-wait {
+  background: rgba(3, 4, 16, 0.82);
+}
+
+.vel-menu.vel-style--ps2 .vel-login-box {
+  zoom: var(--k);
+  border-left: 1px solid var(--ps2-line);
+}
+
+.vel-menu.vel-style--ps2 .vel-login-box .vel-h2 {
+  font-size: 16px;
+  color: var(--ps2-text);
+}
+
+.vel-menu.vel-style--ps2 .vel-menu-notice {
+  bottom: calc(88px * var(--k));
+  padding: calc(8px * var(--k)) calc(16px * var(--k));
+  font-size: calc(16px * var(--k));
+  line-height: calc(24px * var(--k));
+  letter-spacing: 2px;
+  color: var(--ps2-ink);
+  background: #eef1ff;
+  box-shadow: 0 calc(4px * var(--k)) 0 var(--cyan);
+}

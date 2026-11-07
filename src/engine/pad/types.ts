@@ -70,12 +70,14 @@ export type PadPresetId = 'bumper' | 'classic';
  * "Bumper-Sprung" (Default, §2.2.5): Sprung auf der Schulter, damit der Daumen am Kamera-Stick bleibt.
  * A/B bleiben für Einsteiger mitbelegt. Neustart = View GEHALTEN (PAD_RESTART_HOLD), sonst kostet ein
  * versehentlicher Druck den Lauf.
+ * Sprint (mit Auto-Sprint: "Langsamer") auf LT, L3 bleibt frei (Review A9): wer den digitalen Bewegungs-Stick hart
+ * drückt, klickte L3 mit → 320 → 250 u/s, Rutschen (ab 280) ging nicht. LT ist in beiden Presets und im Menü frei.
  */
 export const PAD_PRESETS: { readonly [K in PadPresetId]: PadBinds } = {
   bumper: {
     jump: ['PadLB', 'PadA'],
     crouch: ['PadRB', 'PadB'],
-    sprint: ['PadL3'],
+    sprint: ['PadLT'],
     respawn: ['PadY'],
     demo: ['PadX'],
     restart: ['PadView'],
@@ -84,7 +86,7 @@ export const PAD_PRESETS: { readonly [K in PadPresetId]: PadBinds } = {
   classic: {
     jump: ['PadA'],
     crouch: ['PadB'],
-    sprint: ['PadL3'],
+    sprint: ['PadLT'],
     respawn: ['PadY'],
     demo: ['PadX'],
     restart: ['PadView'],

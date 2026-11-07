@@ -24,6 +24,15 @@ export function detectPlatform(scope: { readonly velocityDesktop?: unknown } | u
   return isDesktopBridge(bridge) ? desktopPlatform(bridge) : WEB_PLATFORM;
 }
 
+/**
+ * Dev-Werkzeuge im Renderer (Debug-Handle `window.__vel`, Dev-Parameter ?online/level/menu/debug/…): im Web immer
+ * (die Playwright-Werkzeuge brauchen sie), am Desktop nur im Dev-Modus (unverpackt + --dev). Sonst gäbe ein
+ * Debug-Port — `--remote-debugging-port` als Steam-Startoption — jedem Spieler unlockAll/useBot/teleport (Review C1).
+ */
+export function devToolsAllowed(p: Pick<PlatformApi, 'kind' | 'dev'>): boolean {
+  return p.kind === 'web' || p.dev;
+}
+
 export function platform(): PlatformApi {
   if (!cached) cached = detectPlatform(typeof window === 'undefined' ? undefined : (window as { velocityDesktop?: unknown }));
   return cached;

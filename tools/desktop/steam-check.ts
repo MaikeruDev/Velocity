@@ -9,8 +9,8 @@
  *  C  --steam --steam-fake: init(480) nach dem ersten Bild, Rich Presence Menü → L2 SCHLEIFE → Gegen Ghost →
  *     Training T3 → Menü (nur Geändertes), Overlay → Pause, unter Playwright (CDP = Debug-Zugang) + --dev sind
  *     Achievements komplett aus (Bridge-Aufruf abgelehnt, kein activate, kein velocity.achv.v1), 0 Fehler/CSP.
- *  D  release/win-unpacked/VELOCITY.exe --steam --steam-fake (ohne --dev, falls gebaut): gesperrt → das echte Modul
- *     wird NICHT geladen, kein Bridge-Feld.
+ *  D  release/win-unpacked/VELOCITY.exe --steam --steam-fake --dev (falls gebaut): --dev ist im Paket wirkungslos →
+ *     gesperrt, das echte Modul wird NICHT geladen, kein Bridge-Feld, kein __vel.
  *
  *   npm run build && npx tsx tools/desktop/steam-check.ts [--no-exe]   → shots/desktop/steam/report.json, Exit 1 bei Fehler
  */
@@ -267,13 +267,14 @@ async function startLevel(page: Page, id: string): Promise<void> {
 }
 
 // =====================================================================================================
-// D — gebaute exe: Fake ohne --dev ist gesperrt (das echte Modul wird nicht ersatzweise geladen)
+// D — gebaute exe: Fake ist gesperrt, auch mit --dev (im Paket wirkungslos, Review C1) — das echte Modul wird nicht
+//     ersatzweise geladen. Kein __vel im Paket: Bereitschaft über die Menü-Tür.
 // =====================================================================================================
 const exe = resolve(ROOT, 'release', 'win-unpacked', 'VELOCITY.exe');
 if (process.argv.includes('--no-exe')) console.log('- exe übersprungen (--no-exe)');
 else if (!existsSync(exe)) console.log(`- exe fehlt (${exe}) → npm run desktop:build; übersprungen`);
 else {
-  const args = ['--steam', '--steam-fake', '--remote-debugging-port=9352'];
+  const args = ['--steam', '--steam-fake', '--dev', '--remote-debugging-port=9352'];
   guard(args);
   const dataD = mkdtempSync(join(tmpdir(), 'velocity-steam-exe-'));
   const proc = spawn(exe, [...args, `--user-data=${dataD}`], { stdio: ['ignore', 'pipe', 'pipe'], env });
@@ -297,9 +298,10 @@ else {
     }
     if (!page) check('D exe: Spielseite', false, 'keine app://-Seite');
     else {
-      await page.waitForFunction(() => window.__vel?.ready === true, null, { timeout: 30000 });
+      await page.waitForFunction(() => document.querySelector('.vel-menu[data-door="ready"]') !== null, null, { timeout: 30000 });
+      const vel = await page.evaluate(() => typeof window.__vel);
       const steamField = await page.evaluate(() => 'steam' in ((window as BridgeWin).velocityDesktop ?? {}));
-      check('D exe --steam --steam-fake ohne --dev: gesperrt, kein Bridge-Feld', !steamField, `steam im Bridge ${steamField}`);
+      check('D exe --steam --steam-fake --dev: gesperrt, kein Bridge-Feld, kein __vel', !steamField && vel === 'undefined', `steam im Bridge ${steamField}, typeof __vel ${vel}`);
       check('D exe: Log "nur mit --dev", kein "Steam aktiv"', logs.some((l) => /--steam-fake gilt nur mit --dev/.test(l)) && !logs.some((l) => /Steam aktiv/.test(l)), logs.join(' | ') || '(kein Log gelesen)');
       await page.evaluate(() => (window as BridgeWin).velocityDesktop?.quit()).catch(() => {});
     }
@@ -308,7 +310,12 @@ else {
     check('D exe: Beenden → Exit 0', code === 0, `Code ${code}`);
   } finally {
     if (proc.exitCode === null) proc.kill();
-    rmSync(dataD, { recursive: true, force: true });
+    // Gerade beendete Kindprozesse halten Cache-Dateien kurz offen (EPERM/EBUSY) — nur Temp, notfalls liegen lassen.
+    try {
+      rmSync(dataD, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch (e) {
+      console.log(`  - ${dataD} nicht gelöscht (${e instanceof Error ? e.message.slice(0, 60) : String(e)})`);
+    }
   }
 }
 

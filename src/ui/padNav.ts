@@ -61,6 +61,28 @@ function spanGap(a0: number, a1: number, b0: number, b1: number): number {
   return 0;
 }
 
+/**
+ * Fokus nach einem Teil-Neuaufbau wiederfinden (rein, Vitest): dieselbe Signatur am nächsten zur alten Position; fehlt
+ * sie, der Platz an der alten Position (geklemmt) — `lost`: dieses Element hat der Spieler nie gewählt (Review B3: vorher
+ * fiel der Fokus auf null und das nächste A klickte blind das Startelement). index −1 = nichts bedienbar oder es gab
+ * keinen Fokus (key '').
+ */
+export function refocusIndex(keys: readonly string[], key: string, index: number): { readonly index: number; readonly lost: boolean } {
+  if (keys.length === 0 || key === '') return { index: -1, lost: false };
+  let best = -1;
+  let bestD = Infinity;
+  for (let i = 0; i < keys.length; i++) {
+    if (keys[i] !== key) continue;
+    const d = Math.abs(i - index);
+    if (d < bestD) {
+      best = i;
+      bestD = d;
+    }
+  }
+  if (best >= 0) return { index: best, lost: false };
+  return { index: Math.min(Math.max(index, 0), keys.length - 1), lost: true };
+}
+
 /** Was als bedienbar zählt. [data-pad-focus] macht beliebige Elemente erreichbar, [data-pad-skip] nimmt sie heraus. */
 export const PAD_FOCUSABLE =
   'button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), a[href], [data-pad-focus]';
@@ -85,6 +107,8 @@ export class PadNav {
   private index = -1;
   private observer: MutationObserver | null = null;
   private restorePending = false;
+  /** Fokus kam per Rückfall auf ein anderes Element (Neuaufbau): das nächste A zeigt ihn nur, statt blind auszulösen. */
+  private unseen = false;
   private readonly opts: PadNavOptions;
 
   constructor(opts: PadNavOptions = {}) {
@@ -107,6 +131,7 @@ export class PadNav {
       this.setCur(null);
       this.key = '';
       this.index = -1;
+      this.unseen = false;
     }
   }
 
@@ -123,29 +148,26 @@ export class PadNav {
       this.setCur(null);
       return null;
     }
-    const again = this.key !== '' ? this.findKey(els) : null;
-    this.focus(again ?? this.initial(els), false);
+    if (!this.refocus(els)) this.focus(this.initial(els), false);
     return this.cur;
   }
 
-  /** Bestimmtes Element fokussieren (z. B. das gewählte Level nach einem Neuaufbau). */
+  /** Bestimmtes Element fokussieren (z. B. das gewählte Level nach einem Neuaufbau). Gewollt gesetzt = gesehen. */
   focus(el: HTMLElement | null, scroll = true): void {
-    if (el === null) {
-      this.setCur(null);
-      return;
-    }
-    this.setCur(el);
-    const els = this.list();
-    this.index = els.indexOf(el);
-    this.key = keyOf(el);
-    if (scroll) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    this.opts.onFocus?.(el);
+    this.unseen = false;
+    this.place(el, scroll);
   }
 
   /** Steuerkreuz: räumlich weiter; auf einem Slider ändert links/rechts den Wert. true = etwas ist passiert. */
   move(dx: number, dy: number): boolean {
     const cur = this.current;
-    if (!cur) return this.ensure() !== null;
+    if (!cur) {
+      // Kein gültiger Fokus: die Richtung zeigt ihn erst (auch einen Rückfall) — danach darf A auslösen.
+      const shown = this.ensure() !== null;
+      this.unseen = false;
+      return shown;
+    }
+    this.unseen = false;
     // Tippt man gerade in einem Textfeld, verlässt die Richtung zuerst das Feld.
     if (document.activeElement === cur && isTextField(cur)) cur.blur();
     if (dx !== 0 && cur instanceof HTMLInputElement && cur.type === 'range') {
@@ -186,10 +208,18 @@ export class PadNav {
     return true;
   }
 
-  /** A: fokussiertes Element auslösen. Textfelder bekommen echten Fokus (Tippen). false = kein Fokus. */
+  /**
+   * A: fokussiertes Element auslösen. Textfelder bekommen echten Fokus (Tippen). false = kein Fokus.
+   * Nach einem Fokusverlust (Rückfall auf ein anderes Element) zeigt das erste A nur den Fokus (true, nichts ausgelöst).
+   */
   activate(): boolean {
     const cur = this.current;
     if (!cur) return false;
+    if (this.unseen) {
+      this.unseen = false;
+      cur.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      return true;
+    }
     if (isTextField(cur)) {
       cur.focus();
       if (cur instanceof HTMLInputElement) cur.select();
@@ -205,6 +235,7 @@ export class PadNav {
     this.observer = null;
     this.setCur(null);
     this.root = null;
+    this.unseen = false;
   }
 
   // ------------------------------------------------------------------ intern
@@ -214,14 +245,33 @@ export class PadNav {
     this.restorePending = true;
     requestAnimationFrame(() => {
       this.restorePending = false;
-      if (this.cur !== null && !this.cur.isConnected) {
-        // Ohne Scrollen: ein Nachladen soll die Ansicht nicht verschieben.
-        const els = this.list();
-        const again = this.findKey(els);
-        if (again) this.focus(again, false);
-        else this.setCur(null);
-      }
+      if (this.cur !== null && !this.cur.isConnected && !this.refocus(this.list())) this.setCur(null);
     });
+  }
+
+  /**
+   * Alten Fokus wiederfinden (refocusIndex) und ohne Scrollen setzen — ein Nachladen soll die Ansicht nicht verschieben.
+   * Rückfall auf einen anderen Platz merkt sich `unseen` bis zur nächsten Eingabe. false = kein Merker / nichts da.
+   */
+  private refocus(els: readonly HTMLElement[]): boolean {
+    const r = refocusIndex(els.map(keyOf), this.key, this.index);
+    if (r.index < 0) return false;
+    this.place(els[r.index], false);
+    if (r.lost) this.unseen = true;
+    return true;
+  }
+
+  private place(el: HTMLElement | null, scroll: boolean): void {
+    if (el === null) {
+      this.setCur(null);
+      return;
+    }
+    this.setCur(el);
+    const els = this.list();
+    this.index = els.indexOf(el);
+    this.key = keyOf(el);
+    if (scroll) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    this.opts.onFocus?.(el);
   }
 
   private setCur(el: HTMLElement | null): void {
@@ -261,21 +311,6 @@ export class PadNav {
       els.find((e) => e.closest('.vel-head-row') === null) ??
       els[0]
     );
-  }
-
-  /** Gleiche Signatur, nächste Position zum alten Index. */
-  private findKey(els: readonly HTMLElement[]): HTMLElement | null {
-    let best: HTMLElement | null = null;
-    let bestD = Infinity;
-    els.forEach((e, i) => {
-      if (keyOf(e) !== this.key) return;
-      const d = Math.abs(i - this.index);
-      if (d < bestD) {
-        best = e;
-        bestD = d;
-      }
-    });
-    return best;
   }
 }
 

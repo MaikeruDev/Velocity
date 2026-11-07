@@ -7,7 +7,7 @@ import { BestTimes, SettingsStore, movementConfigFor } from './engine/Settings';
 import { UnlockStore } from './engine/Unlocks';
 import { MENU_STYLE_IDS } from './engine/settingsTypes';
 import { createOnlineService, onlineBackend } from './online';
-import { platform } from './platform';
+import { devToolsAllowed, platform } from './platform';
 import { installSaveMirror } from './platform/saveMirror';
 import { PS2Renderer } from './render/PS2Renderer';
 import { Hud } from './ui/Hud';
@@ -21,8 +21,9 @@ import { TuningPanel } from './ui/TuningPanel';
  *   ?debug        FPS-Anzeige + Event-Log ab Start
  *   ?online=off|mock|supabase   Online-Schicht (Plan 009) statt VITE_ONLINE (Default: supabase, wenn VITE_SUPABASE_URL gesetzt, sonst mock)
  *   ?menu=<id>    Hauptmenü-Stil nur für diese Sitzung (Plan 010)
- * Am Desktop (Electron) gelten diese Dev-Parameter nur mit --dev (Plan 011 §2.2.13; der Hauptprozess hängt ohne
- * --dev ohnehin keine Query an — hier zusätzlich, falls doch eine durchkommt).
+ * Am Desktop (Electron) gelten diese Dev-Parameter — wie das Debug-Handle window.__vel — nur im Dev-Modus (unverpackt
+ * + --dev, Plan 011 §2.2.13, Review C1; der Hauptprozess hängt sonst ohnehin keine Query an — hier zusätzlich, falls
+ * doch eine durchkommt).
  */
 
 const TOAST_MS = 6000;
@@ -100,15 +101,18 @@ async function main(): Promise<void> {
   const hud = new Hud();
   const menu = new Menu(byId('menu-root'), settings, best, unlocks);
   menu.setPlatform(plat);
-  // Beenden (nur Desktop): Spiegel synchron sichern, dann den Hauptprozess beenden lassen.
+  // Beenden (nur Desktop): Spiegel synchron sichern, dann den Hauptprozess beenden lassen. Scheitert das Schreiben
+  // (Datei gesperrt), behält der Hauptprozess den Stand und schreibt ihn beim Beenden; localStorage hat ihn ohnehin.
   menu.on('quit', () => {
-    mirror?.flush();
+    if (mirror && !mirror.flush()) console.warn('[velocity] Spielstand-Spiegel nicht geschrieben — der Hauptprozess versucht es beim Beenden erneut');
     plat.quit();
   });
   const tuning = new TuningPanel(settings, movementConfigFor(settings.get()));
 
-  // Dev-Parameter am Desktop nur mit --dev (Admin/Level-Sprung/Mock würden Achievements und Bestenliste entwerten).
-  const q = new URLSearchParams(plat.kind === 'web' || plat.dev ? location.search : '');
+  // Dev-Parameter und Debug-Handle am Desktop nur im Dev-Modus (Admin/Level-Sprung/Mock/__vel würden Achievements
+  // und Bestenliste entwerten; im Paket gibt es den Dev-Modus nie, Review C1).
+  const devTools = devToolsAllowed(plat);
+  const q = new URLSearchParams(devTools ? location.search : '');
   // Menü-Labor (Plan 010): Takt fürs Menü und ?menu=<id> als Sitzungs-Override (nicht gespeichert).
   menu.setAudio(audio);
   // VITE_TEST_MENU_STYLE: Playwright-Werkzeuge pinnen den klassischen Titel (tools/lib/devServer.mjs), ?menu gewinnt.
@@ -149,7 +153,9 @@ async function main(): Promise<void> {
   }
 
   const debug = q.has('debug');
-  installDebug({ game, audio, settings, unlocks, record: debug });
+  // window.__vel (AGENTS §3.6): im Web für die Werkzeuge, am Desktop nur im Dev-Modus — per CDP (Debug-Port) erreichte
+  // sonst jeder unlockAll/useBot/teleport.
+  if (devTools) installDebug({ game, audio, settings, unlocks, record: debug });
   if (debug) installFpsOverlay(game, byId('vel-debug'));
 
   await game.boot();

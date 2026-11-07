@@ -585,7 +585,8 @@ class ArcadeDoor implements FrontDoor {
     if (a.signedIn) tool('logout', 'LOGOUT', () => this.ctx?.signOut());
     tool('full', 'FULLSCREEN', () => this.ctx?.fullscreen());
     tool('lab', 'LAB', () => this.ctx?.openLab());
-    tool('admin', 'ADMIN', () => this.ctx?.openAdmin(), 'ac-tool--quiet');
+    // Admin nur, wo er etwas tut (Desktop ohne --dev: nein — er entwertete Achievements, Plan 011 §2.2.13).
+    if (c.adminMenu) tool('admin', 'ADMIN', () => this.ctx?.openAdmin(), 'ac-tool--quiet');
     this.util.append(tools);
 
     // Lock-Fehler sichtbar

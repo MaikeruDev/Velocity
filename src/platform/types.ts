@@ -46,6 +46,8 @@ export interface PlatformSteam {
 export interface PlatformWindow {
   getMode(): Promise<DisplayMode>;
   setMode(mode: DisplayMode): Promise<DisplayMode>;
+  /** Wechsel von außen (Alt+Enter/F11, OS). Rückgabe: abmelden. */
+  onModeChange(cb: (mode: DisplayMode) => void): () => void;
 }
 
 export interface PlatformApi {
