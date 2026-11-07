@@ -182,7 +182,7 @@ export const DEFAULT_PAD_SETTINGS: PadSettings = {
 
 /** Grenzen für sanitizePadSettings und das Menü (S1c). */
 export const PAD_LIMITS = {
-  yawRate: [180, 900],
+  yawRate: [60, 900],
   pitchRate: [30, 900],
   deadzoneInner: [0, 0.5],
   deadzoneOuter: [0.5, 1],
