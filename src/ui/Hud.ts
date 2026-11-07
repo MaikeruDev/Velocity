@@ -324,6 +324,8 @@ export class Hud {
   readonly canvas: HTMLCanvasElement;
   /** false = draw() leert nur den Canvas (z. B. im Titelmenü). */
   visible = true;
+  /** Film-Modus (tools/trailer): nur Speedometer, Gain-Popups und Ziel-Banner — keine Uhr, kein Fadenkreuz, keine Hinweise. */
+  filmMinimal = false;
   private readonly ctx: CanvasRenderingContext2D;
   private w = 0;
   private h = 0;
@@ -873,7 +875,7 @@ export class Hud {
       if (!d.paused) this.drawLesson(lesson, s);
     }
     // Beim Ziel-Banner steht die Zeit dort groß — die obere Timerzeile wäre eine Dopplung.
-    else if (!this.finish || d.paused) this.drawTimer(d, s);
+    else if ((!this.finish || d.paused) && !this.filmMinimal) this.drawTimer(d, s);
     // In der Pause (Menü offen) nur der Timer — alles andere würde unter dem Menü durchscheinen.
     if (d.paused) return;
     // Während der Level-Titelkarte liegt deren Band über dem Speedometer-Platz.
@@ -882,11 +884,12 @@ export class Hud {
     // Urteile einer Lektion auch ohne Speedometer — sie sind dort die wichtigste Rückmeldung.
     else if (lesson !== null && !this.intro) this.drawGains(Math.floor(this.w / 2), this.speedTop(), 0, s, 1);
     if (d.showKeys) this.drawKeys(d.keys, s);
-    if (this.split) this.drawSplit(this.split, s);
-    if (this.intro) this.drawIntro(this.intro, d, s);
+    if (this.split && !this.filmMinimal) this.drawSplit(this.split, s);
+    if (this.intro && !this.filmMinimal) this.drawIntro(this.intro, d, s);
     if (this.finish) this.drawFinish(this.finish, s);
-    else this.drawCrosshair();
+    else if (!this.filmMinimal) this.drawCrosshair();
     if (this.t - this.photoAt < PHOTO_LIFE) this.drawPhoto(s);
+    if (this.filmMinimal) return;
     if (this.demo) this.drawDemoBand(s);
     else if (this.notice) this.drawNotice(this.notice, s);
   }

@@ -33,7 +33,7 @@ export const LENGTH = 30;
 const SEED = 0x7ec4;
 
 export const bar = (n: number): number => n * BAR;
-const ctxT = (T: number): number => T + ORIGIN;
+export const ctxT = (T: number): number => T + ORIGIN;
 
 // ------------------------------------------------------------------ Arrangement (Trailerzeit)
 
@@ -84,7 +84,7 @@ function trailerDrive(T: number): MusicDrive {
   return drive({ speed: 1000, hopChain: 12, strafeSync: 0.85, onGround: true });
 }
 
-interface Action {
+export interface Action {
   /** Bis hierhin planen (Kontextzeit), dann das Ereignis abschicken. */
   readonly planUntil: number;
   /** Zeitpunkt des Ereignisses (Kontextzeit). */
@@ -92,7 +92,7 @@ interface Action {
   readonly event: GameEvent;
 }
 
-const ev = (T: number, event: GameEvent): Action => ({ planUntil: ctxT(T), at: ctxT(T), event });
+export const ev = (T: number, event: GameEvent): Action => ({ planUntil: ctxT(T), at: ctxT(T), event });
 
 function musicActions(withAccent = true): Action[] {
   const all: Action[] = [
@@ -128,7 +128,7 @@ export interface RenderResult {
   readonly bars: readonly BarInfo[];
 }
 
-interface Job {
+export interface Job {
   readonly seconds: number;
   readonly driveAt: (T: number) => MusicDrive;
   readonly actions: readonly Action[];
@@ -136,7 +136,7 @@ interface Job {
   readonly volumes: AudioVolumes;
 }
 
-async function renderJob(j: Job): Promise<{ buffer: AudioBuffer; bars: BarInfo[] }> {
+export async function renderJob(j: Job): Promise<{ buffer: AudioBuffer; bars: BarInfo[] }> {
   const ctx = new OfflineAudioContext({ numberOfChannels: 2, length: Math.ceil(j.seconds * SAMPLE_RATE), sampleRate: SAMPLE_RATE });
   // Sicherheits-Clipper an wie im Spiel; Pegel-Reserve prüft music.mjs am Ergebnis.
   const audio = new TechnoAudio({ context: ctx, seed: SEED, clipper: true });
@@ -174,23 +174,23 @@ function toBase64F32(chans: readonly Float32Array[]): string {
   return btoa(s);
 }
 
-function channelsOf(buf: AudioBuffer): Float32Array[] {
+export function channelsOf(buf: AudioBuffer): Float32Array[] {
   const out: Float32Array[] = [];
   for (let c = 0; c < buf.numberOfChannels; c++) out.push(buf.getChannelData(c));
   return out;
 }
 
-const result = (chans: readonly Float32Array[], bars: readonly BarInfo[] = []): RenderResult => ({
+export const result = (chans: readonly Float32Array[], bars: readonly BarInfo[] = []): RenderResult => ({
   sampleRate: SAMPLE_RATE,
   channels: chans.length,
   pcm: toBase64F32(chans),
   bars,
 });
 
-const MUSIC_ONLY: AudioVolumes = { master: 1, music: 1, sfx: 0 };
-const SFX_ONLY: AudioVolumes = { master: 1, music: 0, sfx: 1 };
+export const MUSIC_ONLY: AudioVolumes = { master: 1, music: 1, sfx: 0 };
+export const SFX_ONLY: AudioVolumes = { master: 1, music: 0, sfx: 1 };
 const RENDER_SECONDS = LENGTH + LEAD + 0.05;
-const ALL_PARTS: readonly MusicPart[] = ['kick', 'hats', 'clap', 'perc', 'bass', 'rumble', 'acid', 'ride', 'shaker', 'stabs', 'pad', 'fx'];
+export const ALL_PARTS: readonly MusicPart[] = ['kick', 'hats', 'clap', 'perc', 'bass', 'rumble', 'acid', 'ride', 'shaker', 'stabs', 'pad', 'fx'];
 
 // ------------------------------------------------------------------ SFX-Zeitleiste (Vorschlag, synchron zur Musik)
 

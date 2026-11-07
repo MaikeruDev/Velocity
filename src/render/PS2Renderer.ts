@@ -311,6 +311,11 @@ export class PS2Renderer implements RendererApi {
     this.post.setHud(canvas);
   }
 
+  /** Nah-Ausblendung des Ghosts (u): Standard 56–180; der Film-Avatar (tools/trailer) braucht ihn nah sichtbar. */
+  setGhostNearFade(near: number, far: number): void {
+    (this.ghostMaterial.uniforms.uNearFade.value as { set(x: number, y: number): void }).set(near, far);
+  }
+
   setGhost(pos: Vector3 | null, yaw: number): void {
     if (!pos) {
       this.ghost.visible = false;

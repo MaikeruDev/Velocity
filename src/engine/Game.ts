@@ -416,6 +416,8 @@ export class Game {
   private filmBpm = 0;
   private filmHud = true;
   private filmCam: FilmCamera | null = null;
+  /** Film: Ghost-Hologramm auf der Spielerposition zeigen (Verfolger-Kamera braucht ein sichtbares Motiv). */
+  private filmAvatar = false;
   /** Nur Bild: Kamera-Yaw tiefpassen (s, 0 = aus) — rundet die harten Wenden des Strafe-Bots, Physik unberührt. */
   private filmYawTau = 0;
   private filmYaw = Number.NaN;
@@ -1320,10 +1322,14 @@ export class Game {
    * (die Kick fällt auf Frame 0). bpm > 0 = Kick-Puls der Trims aus dieser Uhr statt aus dem Audio.
    * hud = false blendet HUD und Hand aus (Establishing-Shots). Ändert kein Spielverhalten.
    */
-  setFilmMode(on: boolean, bpm: number, hud: boolean, yawTau = 0): void {
+  setFilmMode(on: boolean, bpm: number, hud: boolean, yawTau = 0, opts: { readonly avatar?: boolean; readonly minimalHud?: boolean } = {}): void {
     this.filmClock = 0;
     this.filmBpm = bpm > 0 ? bpm : 0;
     this.filmHud = hud;
+    this.filmAvatar = on && opts.avatar === true;
+    if (this.filmAvatar) this.renderer.setGhostNearFade?.(20, 60);
+    else this.renderer.setGhostNearFade?.(56, 180);
+    this.hud.filmMinimal = on && opts.minimalHud === true;
     this.filmYawTau = yawTau > 0 ? yawTau : 0;
     this.filmYaw = Number.NaN;
     if (on === this.film) return;
@@ -2766,6 +2772,13 @@ export class Game {
    * zwischen den letzten beiden Ticks). Vor dem Start steht er am Spawn (Sample 0).
    */
   private updateGhost(alpha: number): void {
+    if (this.film && this.filmAvatar && this.filmCam !== null && this.level !== null) {
+      const v = this.interp.vel;
+      const heading = Math.hypot(v.x, v.z) > 20 ? Math.atan2(-v.x, -v.z) : 0;
+      this.renderer.setGhost(this.interp.pos, heading);
+      this.hudData.ghostOverHud = false;
+      return;
+    }
     const track = this.ghostTrack;
     const run = this.run;
     if (!track || !run || !this.ghostVisible || this.gameState === 'title' || this.gameState === 'loading') {

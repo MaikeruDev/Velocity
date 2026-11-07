@@ -98,6 +98,18 @@
         id.data[o] = id.data[o + 1] = id.data[o + 2] = 255;
         id.data[o + 3] = a >= 128 ? 255 : 0;
       }
+    // Silkscreens "C" hat rechts in Zeile 2 und 4 je ein Pixel (.##. / #..# / #... / #..# / .##.) — klein liest es
+    // sich als "O"/"G" ("128-TIOK"). Eigene, rechts offene Form über dieselbe 4×5-Zelle legen.
+    const C_FORM = ['.###', '#...', '#...', '#...', '.###'];
+    for (let i = 0; i < t.length; i++) {
+      if (t[i] !== 'C') continue;
+      const x0 = Math.round(g.measureText(t.slice(0, i)).width / S) + 1;
+      for (let r = 0; r < 5; r++)
+        for (let c = 0; c < 4; c++) {
+          const o = ((r + 1) * cols + x0 + c) * 4;
+          if (x0 + c < cols) id.data[o + 3] = C_FORM[r][c] === '#' ? 255 : 0;
+        }
+    }
     rg.putImageData(id, 0, 0);
     const out = canvas(cols * m, 8 * m);
     const og = out.getContext('2d');
@@ -230,7 +242,7 @@
     let y;
     if (el.pos === 'center') {
       x = Math.round((cfg.W - t.w * s) / 2);
-      y = Math.round((el.cy ?? cfg.H / 2) - (t.h * s) / 2);
+      y = Math.round((el.cy ?? cfg.H / 2) + (el.cyOff ?? 0) - (t.h * s) / 2);
     } else {
       x = L.llx;
       y = (el.pos === 'abs' ? el.absLly : L.lly) - t.h * s;
@@ -446,6 +458,18 @@
       blit(b, x, y, s, f, glitchAmt(bk, 99));
       if (bk < 6) scanlines(x, y, b.w * s, b.h * s, 0.5);
     }
+    // Feature-Zeile klein unter dem Button (60-s-Trailer), Wörter mit Abstand — Hochformat zweizeilig.
+    if (el.features) {
+      const ff = Math.round(el.featuresAt * cfg.fpb);
+      if (f >= ff) {
+        const parts = el.features.split('  ·  ');
+        const rows = cfg.W < cfg.H ? [parts.slice(0, 2).join('  ·  '), parts.slice(2).join('  ·  ')] : [el.features];
+        const ft = pxText(`feat:${cfg.W}`, rows.map((r) => ({ t: r, m: 1, color: C.dim, gap: 3 })), 'center', C.ink);
+        const s = PX;
+        const x = Math.round((cfg.W - ft.w * s) / 2 / PX) * PX;
+        blit(ft, x, L.featY, s, f, glitchAmt(f - ff, 99));
+      }
+    }
     scanlines(0, 0, cfg.W, cfg.H, 0.06);
     return true;
   }
@@ -463,7 +487,56 @@
     return true;
   }
 
-  const kinds = { super: drawSuper, slam: drawSlam, flash: drawFlash, fade: drawFade, end: drawEnd, shade: drawShade, band: drawBand };
+  /**
+   * Kino-Balken (2.39:1): schieben in 6 Frames herein, am Ende in 4 Frames hinaus (harte Pixelstufen).
+   */
+  function drawLetterbox(el, f) {
+    const f0 = Math.round(el.b0 * cfg.fpb);
+    const f1 = Math.round(el.b1 * cfg.fpb);
+    if (f < f0 || f >= f1) return false;
+    const inK = Math.min(1, (f - f0 + 1) / 6);
+    const outK = Math.min(1, (f1 - f) / 4);
+    const h = Math.round((el.h * Math.min(inK, outK)) / PX) * PX;
+    if (h <= 0) return false;
+    ctx.save();
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, cfg.W, h);
+    ctx.fillRect(0, cfg.H - h, cfg.W, h);
+    // Feine Neon-Kante an der Innenseite.
+    ctx.fillStyle = 'rgba(51,240,255,0.35)';
+    ctx.fillRect(0, h, cfg.W, PX / 2);
+    ctx.fillStyle = 'rgba(255,63,208,0.35)';
+    ctx.fillRect(0, cfg.H - h - PX / 2, cfg.W, PX / 2);
+    ctx.restore();
+    return true;
+  }
+
+  /**
+   * Riesen-Tacho: echtes Tempo (u/s) aus der Telemetrie des sichtbaren Bildes, Pixelziffern groß in der Mitte unten,
+   * Farbe wie im Spiel nach Stufen (weiß → grün → gold ab 1000 → magenta ab 1250), Puls bei jeder neuen Hunderter-Marke.
+   */
+  function drawSpeed(el, f) {
+    const f0 = Math.round(el.b0 * cfg.fpb);
+    const f1 = Math.round(el.b1 * cfg.fpb);
+    if (f < f0 || f >= f1) return false;
+    const v = Math.round(el.vals[f - f0] ?? 0);
+    const prev = Math.round(el.vals[Math.max(0, f - f0 - 1)] ?? 0);
+    const color = v >= 1250 ? C.magenta : v >= 1000 ? C.gold : v >= 500 ? '#5dff9a' : C.text;
+    const k = f - f0;
+    const num = pxText(`spd:${v}:${color}`, [{ t: String(v), m: 7, color }], 'center', color === C.magenta ? C.cyan : C.magenta);
+    const unit = pxText('spd:unit', [{ t: 'UNITS / SEC', m: 2, color: C.text }], 'center', C.magenta);
+    const pulse = Math.floor(v / 100) > Math.floor(prev / 100) ? 1 : 0;
+    const s = PX + pulse;
+    const L = cfg.layout;
+    const x = Math.round((cfg.W - num.w * s) / 2 / PX) * PX;
+    const y = Math.round((L.speedCy - (num.h * s) / 2) / PX) * PX;
+    blit(num, x, y, s, f, glitchAmt(k, f1 - 1 - f));
+    const ux = Math.round((cfg.W - unit.w * PX) / 2 / PX) * PX;
+    blit(unit, ux, y + num.h * s + PX * 2, PX, f, glitchAmt(k, f1 - 1 - f));
+    return true;
+  }
+
+  const kinds = { super: drawSuper, slam: drawSlam, flash: drawFlash, fade: drawFade, end: drawEnd, shade: drawShade, band: drawBand, letterbox: drawLetterbox, speed: drawSpeed };
 
   function drawShade(el, f) {
     const f0 = Math.round(el.b0 * cfg.fpb);

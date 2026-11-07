@@ -107,6 +107,8 @@ export interface RendererApi {
    * er sich selbst aus, damit er beim Überholen nicht die Sicht verdeckt.
    */
   setGhost(pos: Vector3 | null, yaw: number): void;
+  /** Nah-Ausblendung des Ghosts in u (Standard 56–180; Film-Avatar kleiner). Optional für Test-Attrappen. */
+  setGhostNearFade?(near: number, far: number): void;
   /**
    * Viewmodel-Pass vorbereiten (Plan 006): Geometrie/Texturen der Gegenstände anlegen und
    * Shader kompilieren, damit der erste Wurf im Lauf nicht ruckelt. Außerhalb des Frame-Pfads

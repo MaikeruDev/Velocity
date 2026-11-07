@@ -1,4 +1,4 @@
-import { BoxGeometry, DoubleSide, GLSL3, ShaderMaterial, Vector3 } from 'three';
+import { BoxGeometry, DoubleSide, GLSL3, ShaderMaterial, Vector2, Vector3 } from 'three';
 import { GLSL_BAYER, GLSL_FOG, GLSL_SNAP } from './shared';
 import type { SharedUniforms } from './shared';
 
@@ -24,11 +24,12 @@ ${GLSL_FOG}
 out vec3 vLocal;
 out float vFog;
 out float vNear;
+uniform vec2 uNearFade;
 void main() {
   vLocal = position;
   vec4 w = modelMatrix * vec4(position, 1.0);
   vec3 center = (modelMatrix * vec4(0.0, ${GHOST_HEIGHT / 2}.0, 0.0, 1.0)).xyz;
-  vNear = smoothstep(56.0, 180.0, distance(cameraPosition, center));
+  vNear = smoothstep(uNearFade.x, uNearFade.y, distance(cameraPosition, center));
   vec4 view = viewMatrix * w;
   vFog = fogFactor(length(view.xyz));
   gl_Position = snapClip(projectionMatrix * view);
@@ -93,6 +94,8 @@ export function createGhostMaterial(shared: SharedUniforms): ShaderMaterial {
       uTime: shared.uTime,
       uGhostColor: { value: new Vector3(1, 0.5, 0.9) },
       uGhostFill: { value: 0.26 },
+      /** Ausblenden nah an der Kamera (u): beim Überholen keine Wand im Bild; Film-Avatar setzt es kleiner. */
+      uNearFade: { value: new Vector2(56, 180) },
     },
   });
 }

@@ -46,6 +46,8 @@ export interface VelState {
   readonly speed: number;
   readonly onGround: boolean;
   readonly surfing: boolean;
+  /** Normale der Surf-Rampe (nur gültig, solange surfing; Trailer-Kamera weicht ihr aus). */
+  readonly surfNormal: Vec3Like;
   readonly ducked: boolean;
   /** null = Timer noch nicht gestartet. */
   readonly runTime: number | null;
@@ -268,7 +270,7 @@ export interface VelHandle {
    * der Trims aus dieser Uhr (Kick auf Frame 0); hud false = ohne HUD und Hand; yawTau > 0 = Kamera-Yaw nur im
    * Bild tiefpassen (s). off = zurück zu Echtzeit.
    */
-  film(opts: { readonly on: boolean; readonly bpm?: number; readonly hud?: boolean; readonly yawTau?: number }): void;
+  film(opts: { readonly on: boolean; readonly bpm?: number; readonly hud?: boolean; readonly yawTau?: number; readonly avatar?: boolean; readonly minimalHud?: boolean }): void;
   /** Film-Modus: einen Frame mit dt Sekunden simulieren und rendern (Canvas danach im selben Task lesen). */
   advanceFrame(dt: number): void;
   /** Film-Modus: freie Kamera (Grad), null = Spielerkamera. */
@@ -395,6 +397,7 @@ export function installDebug(deps: DebugDeps): VelHandle {
       speed: round3(s.speed),
       onGround: s.onGround,
       surfing: s.surfing,
+      surfNormal: vec(s.surfNormal),
       ducked: s.ducked,
       runTime: run ? run.time : null,
       running: run ? run.running : false,
@@ -465,7 +468,7 @@ export function installDebug(deps: DebugDeps): VelHandle {
       game.stepTicks(n);
       return state();
     },
-    film: (opts) => game.setFilmMode(opts.on, opts.bpm ?? 0, opts.hud ?? true, opts.yawTau ?? 0),
+    film: (opts) => game.setFilmMode(opts.on, opts.bpm ?? 0, opts.hud ?? true, opts.yawTau ?? 0, { avatar: opts.avatar, minimalHud: opts.minimalHud }),
     advanceFrame: (dt) => game.filmFrame(dt),
     filmCamera: (cam) =>
       game.setFilmCamera(cam === null ? null : { x: cam.x, y: cam.y, z: cam.z, yaw: cam.yawDeg * DEG, pitch: cam.pitchDeg * DEG, roll: (cam.rollDeg ?? 0) * DEG }),

@@ -101,6 +101,12 @@ npx tsx tools/hand-grips.ts <item> [--from|--open|--to pose] [--mask 31] [--pos|
 npx tsx tools/knife-tune.ts open|close [--iters N] [--seed s] [--probe p…]  # Butterfly: Handgelenk-Flick per Physik-Suche
 node tools/trailer/takes.mjs [take …]   # Trailer-Footage deterministisch (Film-Modus, 1/60 s je Frame) → media/footage/frames/<take>/
 node tools/trailer/cut.mjs [clip …]     #   (Port 5600, TRAILER_PORT=…); cut: Clips → media/footage/*.mp4 (1080p60, CRF 14), clips.json, contact.png
+node tools/trailer/takes2.mjs [take …]  # 60-s-Trailer (Port 5601): Verfolger-Drohne chaseL1–4 (Ghost-Hologramm als Läufer, weicht
+                       #   Surf-Rampen aus), Ego fpL1–4 (nur Speedometer), ghostL1, bulletL1 (Bullet-Time), flyL2/flyL4
+node tools/trailer/music60.mjs          # 60-s-Musik aus der Engine (Port 5604): Cold Open gedämpft + Tape-Stop, main ab Takt 2
+                       #   → media/audio/trailer60_music.wav, stems/sfx_wind_60.wav, cues60.json
+node tools/trailer/edit60.mjs [--cut30] [--vertical]  # Schnitt direkt aus den Take-PNGs (Rampen/Standbild frame-genau)
+                       #   → media/velocity_trailer_{60,30}s[_vertical].mp4, Kontaktblatt media/trailer60_check/
 npx tsx tools/levels/medalProbe.ts      # Spiel-Uhr-Median mehrerer Bot-Modelle je Level (Grundlage der Medaillen)
 npx tsx tools/replay/verify.ts <replay> | --bot <level> [--noise 1]   # Replay-Verifier (Plan 009) wie in der Cloud Function
 npx tsx tools/replay/online-check.ts    # Playwright (Port 5701, ONLINE_PORT=…): Lauf → Einreichen → Bestenliste → Ghost,
@@ -553,6 +559,9 @@ aus, Spielzeit nur per `advanceFrame(dt)`; Kick der Trims aus simulierter BPM-Uh
 Kamera-Yaw nur im Bild tiefpassen), `advanceFrame(dt)`, `filmCamera({x,y,z,yawDeg,pitchDeg,rollDeg?} | null)`,
 `setSettings(patch)`; `BotOptions.band` (route/strafe, Hysterese), strafe reicht auch `maxTurnRate` durch.
 Game: `setFilmMode`, `filmFrame`, `setFilmCamera`, Typ `FilmCamera`.
+60-s-Trailer (07.11.), ebenfalls verhaltensneutral: `film({…, avatar?, minimalHud?})` — avatar = Ghost-Hologramm auf
+der Spielerposition (nur mit Film-Kamera; Nah-Ausblendung dann 20–60 statt 56–180 u, `RendererApi.setGhostNearFade?`),
+minimalHud = nur Speedometer/Gain-Popups/Ziel-Banner (`Hud.filmMinimal`); `VelState.surfNormal` (Verfolger-Kamera).
 
 Online/Replays (Plan 009, 01.10.) — alle Nutzer nachgezogen, tsc 0, Vitest grün, `npm run sim` zeilengleich:
 - **Physik**: `player/detMath.ts` (`dsin/dcos/datan2/dhypot`, fdlibm-/V8-Ports aus IEEE-Grundoperationen) ersetzt
