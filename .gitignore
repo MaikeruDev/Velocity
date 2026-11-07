@@ -23,3 +23,4 @@ out/
 release/
 # Steamworks (Plan 011 Phase 4): nur desktop:dev legt sie an (und räumt sie weg) — nie committen, nie ausliefern
 steam_appid.txt
+media/trailer60_check/
