@@ -96,11 +96,14 @@ export function padPresetOf(binds: PadBinds): PadPresetId | null {
   return null;
 }
 
-/** Frühere Kamera-Defaults (bis 2026-11-07). Wer sie nie verändert hat, bekommt die neuen. */
-const OLD_LOOK_DEFAULTS = { yawRate: 420, pitchRate: 220 } as const;
+/** Frühere Kamera-Defaults (Yaw/Pitch, beide 2026-11-07 ersetzt). Wer sie nie verändert hat, bekommt die neuen. */
+const OLD_LOOK_DEFAULTS: readonly (readonly [number, number])[] = [
+  [420, 220],
+  [320, 170],
+];
 
 function migrateLookDefaults(raw: Record<string, unknown>): Record<string, unknown> {
-  if (raw.yawRate !== OLD_LOOK_DEFAULTS.yawRate || raw.pitchRate !== OLD_LOOK_DEFAULTS.pitchRate) return raw;
+  if (!OLD_LOOK_DEFAULTS.some(([y, p]) => raw.yawRate === y && raw.pitchRate === p)) return raw;
   return { ...raw, yawRate: DEFAULT_PAD_SETTINGS.yawRate, pitchRate: DEFAULT_PAD_SETTINGS.pitchRate };
 }
 

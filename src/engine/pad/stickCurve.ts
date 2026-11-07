@@ -58,7 +58,8 @@ export const STICK_EDGE = 0.95;
 export const STICK_EDGE_OFF = 0.85;
 
 /**
- * 2026-11-07 Playtest am Desktop: "rechter Stick generell langsamer" → 320 / 170 °/s (Verhältnis wie vorher).
+ * 2026-11-07 Playtest am Desktop: "rechter Stick generell langsamer" → 320 / 170 °/s, danach "Y passt, X weiter
+ * runter" → 250 / 170 °/s.
  * Ursprünglich aus Plan 011 S1a (Sim-Beleg: movement-tuning.md "Controller"): 420 °/s
  * + Boost +50 % (Spitze 630) erfüllt das Kriterium bis 3 % Rauschen; ohne Boost
  * bräuchte es 510. ^2.4 hält 30 % Auslenkung bei 23 °/s (feinzielbar ≤ 25).
@@ -66,7 +67,7 @@ export const STICK_EDGE_OFF = 0.85;
  * Achsen-Deadzone 0.2 (asin 0.2 = 11.5° neben der Waagerechten kippt nichts) — tests/pad.test.ts.
  */
 export const DEFAULT_LOOK_CURVE: LookCurveParams = {
-  maxYawRate: 320,
+  maxYawRate: 250,
   maxPitchRate: 170,
   exponent: 2.4,
   inner: 0.12,

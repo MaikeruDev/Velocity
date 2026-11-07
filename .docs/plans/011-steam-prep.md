@@ -220,6 +220,8 @@ Deadzone), Rampe 0.1 s → Spitze 630 °/s · Deadzone innen 0.12 / außen 0.95 
 wie vorher). Gespeicherte, nie veränderte 420/220 migriert `PadSettingsStore` auf die neuen Werte. Stick-Sim bei 320:
 H20 96.2 / 97.4 / 97.3 %, t→500 **1.19×** / 1.21× / 1.26× — das Tempo-Kriterium (≤ 1.15×) hält bewusst nicht mehr:
 Gefühl schlägt Anlauf-Sekunden; wer schneller dreht, stellt Kamera X höher.
+Zweite Runde am selben Tag („Y passt, X weiter runter“): **250 / 170 °/s**; 320/170 wird ebenfalls migriert.
+Stick-Sim bei 250 nicht neu gemessen (Spieler testet selbst).
 API: `radialDeadzone`, `lookRate(x, y, params, heldEdgeTime, out)` (rad/s, Vorzeichen wie Stick: x rechts +, y unten +;
 Invertierung/Yaw-Vorzeichen macht `InputState`), `boostFactor`, `stickMagnitude`, `STICK_EDGE`,
 `digitizeMove(x, y, inner, diagonalBand, out)`. Die Boost-Uhr (`heldEdgeTime`) führt der Aufrufer.
